@@ -40,7 +40,11 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     
     // Submissions
     Route::get('forms/{form}/submissions', [SubmissionController::class, 'adminIndex'])->name('admin.submissions.index');
+    // Specific routes must be registered before the {submission} wildcard
+    // route, otherwise words like 'bulk-download' would be captured as a
+    // submission id -> 404.
+    Route::get('forms/{form}/submissions/bulk-download', [SubmissionController::class, 'downloadBulk'])->name('admin.submissions.bulk');
+    Route::get('forms/{form}/submissions/{submission}/download', [SubmissionController::class, 'downloadSubmission'])->name('admin.submissions.download.submission');
     Route::get('forms/{form}/submissions/{submission}', [SubmissionController::class, 'adminShow'])->name('admin.submissions.show');
     Route::get('submissions/{file}/download', [SubmissionController::class, 'downloadFile'])->name('admin.submissions.download');
-    Route::get('forms/{form}/submissions/bulk-download', [SubmissionController::class, 'downloadBulk'])->name('admin.submissions.bulk');
 });

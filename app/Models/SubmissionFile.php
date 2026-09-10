@@ -11,6 +11,7 @@ class SubmissionFile extends Model
 
     protected $fillable = [
         'submission_id',
+        'field_label',
         'original_name',
         'stored_name',
         'file_path',

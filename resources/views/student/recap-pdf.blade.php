@@ -99,14 +99,8 @@
         <table>
             @foreach($form->fields as $field)
                 @php
-                    $fieldName = match(strtolower($field->field_label)) {
-                        'nom complet', 'nom', 'name' => 'student_name',
-                        'email', 'adresse email' => 'student_email',
-                        'téléphone', 'telephone', 'tel', 'phone' => 'student_phone',
-                        'filière', 'filiere', 'major', 'spécialité' => 'student_major',
-                        default => 'student_' . strtolower(str_replace(' ', '_', $field->field_label)),
-                    };
-                    $value = $submission->$fieldName ?? null;
+                    $fieldName = $field->getFieldName();
+                    $value = $field->field_type === 'file' ? null : ($submission->$fieldName ?? null);
                     if ($field->field_type === 'checkbox') {
                         $value = $value ? 'Oui' : 'Non';
                     }

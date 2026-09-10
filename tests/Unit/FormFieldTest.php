@@ -102,6 +102,30 @@ class FormFieldTest extends TestCase
         $this->assertEquals('file', $fileField->field_type);
     }
 
+    public function test_form_field_select_and_checkbox_types(): void
+    {
+        $selectField = FormField::create([
+            'form_id' => $this->form->id,
+            'field_label' => 'Filière',
+            'field_type' => 'select',
+            'required' => true,
+            'order' => 0,
+            'options' => ['TP', 'BAT', 'INFO', 'GE', 'MECA', 'ENERG'],
+        ]);
+
+        $checkboxField = FormField::create([
+            'form_id' => $this->form->id,
+            'field_label' => 'Confirmation',
+            'field_type' => 'checkbox',
+            'required' => false,
+            'order' => 1,
+        ]);
+
+        $this->assertTrue($selectField->isSelect());
+        $this->assertTrue($checkboxField->isCheckbox());
+        $this->assertEquals(['TP', 'BAT', 'INFO', 'GE', 'MECA', 'ENERG'], $selectField->getOptionsList());
+    }
+
     public function test_form_field_is_required(): void
     {
         $requiredField = FormField::create([

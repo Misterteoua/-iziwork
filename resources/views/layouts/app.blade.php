@@ -7,26 +7,55 @@
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <meta name="color-scheme" content="light">
     <title>@yield('title', 'Iziwork') - Gestion de dépôts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         tailwind.config = {
             theme: {
                 extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
                     colors: {
                         brand: {
                             50: '#eef2ff',
-                            500: '#667eea',
-                            600: '#5a6fd6',
-                            700: '#4e5db8',
+                            100: '#e0e7ff',
+                            200: '#c7d2fe',
+                            300: '#a5b4fc',
+                            400: '#818cf8',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                            800: '#3730a3',
+                            900: '#312e81',
                         }
+                    },
+                    boxShadow: {
+                        'card': '0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 3px 0 rgb(0 0 0 / 0.04)',
+                        'card-hover': '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.04)',
+                        'modal': '0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.05)',
                     }
                 }
             }
         }
     </script>
     <style>
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
 
         /* Reduced motion */
@@ -47,60 +76,89 @@
 
         /* Focus visible ring for all interactive elements */
         *:focus-visible {
-            outline: 2px solid #667eea;
+            outline: 2px solid #6366f1;
             outline-offset: 2px;
             border-radius: 4px;
         }
 
         /* Tap highlight */
         a, button, input, select, textarea {
-            -webkit-tap-highlight-color: rgba(102, 126, 234, 0.15);
+            -webkit-tap-highlight-color: rgba(99, 102, 241, 0.12);
         }
 
         /* Touch action for interactive elements */
         button, a, input[type="submit"] {
             touch-action: manipulation;
         }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
     </style>
     @stack('head')
 </head>
-<body class="bg-gray-50 min-h-screen safe-top safe-bottom">
+<body class="bg-slate-50 min-h-screen safe-top safe-bottom">
     {{-- Skip to main content link --}}
     <a href="#main-content" 
-       class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-indigo-600 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium">
+       class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-brand-600 focus:text-white focus:rounded-lg focus:text-sm focus:font-medium">
         Aller au contenu principal
     </a>
 
     @if(session('admin_user'))
-    <nav class="bg-white shadow-sm border-b safe-top" role="navigation" aria-label="Menu principal">
+    <nav class="bg-white border-b border-slate-200/80 safe-top sticky top-0 z-40 backdrop-blur bg-white/90" role="navigation" aria-label="Menu principal">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center min-w-0">
-                    <a href="{{ route('admin.dashboard') }}" class="flex items-center shrink-0" aria-label="Iziwork - Retour au tableau de bord">
-                        <span class="text-2xl font-bold gradient-bg text-transparent bg-clip-text">Iziwork</span>
+                    <a href="{{ route('admin.dashboard') }}" class="flex items-center gap-2 shrink-0" aria-label="Iziwork - Retour au tableau de bord">
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg gradient-bg text-white">
+                            <svg class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                        </span>
+                        <span class="text-lg font-bold tracking-tight text-slate-900">Iziwork</span>
                     </a>
                     {{-- Desktop nav --}}
-                    <div class="hidden sm:ml-6 sm:flex sm:space-x-8" role="menubar">
+                    <div class="hidden sm:ml-8 sm:flex sm:space-x-1" role="menubar">
                         <a href="{{ route('admin.dashboard') }}" 
                            role="menuitem"
-                           class="inline-flex items-center px-1 pt-1 border-b-2 {{ request()->routeIs('admin.dashboard') ? 'border-indigo-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }} text-sm font-medium transition-colors duration-200">
+                           class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 {{ request()->routeIs('admin.dashboard') ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' }}">
                             Tableau de bord
                         </a>
                         <a href="{{ route('admin.forms.index') }}" 
                            role="menuitem"
-                           class="inline-flex items-center px-1 pt-1 border-b-2 {{ request()->routeIs('admin.forms.*') ? 'border-indigo-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300' }} text-sm font-medium transition-colors duration-200">
+                           class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 {{ request()->routeIs('admin.forms.*') ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' }}">
                             Formulaires
                         </a>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <span class="hidden sm:inline text-sm text-gray-500">{{ session('admin_user.username') }}</span>
+                <div class="flex items-center gap-2">
+                    <div class="hidden md:flex items-center gap-2.5 pl-3">
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-sm font-semibold">
+                            {{ strtoupper(substr(session('admin_user.username'), 0, 1)) }}
+                        </span>
+                        <span class="text-sm font-medium text-slate-700">{{ session('admin_user.username') }}</span>
+                    </div>
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
                         <button type="submit" 
-                                class="text-sm text-gray-500 hover:text-gray-700 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors duration-200"
+                                class="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors duration-150"
                                 aria-label="Se déconnecter">
-                            Déconnexion
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            <span class="hidden sm:inline">Déconnexion</span>
                         </button>
                     </form>
                 </div>
@@ -108,16 +166,16 @@
         </div>
 
         {{-- Mobile nav --}}
-        <div class="sm:hidden border-t border-gray-100" role="menubar">
+        <div class="sm:hidden border-t border-slate-100" role="menubar">
             <div class="flex">
                 <a href="{{ route('admin.dashboard') }}" 
                    role="menuitem"
-                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 {{ request()->routeIs('admin.dashboard') ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500' }}">
+                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.dashboard') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
                     Tableau de bord
                 </a>
                 <a href="{{ route('admin.forms.index') }}" 
                    role="menuitem"
-                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 {{ request()->routeIs('admin.forms.*') ? 'border-indigo-500 text-indigo-600' : 'border-transparent text-gray-500' }}">
+                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.forms.*') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
                     Formulaires
                 </a>
             </div>
@@ -125,26 +183,30 @@
     </nav>
     @endif
 
-    <main id="main-content" class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8" tabindex="-1">
+    <main id="main-content" class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8" tabindex="-1">
         {{-- Flash messages with aria-live --}}
         @if(session('success'))
-        <div class="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded-lg text-sm" role="alert" aria-live="polite">
+        <div class="mb-6 p-4 bg-emerald-50 border border-emerald-200/70 text-emerald-800 rounded-xl text-sm shadow-card" role="alert" aria-live="polite">
             <div class="flex items-center">
-                <svg class="h-5 w-5 mr-2 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {{ session('success') }}
+                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 mr-3 shrink-0">
+                    <svg class="h-4 w-4 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                    </svg>
+                </span>
+                <span class="font-medium">{{ session('success') }}</span>
             </div>
         </div>
         @endif
 
         @if(session('error'))
-        <div class="mb-4 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm" role="alert" aria-live="assertive">
+        <div class="mb-6 p-4 bg-red-50 border border-red-200/70 text-red-800 rounded-xl text-sm shadow-card" role="alert" aria-live="assertive">
             <div class="flex items-center">
-                <svg class="h-5 w-5 mr-2 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                {{ session('error') }}
+                <span class="inline-flex h-6 w-6 items-center justify-center rounded-full bg-red-100 mr-3 shrink-0">
+                    <svg class="h-4 w-4 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </span>
+                <span class="font-medium">{{ session('error') }}</span>
             </div>
         </div>
         @endif

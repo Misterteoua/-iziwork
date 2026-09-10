@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS form_fields (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     form_id BIGINT UNSIGNED NOT NULL,
     field_label VARCHAR(255) NOT NULL,
-    field_type ENUM('text', 'email', 'tel', 'file') NOT NULL,
+    field_type ENUM('text', 'email', 'tel', 'file', 'select', 'checkbox') NOT NULL,
     required BOOLEAN DEFAULT TRUE,
     `order` INT DEFAULT 0,
     created_at TIMESTAMP NULL,
@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS submissions (
 CREATE TABLE IF NOT EXISTS submission_files (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     submission_id BIGINT UNSIGNED NOT NULL,
+    field_label VARCHAR(255) NULL,
     original_name VARCHAR(255) NOT NULL,
     stored_name VARCHAR(255) NOT NULL,
     file_path VARCHAR(255) NOT NULL,

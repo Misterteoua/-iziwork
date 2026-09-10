@@ -47,10 +47,13 @@ class SubmissionController extends Controller
         $fieldNames = [];
 
         foreach ($form->fields as $field) {
-            $fieldName = $this->getFieldName($field);
+            $fieldName = $field->getFieldName();
 
-            // File fields are handled separately below
+            // File fields are validated individually so each one can be
+            // associated back to its field (RAPPORT, SYNTHESE, ...).
             if ($field->field_type === 'file') {
+                $rules[$fieldName] = $field->required ? 'required|array|min:1' : 'nullable|array';
+                $rules[$fieldName . '.*'] = 'file|max:5120|mimes:pdf,docx,pptx,zip';
                 continue;
             }
 
@@ -71,11 +74,6 @@ class SubmissionController extends Controller
                 case 'tel':
                     $rule[] = 'string';
                     $rule[] = 'max:20';
-                    break;
-                case 'file':
-                    $rule[] = 'file';
-                    $rule[] = 'max:5120';
-                    $rule[] = 'mimes:pdf,docx,pptx,zip';
                     break;
                 case 'select':
                     $rule[] = 'string';
@@ -99,7 +97,6 @@ class SubmissionController extends Controller
         if (!in_array('student_email', $fieldNames)) {
             $rules['student_email'] = 'required|email|max:255';
         }
-        $rules['files.*'] = 'nullable|file|max:5120|mimes:pdf,docx,pptx,zip';
 
         $validated = $request->validate($rules);
 
@@ -128,22 +125,41 @@ class SubmissionController extends Controller
             'ip_address' => $request->ip(),
         ]);
 
-        // Handle files
-        if ($request->hasFile('files')) {
-            $directory = "submissions/{$form->id}/{$submission->id}";
-            
-            foreach ($request->file('files') as $file) {
+        // Handle files, one input per file field so each upload is associated
+        // with the field (RAPPORT, SYNTHESE, ...) it was uploaded into.
+        $directory = "submissions/{$form->id}/{$submission->id}";
+
+        foreach ($form->fields as $field) {
+            if ($field->field_type !== 'file') {
+                continue;
+            }
+
+            $files = $request->file($field->getFieldName());
+            $files = is_array($files) ? $files : (is_null($files) ? [] : [$files]);
+
+            foreach ($files as $file) {
                 $originalName = $file->getClientOriginalName();
-                $storedName = $form->is_anonymous 
+                $storedName = $form->is_anonymous
                     ? $submission->anonymous_code . '_' . $originalName
                     : $originalName;
-                
-                $path = $file->storeAs($directory, $storedName, 'public');
+
+                // When several uploaded files share the same name, keep each
+                // one instead of overwriting the previous file on disk.
+                $base = pathinfo($storedName, PATHINFO_FILENAME);
+                $ext = pathinfo($storedName, PATHINFO_EXTENSION);
+                $uniqueStoredName = $storedName;
+                $suffix = 1;
+                while (Storage::disk('public')->exists("{$directory}/{$uniqueStoredName}")) {
+                    $uniqueStoredName = $base . '_' . (++$suffix) . ($ext !== '' ? '.' . $ext : '');
+                }
+
+                $path = $file->storeAs($directory, $uniqueStoredName, 'public');
 
                 SubmissionFile::create([
                     'submission_id' => $submission->id,
+                    'field_label' => $field->field_label,
                     'original_name' => $originalName,
-                    'stored_name' => $storedName,
+                    'stored_name' => $uniqueStoredName,
                     'file_path' => $path,
                     'file_size' => $file->getSize(),
                     'mime_type' => $file->getMimeType(),
@@ -155,30 +171,11 @@ class SubmissionController extends Controller
     }
 
     /**
-     * Get the input name for a form field
-     */
-    private function getFieldName($field): string
-    {
-        // File fields use the 'files' input name
-        if ($field->field_type === 'file') {
-            return 'files';
-        }
-
-        return match(strtolower($field->field_label)) {
-            'nom complet', 'nom', 'name' => 'student_name',
-            'email', 'adresse email' => 'student_email',
-            'téléphone', 'telephone', 'tel', 'phone' => 'student_phone',
-            'filière', 'filiere', 'major', 'spécialité' => 'student_major',
-            default => 'student_' . strtolower(str_replace(' ', '_', $field->field_label)),
-        };
-    }
-
-    /**
      * Get the display value for a field from the request
      */
     private function getFieldValue(Request $request, $field): ?string
     {
-        $fieldName = $this->getFieldName($field);
+        $fieldName = $field->getFieldName();
         $value = $request->input($fieldName);
 
         if ($field->field_type === 'checkbox') {
@@ -250,29 +247,118 @@ class SubmissionController extends Controller
     public function downloadBulk(Form $form)
     {
         $submissions = $form->submissions()->with('files')->get();
-        
+
         $zip = new \ZipArchive();
         $zipFileName = "soumissions_{$form->id}_" . now()->format('Y-m-d_H-i-s') . ".zip";
         $zipPath = storage_path("app/{$zipFileName}");
 
-        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) === true) {
-            foreach ($submissions as $submission) {
-                $folderName = $form->is_anonymous 
-                    ? $submission->anonymous_code 
-                    : "{$submission->student_name}_{$submission->student_email}";
-                
-                $folderName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $folderName);
-                
-                foreach ($submission->files as $file) {
-                    $filePath = Storage::disk('public')->path($file->file_path);
-                    if (file_exists($filePath)) {
-                        $zip->addFile($filePath, "{$folderName}/{$file->original_name}");
-                    }
-                }
-            }
-            $zip->close();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            return back()->with('error', 'Impossible de créer l\'archive ZIP.');
         }
 
+        foreach ($submissions as $submission) {
+            $this->addSubmissionFilesToZip($zip, $submission, $this->submissionFolderName($form, $submission));
+        }
+        $zip->close();
+
         return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+    }
+
+    public function downloadSubmission(Form $form, Submission $submission)
+    {
+        $submission->load('files');
+
+        $zip = new \ZipArchive();
+        $zipFileName = "soumission_{$submission->id}.zip";
+        $zipPath = storage_path("app/{$zipFileName}");
+
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            return back()->with('error', 'Impossible de créer l\'archive ZIP.');
+        }
+
+        $this->addSubmissionFilesToZip($zip, $submission, $this->submissionFolderName($form, $submission));
+        $zip->close();
+
+        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+    }
+
+    /**
+     * Folder name for a submission inside a ZIP archive: the student's name
+     * ordered "nom_prenom" (family name first), or the anonymous code for
+     * anonymous submissions.
+     */
+    private function submissionFolderName(Form $form, Submission $submission): string
+    {
+        $folderName = $form->is_anonymous && $submission->anonymous_code
+            ? $submission->anonymous_code
+            : $this->nameToFolderName($submission->student_name);
+
+        if (empty($folderName)) {
+            $folderName = $submission->student_email;
+        }
+
+        $folderName = preg_replace('/[^a-zA-Z0-9_-]/', '_', trim($folderName));
+        $folderName = preg_replace('/_+/', '_', $folderName);
+
+        return trim($folderName, '_');
+    }
+
+    /**
+     * Add every file of a submission to the ZIP archive, each with a unique
+     * name inside the given folder (same original names get a _2, _3...
+     * suffix, so no upload is ever dropped).
+     */
+    private function addSubmissionFilesToZip(\ZipArchive $zip, Submission $submission, string $folderName): void
+    {
+        $usedNames = [];
+        foreach ($submission->files as $file) {
+            $filePath = Storage::disk('public')->path($file->file_path);
+            if (!file_exists($filePath)) {
+                continue;
+            }
+
+            // Group the file under its form field (RAPPORT, SYNTHESE, ...)
+            // when known; files without a field go straight into the folder.
+            $destDir = $folderName;
+            if (!empty($file->field_label)) {
+                $label = preg_replace('/[^a-zA-Z0-9_-]/', '_', trim($file->field_label));
+                $label = preg_replace('/_+/', '_', $label);
+                $label = trim($label, '_');
+                if ($label !== '') {
+                    $destDir .= '/' . $label;
+                }
+            }
+
+            $destName = $file->original_name ?: basename($filePath);
+            $base = pathinfo($destName, PATHINFO_FILENAME);
+            $ext = pathinfo($destName, PATHINFO_EXTENSION);
+            $uniqueName = $destName;
+            $suffix = 1;
+            while (isset($usedNames[$destDir][$uniqueName])) {
+                $uniqueName = $base . '_' . (++$suffix) . ($ext !== '' ? '.' . $ext : '');
+            }
+            $usedNames[$destDir][$uniqueName] = true;
+
+            $zip->addFile($filePath, "{$destDir}/{$uniqueName}");
+        }
+    }
+
+    /**
+     * Turn a student's full name into a folder name ordered "nom_prenom":
+     * the last word is treated as the family name, the remaining words as
+     * the given names. Single-word names are kept as-is.
+     */
+    private function nameToFolderName(?string $fullName): string
+    {
+        $parts = preg_split('/\s+/', trim((string) $fullName));
+        $parts = array_values(array_filter($parts, fn ($part) => $part !== ''));
+
+        if (count($parts) <= 1) {
+            return $parts[0] ?? '';
+        }
+
+        $nom = array_pop($parts);
+
+        return $nom . '_' . implode('_', $parts);
     }
 }

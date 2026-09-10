@@ -12,7 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('form_id')->constrained()->onDelete('cascade');
             $table->string('field_label');
-            $table->enum('field_type', ['text', 'email', 'tel', 'file']);
+            $table->enum('field_type', ['text', 'email', 'tel', 'file', 'select', 'checkbox']);
             $table->boolean('required')->default(true);
             $table->integer('order')->default(0);
             $table->timestamps();

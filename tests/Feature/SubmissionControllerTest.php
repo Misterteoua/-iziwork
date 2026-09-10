@@ -61,6 +61,16 @@ class SubmissionControllerTest extends TestCase
         ]);
     }
 
+    /**
+     * Input name of the 'Fichier' file field (file_{id}).
+     */
+    private function fileFieldName(): string
+    {
+        $fileField = $this->form->fields()->where('field_type', 'file')->firstOrFail();
+
+        return 'file_' . $fileField->id;
+    }
+
     public function test_student_can_view_form(): void
     {
         $response = $this->get("/s/{$this->form->token}");
@@ -99,7 +109,7 @@ class SubmissionControllerTest extends TestCase
             'student_email' => 'john@test.com',
             'student_phone' => '+243123456789',
             'student_major' => 'Informatique',
-            'files' => [
+            $this->fileFieldName() => [
                 UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
             ],
         ]);
@@ -114,6 +124,8 @@ class SubmissionControllerTest extends TestCase
 
     public function test_student_cannot_submit_duplicate_email(): void
     {
+        Storage::fake('public');
+
         Submission::create([
             'form_id' => $this->form->id,
             'student_email' => 'john@test.com',
@@ -123,6 +135,9 @@ class SubmissionControllerTest extends TestCase
         $response = $this->post("/s/{$this->form->token}", [
             'student_name' => 'John Doe',
             'student_email' => 'john@test.com',
+            $this->fileFieldName() => [
+                UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
+            ],
         ]);
 
         $response->assertSessionHas('error');
@@ -207,6 +222,168 @@ class SubmissionControllerTest extends TestCase
         $response->assertSee('John Doe');
     }
 
+    public function test_admin_can_bulk_download_submissions(): void
+    {
+        Storage::fake('public');
+
+        $submission = Submission::create([
+            'form_id' => $this->form->id,
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            'status' => 'validated',
+        ]);
+
+        $dir = "submissions/{$this->form->id}/{$submission->id}";
+        UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
+            ->storeAs($dir, 'rapport.pdf', 'public');
+        UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
+            ->storeAs($dir, 'rapport_2.pdf', 'public');
+
+        SubmissionFile::create([
+            'submission_id' => $submission->id,
+            'field_label' => 'RAPPORT',
+            'original_name' => 'rapport.pdf',
+            'stored_name' => 'rapport.pdf',
+            'file_path' => "{$dir}/rapport.pdf",
+            'file_size' => 100,
+            'mime_type' => 'application/pdf',
+        ]);
+        SubmissionFile::create([
+            'submission_id' => $submission->id,
+            'field_label' => 'RAPPORT',
+            'original_name' => 'rapport.pdf',
+            'stored_name' => 'rapport_2.pdf',
+            'file_path' => "{$dir}/rapport_2.pdf",
+            'file_size' => 100,
+            'mime_type' => 'application/pdf',
+        ]);
+
+        $this->session(['admin_user' => [
+            'id' => $this->admin->id,
+            'username' => $this->admin->username,
+            'email' => $this->admin->email,
+            'role' => $this->admin->role,
+        ]]);
+
+        $response = $this->get("/admin/forms/{$this->form->id}/submissions/bulk-download");
+
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'application/zip');
+
+        // The archive must contain every uploaded file, even when two files
+        // share the same original name, inside a folder named after the
+        // student (not the email).
+        $zip = new \ZipArchive();
+        $zip->open($response->getFile()->getPathname());
+        $this->assertSame(2, $zip->numFiles);
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $this->assertContains('Doe_John/RAPPORT/rapport.pdf', $names);
+        $this->assertContains('Doe_John/RAPPORT/rapport_2.pdf', $names);
+        foreach ($names as $name) {
+            $this->assertStringNotContainsString('john@test.com', $name);
+        }
+        $zip->close();
+
+        // The archive is written to the real storage/app directory, so clean
+        // it up (deleteFileAfterSend only runs when the response is sent).
+        @unlink($response->getFile()->getPathname());
+    }
+
+    public function test_admin_can_download_single_submission_zip(): void
+    {
+        Storage::fake('public');
+
+        $submission = Submission::create([
+            'form_id' => $this->form->id,
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            'status' => 'validated',
+        ]);
+
+        $dir = "submissions/{$this->form->id}/{$submission->id}";
+        UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
+            ->storeAs($dir, 'rapport.pdf', 'public');
+        UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
+            ->storeAs($dir, 'rapport_2.pdf', 'public');
+
+        SubmissionFile::create([
+            'submission_id' => $submission->id,
+            'field_label' => 'RAPPORT',
+            'original_name' => 'rapport.pdf',
+            'stored_name' => 'rapport.pdf',
+            'file_path' => "{$dir}/rapport.pdf",
+            'file_size' => 100,
+            'mime_type' => 'application/pdf',
+        ]);
+        SubmissionFile::create([
+            'submission_id' => $submission->id,
+            'field_label' => 'RAPPORT',
+            'original_name' => 'rapport.pdf',
+            'stored_name' => 'rapport_2.pdf',
+            'file_path' => "{$dir}/rapport_2.pdf",
+            'file_size' => 100,
+            'mime_type' => 'application/pdf',
+        ]);
+
+        $this->session(['admin_user' => [
+            'id' => $this->admin->id,
+            'username' => $this->admin->username,
+            'email' => $this->admin->email,
+            'role' => $this->admin->role,
+        ]]);
+
+        $response = $this->get("/admin/forms/{$this->form->id}/submissions/{$submission->id}/download");
+
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'application/zip');
+
+        $zip = new \ZipArchive();
+        $zip->open($response->getFile()->getPathname());
+        $this->assertSame(2, $zip->numFiles);
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $this->assertContains('Doe_John/RAPPORT/rapport.pdf', $names);
+        $this->assertContains('Doe_John/RAPPORT/rapport_2.pdf', $names);
+        $zip->close();
+
+        @unlink($response->getFile()->getPathname());
+    }
+
+    public function test_two_uploaded_files_with_same_name_are_both_stored(): void
+    {
+        Storage::fake('public');
+
+        $response = $this->post("/s/{$this->form->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            $this->fileFieldName() => [
+                UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf'),
+                UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf'),
+            ],
+        ]);
+
+        $response->assertRedirect();
+
+        $submission = Submission::where('form_id', $this->form->id)
+            ->where('student_email', 'john@test.com')
+            ->first();
+        $this->assertNotNull($submission);
+        $this->assertSame(2, $submission->files()->count());
+        $this->assertSame(['Fichier', 'Fichier'], $submission->files()->pluck('field_label')->all());
+
+        // Both uploads must have their own file on disk, not overwrite each other.
+        $paths = $submission->files()->pluck('file_path')->all();
+        $this->assertCount(2, array_unique($paths));
+        foreach ($paths as $path) {
+            Storage::disk('public')->assertExists($path);
+        }
+    }
+
     public function test_anonymous_form_is_accessible(): void
     {
         $this->form->update(['is_anonymous' => true]);
@@ -226,7 +403,7 @@ class SubmissionControllerTest extends TestCase
         $response = $this->post("/s/{$this->form->token}", [
             'student_name' => 'John Doe',
             'student_email' => 'john@test.com',
-            'files' => [
+            $this->fileFieldName() => [
                 UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
             ],
         ]);
@@ -237,5 +414,48 @@ class SubmissionControllerTest extends TestCase
             ->first();
         $this->assertNotNull($submission);
         $this->assertStringStartsWith('ANON-', $submission->anonymous_code);
+    }
+
+    public function test_student_can_submit_form_with_mail_labeled_email_field(): void
+    {
+        Storage::fake('public');
+
+        // Mirror the user's form: the email field is labeled 'MAIL' (uppercase),
+        // which must map to student_email instead of a dead student_mail input.
+        FormField::where('form_id', $this->form->id)
+            ->where('field_label', 'Email')
+            ->update(['field_label' => 'MAIL']);
+
+        $response = $this->post("/s/{$this->form->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            $this->fileFieldName() => [
+                UploadedFile::fake()->create('document.pdf', 100, 'application/pdf'),
+            ],
+        ]);
+
+        $response->assertRedirect();
+        $this->assertDatabaseHas('submissions', [
+            'form_id' => $this->form->id,
+            'student_email' => 'john@test.com',
+            'status' => 'validated',
+        ]);
+    }
+
+    public function test_student_must_upload_file_when_file_field_is_required(): void
+    {
+        Storage::fake('public');
+
+        // Required file field: submitting without any file must fail validation.
+        $response = $this->post("/s/{$this->form->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+        ]);
+
+        $response->assertSessionHasErrors($this->fileFieldName());
+        $this->assertDatabaseMissing('submissions', [
+            'form_id' => $this->form->id,
+            'student_email' => 'john@test.com',
+        ]);
     }
 }

@@ -3,91 +3,117 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#667eea">
+    <meta name="theme-color" content="#4f46e5">
     <title>Récapitulatif - Iziwork</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+                    colors: {
+                        brand: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' }
+                    },
+                    boxShadow: {
+                        'card': '0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 3px 0 rgb(0 0 0 / 0.04)',
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+        .gradient-bg { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
         @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
-        *:focus-visible { outline: 2px solid #667eea; outline-offset: 2px; border-radius: 4px; }
-        a, button { -webkit-tap-highlight-color: rgba(102, 126, 234, 0.15); touch-action: manipulation; }
+        *:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; border-radius: 4px; }
+        a, button { -webkit-tap-highlight-color: rgba(99, 102, 241, 0.12); touch-action: manipulation; }
         .safe-top { padding-top: env(safe-area-inset-top); }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
     </style>
 </head>
-<body class="min-h-screen bg-gray-50 safe-top safe-bottom">
+<body class="min-h-screen bg-slate-50 safe-top safe-bottom">
     <div class="min-h-screen flex flex-col">
-        <header class="gradient-bg text-white py-6 safe-top">
-            <div class="max-w-3xl mx-auto px-4">
-                <h1 class="text-xl sm:text-2xl font-bold">Récapitulatif de votre dépôt</h1>
-                <p class="mt-2 text-white/80 text-sm sm:text-base">{{ $form->title }}</p>
+        {{-- Header --}}
+        <header class="gradient-bg text-white safe-top">
+            <div class="max-w-2xl mx-auto px-4 sm:px-6 py-8">
+                <div class="flex items-center gap-2.5 mb-4">
+                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur text-white">
+                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                    </span>
+                    <span class="text-sm font-semibold tracking-wide text-white/90">Iziwork</span>
+                </div>
+                <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Récapitulatif de votre dépôt</h1>
+                <p class="mt-1.5 text-sm text-white/80">{{ $form->title }}</p>
             </div>
         </header>
 
-        <main class="flex-1 py-6 sm:py-8">
-            <div class="max-w-3xl mx-auto px-4">
-                <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-5 sm:p-6">
-                    <div class="flex items-center justify-center mb-6">
-                        <div class="p-4 rounded-full bg-green-100">
-                            <svg class="h-12 w-12 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        {{-- Content --}}
+        <main class="flex-1 py-8 sm:py-10">
+            <div class="max-w-2xl mx-auto px-4 sm:px-6">
+                <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8">
+                    {{-- Success icon --}}
+                    <div class="flex flex-col items-center mb-8">
+                        <div class="h-16 w-16 rounded-full bg-emerald-50 flex items-center justify-center mb-4">
+                            <svg class="h-8 w-8 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                             </svg>
                         </div>
+                        <h2 class="text-lg sm:text-xl font-bold text-slate-900 text-center">Dépôt validé avec succès !</h2>
+                        <p class="mt-1.5 text-sm text-slate-500 text-center">Votre travail a bien été transmis à votre administrateur.</p>
                     </div>
-                    
-                    <h2 class="text-lg sm:text-xl font-bold text-center text-gray-900 mb-6">Dépôt validé avec succès !</h2>
 
-                    <div class="space-y-4">
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <h3 class="text-sm font-medium text-gray-500 mb-2">Informations</h3>
-                            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div class="space-y-5">
+                        {{-- Info card --}}
+                        <div class="bg-slate-50/80 rounded-xl border border-slate-100 p-5">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Informations du dépôt</h3>
+                            <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
                                 @foreach($form->fields as $field)
                                     @php
-                                        $fieldName = match(strtolower($field->field_label)) {
-                                            'nom complet', 'nom', 'name' => 'student_name',
-                                            'email', 'adresse email' => 'student_email',
-                                            'téléphone', 'telephone', 'tel', 'phone' => 'student_phone',
-                                            'filière', 'filiere', 'major', 'spécialité' => 'student_major',
-                                            default => 'student_' . strtolower(str_replace(' ', '_', $field->field_label)),
-                                        };
-                                        $value = $submission->$fieldName ?? null;
+                                        $fieldName = $field->getFieldName();
+                                        $value = $field->field_type === 'file' ? null : ($submission->$fieldName ?? null);
                                         if ($field->field_type === 'checkbox') {
                                             $value = $value ? 'Oui' : 'Non';
                                         }
                                     @endphp
                                     @if($value)
                                     <div>
-                                        <dt class="text-xs sm:text-sm text-gray-500">{{ $field->field_label }}</dt>
-                                        <dd class="text-sm font-medium text-gray-900 break-words">{{ $value }}</dd>
+                                        <dt class="text-xs font-medium text-slate-500 mb-0.5">{{ $field->field_label }}</dt>
+                                        <dd class="text-sm font-semibold text-slate-900 break-words">{{ $value }}</dd>
                                     </div>
                                     @endif
                                 @endforeach
                                 <div>
-                                    <dt class="text-xs sm:text-sm text-gray-500">Date de soumission</dt>
-                                    <dd class="text-sm font-medium text-gray-900" style="font-variant-numeric: tabular-nums">{{ $submission->created_at->format('d/m/Y à H:i') }}</dd>
+                                    <dt class="text-xs font-medium text-slate-500 mb-0.5">Date de soumission</dt>
+                                    <dd class="text-sm font-semibold text-slate-900" style="font-variant-numeric: tabular-nums">{{ $submission->created_at->format('d/m/Y à H:i') }}</dd>
                                 </div>
                                 @if($submission->anonymous_code)
                                 <div>
-                                    <dt class="text-xs sm:text-sm text-gray-500">Code anonyme</dt>
-                                    <dd class="text-sm font-medium text-gray-900">{{ $submission->anonymous_code }}</dd>
+                                    <dt class="text-xs font-medium text-slate-500 mb-0.5">Code anonyme</dt>
+                                    <dd class="text-sm font-semibold text-violet-700">{{ $submission->anonymous_code }}</dd>
                                 </div>
                                 @endif
                             </dl>
                         </div>
 
+                        {{-- Files card --}}
                         @if($submission->files->count() > 0)
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <h3 class="text-sm font-medium text-gray-500 mb-2">Fichiers déposés ({{ $submission->files->count() }})</h3>
+                        <div class="bg-slate-50/80 rounded-xl border border-slate-100 p-5">
+                            <h3 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">Fichiers déposés ({{ $submission->files->count() }})</h3>
                             <ul class="space-y-2">
                                 @foreach($submission->files as $file)
-                                <li class="flex items-center justify-between py-2 border-b border-gray-200 last:border-0 gap-3">
+                                <li class="flex items-center justify-between py-2.5 border-b border-slate-200 last:border-0 gap-3">
                                     <div class="flex items-center min-w-0">
-                                        <svg class="h-5 w-5 text-gray-400 mr-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                        <svg class="h-5 w-5 text-slate-400 mr-3 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                         </svg>
-                                        <span class="text-sm text-gray-900 truncate">{{ $file->original_name }}</span>
+                                        <span class="text-sm text-slate-800 truncate">{{ $file->original_name }}</span>
                                     </div>
-                                    <span class="text-sm text-gray-500 shrink-0">{{ $file->formatted_size }}</span>
+                                    <span class="text-xs text-slate-400 shrink-0" style="font-variant-numeric: tabular-nums">{{ $file->formatted_size }}</span>
                                 </li>
                                 @endforeach
                             </ul>
@@ -95,21 +121,22 @@
                         @endif
                     </div>
 
-                    <div class="mt-6 flex justify-center">
+                    {{-- Download button --}}
+                    <div class="mt-8 flex justify-center">
                         <a href="{{ route('submission.recap.pdf', ['token' => $form->token, 'submission' => $submission->id]) }}"
-                           class="inline-flex items-center px-5 sm:px-6 py-3 border border-transparent text-sm font-medium rounded-lg text-white gradient-bg hover:opacity-90 focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-500 transition-opacity duration-200">
-                            <svg class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                           class="inline-flex items-center justify-center px-6 py-3 border border-transparent text-sm font-semibold rounded-xl text-white gradient-bg hover:opacity-95 hover:shadow-card-hover transition-all duration-150">
+                            <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                             </svg>
-                            Télécharger le PDF
+                            Télécharger le récapitulatif (PDF)
                         </a>
                     </div>
                 </div>
             </div>
         </main>
 
-        <footer class="py-4 text-center text-sm text-gray-500">
-            Propulsé par <span class="font-semibold gradient-bg text-transparent bg-clip-text">Iziwork</span>
+        <footer class="py-6 text-center text-xs text-slate-400">
+            Propulsé par <span class="font-semibold text-slate-500">Iziwork</span> — Plateforme de dépôt de travaux
         </footer>
     </div>
 </body>
