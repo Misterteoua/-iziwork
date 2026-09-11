@@ -28,7 +28,7 @@ Changer le PHP du *sous-domaine* n'affecte **pas** les autres applis du compte.
 | `pdo_mysql` | base de données | ✅ |
 | `mbstring`, `fileinfo`, `openssl`, `ctype`, `tokenizer`, `curl`, `dom` | framework / PDF | ✅ |
 | `gd` | logo dans les PDF | ✅ |
-| **`zip`** | **téléchargement des dépôts en ZIP** | ⚠️ à activer |
+| **`zip`** | téléchargement des dépôts en ZIP | ♻️ optionnel (repli auto) |
 
 **À propos du « conflit » `zip` / `pdo_mysql` :** ces deux extensions sont en
 réalité **indépendantes** et peuvent être actives en même temps. La plupart du
@@ -36,13 +36,15 @@ temps, `zip` n'est simplement pas présente dans la liste des extensions de la
 version de PHP en cours. Donc :
 
 - refais le test **une fois le sous-domaine passé en 8.2** ;
-- si `zip` apparaît, coche-la **avec** `pdo_mysql` ;
-- si le panneau refuse vraiment, préviens-moi : j'implémente un repli pour les
-  téléchargements ZIP (bibliothèque pure-PHP ou commande système).
+- si `zip` apparaît, coche-la **avec** `pdo_mysql` (c'est plus rapide) ;
 
-> Sans `zip`, l'app **fonctionne** (formulaires, soumissions, consultation des
-> fichiers) mais les boutons **« Tout télécharger »** / **« Télécharger »**
-> renverront une erreur 500.
+> **Plus bloquant :** si `zip` reste indisponible, l'application bascule
+> **automatiquement** sur le repli pur-PHP (bibliothèque `maennchen/zipstream-php`,
+> installée par `composer install`). Les boutons **« Tout télécharger »** et
+> **« Télécharger »** fonctionnent dans les deux cas.
+>
+> Pour **forcer** le repli pur-PHP même si `zip` est présent :
+> `ZIP_STREAM_FALLBACK=true` dans `.env` (puis `php82 artisan config:cache`).
 
 ### PHP en ligne de commande (SSH)
 
@@ -190,7 +192,7 @@ Le middleware ajoute déjà HSTS en HTTPS.
 | `https://iziwork.efspc.inphb.ci/login` | page de connexion + logo + favicon |
 | `https://iziwork.efspc.inphb.ci/up` | `200` |
 | Connexion admin | tableau de bord |
-| Créer un formulaire → lien étudiant → soumettre → télécharger | OK (ZIP si `zip` actif) |
+| Créer un formulaire → lien étudiant → soumettre → télécharger | OK (ZIP natif ou repli ZipStream) |
 | Onglet navigateur | icône Iziwork |
 
 Logs en cas de souci : `tail -n 50 storage/logs/laravel.log`
@@ -218,7 +220,7 @@ php82 artisan up
 | **500** | `storage/logs/laravel.log` ; permissions ; `APP_KEY` |
 | `composer install` refuse à cause de PHP | sous-domaine pas en 8.2, ou `php` SSH resté en 8.1 → `php82` |
 | **404/403** | Document Root pas sur `.../iziwork/public` |
-| `Class "ZipArchive" not found` | extension `zip` inactive → activer (ou repli à implémenter) |
+| `Class "ZipArchive" not found` | normal si `zip` absent : le repli ZipStream prend le relais automatiquement |
 | PDF sans logo | extension `gd` inactive |
 | Fichiers non téléchargeables | permissions `storage/app/private` |
 | Sessions / déconnexions | `SESSION_DRIVER=file`, `SESSION_SECURE_COOKIE=true` |

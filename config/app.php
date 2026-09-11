@@ -56,6 +56,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | ZIP Backend
+    |--------------------------------------------------------------------------
+    |
+    | When true, the pure-PHP ZipStream library is used for archive downloads
+    | even if the zip extension is available. Leave false to use ext-zip
+    | (faster); the fallback stays automatic when ext-zip is missing.
+    |
+    */
+
+    'zip_stream_fallback' => (bool) env('ZIP_STREAM_FALLBACK', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

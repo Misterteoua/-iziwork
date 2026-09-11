@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use ZipStream\ZipStream;
 
 class SubmissionController extends Controller
 {
@@ -235,19 +236,16 @@ class SubmissionController extends Controller
     {
         $submissions = $form->submissions()->with('files')->get();
         $zipFileName = 'soumissions_'.$form->id.'_'.now()->format('Y-m-d_H-i-s').'_'.Str::random(8).'.zip';
-        $zipPath = storage_path('app/private/'.$zipFileName);
-        $zip = new \ZipArchive;
 
-        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            return back()->with('error', 'Impossible de créer l\'archive ZIP.');
-        }
-
+        $entries = [];
         foreach ($submissions as $submission) {
-            $this->addSubmissionFilesToZip($zip, $submission, $this->submissionFolderName($form, $submission));
+            $entries = array_merge(
+                $entries,
+                $this->submissionZipEntries($submission, $this->submissionFolderName($form, $submission))
+            );
         }
-        $zip->close();
 
-        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+        return $this->zipDownload($zipFileName, $entries);
     }
 
     public function downloadSubmission(Form $form, Submission $submission)
@@ -256,17 +254,9 @@ class SubmissionController extends Controller
         $submission->load('files');
 
         $zipFileName = "soumission_{$submission->id}_".Str::random(8).'.zip';
-        $zipPath = storage_path('app/private/'.$zipFileName);
-        $zip = new \ZipArchive;
+        $entries = $this->submissionZipEntries($submission, $this->submissionFolderName($form, $submission));
 
-        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
-            return back()->with('error', 'Impossible de créer l\'archive ZIP.');
-        }
-
-        $this->addSubmissionFilesToZip($zip, $submission, $this->submissionFolderName($form, $submission));
-        $zip->close();
-
-        return response()->download($zipPath, $zipFileName)->deleteFileAfterSend(true);
+        return $this->zipDownload($zipFileName, $entries);
     }
 
     private function submissionForReceipt(Form $form, string $receiptToken): Submission
@@ -308,9 +298,17 @@ class SubmissionController extends Controller
         return trim($folderName, '_') ?: 'soumission_'.$submission->id;
     }
 
-    private function addSubmissionFilesToZip(\ZipArchive $zip, Submission $submission, string $folderName): void
+    /**
+     * Build the list of files to archive as [path inside the archive,
+     * absolute path on disk]. Shared by both ZIP backends.
+     *
+     * @return array<int, array{0: string, 1: string}>
+     */
+    private function submissionZipEntries(Submission $submission, string $folderName): array
     {
+        $entries = [];
         $usedNames = [];
+
         foreach ($submission->files as $file) {
             $filePath = $this->filePath($file->file_path);
             if ($filePath === null) {
@@ -336,8 +334,53 @@ class SubmissionController extends Controller
             }
             $usedNames[$destDir][$uniqueName] = true;
 
-            $zip->addFile($filePath, "{$destDir}/{$uniqueName}");
+            $entries[] = ["{$destDir}/{$uniqueName}", $filePath];
         }
+
+        return $entries;
+    }
+
+    /**
+     * Return a download response for the given archive entries.
+     *
+     * Uses the native zip extension when available and transparently falls
+     * back to the pure-PHP ZipStream library otherwise (some shared hosts
+     * ship PHP without ext-zip).
+     *
+     * @param  array<int, array{0: string, 1: string}>  $entries
+     */
+    private function zipDownload(string $downloadName, array $entries)
+    {
+        if ($this->hasNativeZip() && ! config('app.zip_stream_fallback', false)) {
+            $zipPath = storage_path('app/private/'.Str::uuid()->toString().'.zip');
+            $zip = new \ZipArchive;
+
+            if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+                return back()->with('error', 'Impossible de créer l\'archive ZIP.');
+            }
+
+            foreach ($entries as [$archivePath, $filePath]) {
+                $zip->addFile($filePath, $archivePath);
+            }
+            $zip->close();
+
+            return response()->download($zipPath, $downloadName)->deleteFileAfterSend(true);
+        }
+
+        return response()->streamDownload(function () use ($entries): void {
+            $zip = new ZipStream(outputStream: fopen('php://output', 'wb'), sendHttpHeaders: false);
+
+            foreach ($entries as [$archivePath, $filePath]) {
+                $zip->addFileFromPath(fileName: $archivePath, path: $filePath);
+            }
+
+            $zip->finish();
+        }, $downloadName, ['Content-Type' => 'application/zip']);
+    }
+
+    private function hasNativeZip(): bool
+    {
+        return class_exists(\ZipArchive::class);
     }
 
     /**

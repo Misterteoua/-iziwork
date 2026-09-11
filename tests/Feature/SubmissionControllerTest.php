@@ -317,6 +317,64 @@ class SubmissionControllerTest extends TestCase
         @unlink($response->getFile()->getPathname());
     }
 
+    public function test_admin_can_bulk_download_without_ext_zip(): void
+    {
+        Storage::fake('local');
+        config(['app.zip_stream_fallback' => true]);
+
+        $submission = Submission::create([
+            'form_id' => $this->form->id,
+            'student_name' => 'Jane Roe',
+            'student_email' => 'jane@test.com',
+            'status' => 'validated',
+        ]);
+
+        $dir = "submissions/{$this->form->id}/{$submission->id}";
+        UploadedFile::fake()->create('devoir.pdf', 100, 'application/pdf')
+            ->storeAs($dir, 'devoir.pdf', 'local');
+
+        SubmissionFile::create([
+            'submission_id' => $submission->id,
+            'field_label' => 'DEVOIR',
+            'original_name' => 'devoir.pdf',
+            'stored_name' => 'devoir.pdf',
+            'file_path' => "{$dir}/devoir.pdf",
+            'file_size' => 100,
+            'mime_type' => 'application/pdf',
+        ]);
+
+        $this->session(['admin_user' => [
+            'id' => $this->admin->id,
+            'username' => $this->admin->username,
+            'email' => $this->admin->email,
+            'role' => $this->admin->role,
+        ]]);
+
+        $response = $this->get("/admin/forms/{$this->form->id}/submissions/bulk-download");
+
+        $response->assertStatus(200);
+        $response->assertHeader('Content-Type', 'application/zip');
+
+        $content = $response->streamedContent();
+
+        // Even without ext-zip, the response is a real ZIP archive.
+        $this->assertStringStartsWith('PK', $content);
+
+        $tmp = tempnam(sys_get_temp_dir(), 'iziwork').'.zip';
+        file_put_contents($tmp, $content);
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open($tmp));
+        $names = [];
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $names[] = $zip->getNameIndex($i);
+        }
+        $zip->close();
+        @unlink($tmp);
+
+        $this->assertContains('Roe_Jane/DEVOIR/devoir.pdf', $names);
+    }
+
     public function test_admin_can_download_single_submission_zip(): void
     {
         Storage::fake('local');
