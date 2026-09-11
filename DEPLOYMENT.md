@@ -44,29 +44,30 @@ version de PHP en cours. Donc :
 > **« Télécharger »** fonctionnent dans les deux cas.
 >
 > Pour **forcer** le repli pur-PHP même si `zip` est présent :
-> `ZIP_STREAM_FALLBACK=true` dans `.env` (puis `php82 artisan config:cache`).
+> `ZIP_STREAM_FALLBACK=true` dans `.env` (puis `php artisan config:cache`).
 
 ### PHP en ligne de commande (SSH)
 
-Par défaut `php` en SSH peut être resté en 8.1. Vérifie :
+Toutes les commandes de ce guide utilisent `php`. Vérifie d'abord la version :
 
 ```bash
+php -v | head -1
+command -v php
+```
+
+- **Déjà en 8.2+** (cas de `efspcinphb` : `PHP 8.2.33 (/opt/alt/php82/usr/bin/php)`) → rien à faire, `php` suffit partout dans ce guide.
+- **Resté en 8.1** → trouve le binaire 8.2 réellement installé, puis crée un raccourci :
+
+```bash
+# repère les binaires disponibles
+ls -1 /opt/alt/php*/usr/bin/php /opt/cpanel/ea-php*/root/usr/bin/php 2>/dev/null
+echo "alias php82='/opt/alt/php82/usr/bin/php'" >> ~/.bashrc   # adapte le chemin si besoin
+source ~/.bashrc
 php -v
 ```
 
-Si ce n'est pas 8.2+, utilise le binaire explicite :
-
-```bash
-/opt/cpanel/ea-php82/root/usr/bin/php -v
-```
-
-Pour créer un raccourci pratique dans ta session SSH :
-
-```bash
-echo "alias php82='/opt/cpanel/ea-php82/root/usr/bin/php'" >> ~/.bashrc
-source ~/.bashrc
-php82 -v
-```
+> Ne force pas un chemin par défaut : sur CloudLinux le binaire 8.2 est souvent sous
+> `/opt/alt/php82/` (et non `/opt/cpanel/ea-php82/`, qui n'existe pas sur tous les serveurs).
 
 ---
 
@@ -102,15 +103,15 @@ cd iziwork
 ## 4. Installer les dépendances
 
 ```bash
-COMPOSER_MEMORY_LIMIT=-1 php82 /usr/local/bin/composer install --no-dev --optimize-autoloader
+COMPOSER_MEMORY_LIMIT=-1 php /usr/local/bin/composer install --no-dev --optimize-autoloader
 ```
 
 Si `composer` n'est pas trouvé, installe-le localement :
 
 ```bash
-php82 -r "copy('https://getcomposer.org/installer','composer-setup.php');"
-php82 composer-setup.php && rm composer-setup.php
-COMPOSER_MEMORY_LIMIT=-1 php82 composer.phar install --no-dev --optimize-autoloader
+php -r "copy('https://getcomposer.org/installer','composer-setup.php');"
+php composer-setup.php && rm composer-setup.php
+COMPOSER_MEMORY_LIMIT=-1 php composer.phar install --no-dev --optimize-autoloader
 ```
 
 > Pas de `npm install` / `npm run build` : l'interface utilise Tailwind via CDN.
@@ -133,11 +134,46 @@ ADMIN_EMAIL=ton-email@efspc.inphb.ci
 ADMIN_PASSWORD=un_mot_de_passe_fort
 ```
 
+> ⚠️ **Mot de passe MySQL contenant `#` ou `$` → entoure-le de guillemets simples.**
+> Dotenv tronque la valeur au premier `#` (tout ce qui suit passe en commentaire) et
+> interpole `$`. Résultat : `mysql -u … -p …` fonctionne, mais Laravel renvoie
+> `SQLSTATE[HY000] [1045] Access denied … (using password: YES)`.
+>
+> ```env
+> DB_PASSWORD='mot#de#passe'
+> ```
+>
+> Vérifie ensuite que la valeur complète est bien lue (attendu : la même longueur
+> que ton mot de passe réel) :
+>
+> ```bash
+> php artisan config:clear
+> php artisan tinker --execute="echo strlen((string) config('database.connections.mysql.password')).PHP_EOL;"
+> php artisan tinker --execute="try { DB::connection()->getPdo(); echo 'DB OK'.PHP_EOL; } catch (Throwable \$e) { echo 'ECHEC: '.\$e->getMessage().PHP_EOL; }"
+> ```
+>
+> Le plus simple reste un mot de passe **lettres + chiffres + tirets** (ex. `Iziwork2026-Db9x`) :
+> aucun échappement nécessaire. L'utilisateur étant dédié à cette base, le changer
+> n'impacte aucun autre site.
+
+> ⚠️ **`ADMIN_PASSWORD` est obligatoire** : une valeur **vide** ne retombe pas sur un mot
+> de passe par défaut (Laravel renvoie une chaîne vide, pas la valeur de secours). Le seeder
+> refuse alors de créer le compte et affiche une erreur explicite — sans quoi tu te
+> retrouverais avec un compte admin impossible à utiliser. Mets au moins 12 caractères.
+
 Puis :
 
 ```bash
-php82 artisan key:generate --force
+php artisan config:clear
+php artisan key:generate --force
 ```
+
+> `key:generate` remplace la ligne `APP_KEY=` **existante** dans `.env`. Si elle manque
+> (fichier non copié, ligne supprimée, espace avant `=`, `export APP_KEY`, casse différente),
+> il affiche `Unable to set application key. No APP_KEY variable was found in the .env file.`
+> → vérifie avec `grep -n "^APP_KEY=" .env`, et au besoin ajoute la ligne :
+> `printf 'APP_KEY=\n' >> .env` puis relance `php artisan key:generate --force`.
+> Le `config:clear` évite qu'une config en cache avec un ancien `app.key` fausse la détection.
 
 > Si la connexion MySQL échoue, bascule `DB_HOST` entre `localhost` et `127.0.0.1`.
 > Le nom d'utilisateur doit être le **nom complet** `efspcinphb_iziworkuser`.
@@ -155,11 +191,25 @@ chmod -R 775 storage bootstrap/cache
 ## 7. Base de données + compte admin
 
 ```bash
-php82 artisan migrate --force
-php82 artisan db:seed --force
+php artisan migrate --force
+php artisan db:seed --force
 ```
 
-Le seeder crée l'admin avec `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+Le seeder crée l'admin avec `ADMIN_EMAIL` / `ADMIN_USERNAME` / `ADMIN_PASSWORD`,
+lu via `config('admin.*')` (`config/admin.php`). Ce passage par la config est volontaire :
+quand `config:cache` est actif, Laravel ne charge plus `.env`, donc `env('ADMIN_PASSWORD')`
+renverrait `null` et le seeder croirait — à tort — que le mot de passe est vide.
+⚠️ Après modification des `ADMIN_*`, il faut donc `php artisan config:clear` puis
+`php artisan config:cache`, sinon les valeurs ne sont pas relues.
+
+- **Idempotent** : le relancer ne remplace jamais le mot de passe d'un admin existant
+  (affiche `Compte administrateur déjà présent`).
+- Si `ADMIN_PASSWORD` est vide **hors environnement local**, le seeder **échoue volontairement**
+  avec le message `ADMIN_PASSWORD est vide : le compte administrateur n'a pas été créé.`
+  → renseigne la valeur dans `.env`, puis relance `php artisan db:seed --force`.
+- En local (`APP_ENV=local`), une valeur absente utilise le mot de passe `password` (documenté
+  dans le README) et affiche un avertissement.
+
 **Connecte-toi puis change le mot de passe.**
 
 ---
@@ -167,12 +217,14 @@ Le seeder crée l'admin avec `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
 ## 8. Optimiser pour la production
 
 ```bash
-php82 artisan config:cache
-php82 artisan route:cache
-php82 artisan view:cache
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 ```
 
-> Après toute modif de `.env` : `php82 artisan config:cache` (ou `config:clear`).
+> Après toute modif de `.env` : **`php artisan config:clear`** puis `php artisan config:cache`.
+> Le `config:clear` est **obligatoire** si un `config:cache` a déjà été lancé : sans lui,
+> `.env` n'a plus aucun effet et l'ancienne valeur (ex. mot de passe tronqué) reste active.
 
 `php artisan storage:link` **n'est pas nécessaire** (fichiers stockés en privé).
 
@@ -203,12 +255,12 @@ Logs en cas de souci : `tail -n 50 storage/logs/laravel.log`
 
 ```bash
 cd ~/iziwork
-php82 artisan down --secret="mon-token"
+php artisan down --secret="mon-token"
 git pull
-COMPOSER_MEMORY_LIMIT=-1 php82 /usr/local/bin/composer install --no-dev --optimize-autoloader
-php82 artisan migrate --force
-php82 artisan config:cache && php82 artisan route:cache && php82 artisan view:cache
-php82 artisan up
+COMPOSER_MEMORY_LIMIT=-1 php /usr/local/bin/composer install --no-dev --optimize-autoloader
+php artisan migrate --force
+php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan up
 ```
 
 ---
@@ -224,7 +276,11 @@ php82 artisan up
 | PDF sans logo | extension `gd` inactive |
 | Fichiers non téléchargeables | permissions `storage/app/private` |
 | Sessions / déconnexions | `SESSION_DRIVER=file`, `SESSION_SECURE_COOKIE=true` |
-| `.env` sans effet | `php82 artisan config:cache` |
+| `SQLSTATE[HY000] [1045] Access denied ... (using password: YES)` alors que `mysql -u UTILISATEUR -p BASE` fonctionne | un `#` (ou `$`) non échappé dans `DB_PASSWORD` : Dotenv tronque la valeur au `#`. Entoure-la de guillemets **simples** → `DB_PASSWORD='mot#de#passe'`, puis `php artisan config:clear` |
+| `.env` sans effet | `php artisan config:clear` après une modification, puis `config:cache` |
+| `db:seed` : *ADMIN_PASSWORD est vide* alors qu'il est bien renseigné | configuration en cache obsolète : `php artisan config:clear`, puis relance. Les valeurs `ADMIN_*` sont lues via `config('admin.*')` (`config/admin.php`), donc survivent à `config:cache` — mais uniquement avec la valeur figée au moment du cache |
+| `key:generate` : *No APP_KEY variable was found in the .env file* | `.env` absent ou sans ligne `^APP_KEY=` (espace avant `=`, `export`, casse) → `config:clear`, `grep -n "^APP_KEY=" .env`, `printf 'APP_KEY=\n' >> .env` |
+| `key:generate` : *Permission denied* / écriture impossible | `.env` non inscriptible → `chmod 644 .env` |
 | Icône onglet = Laravel | cache navigateur : `Ctrl+F5` |
 
 ---
