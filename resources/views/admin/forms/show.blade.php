@@ -24,7 +24,7 @@
                         {{ $form->status === 'active' ? 'Actif' : 'Inactif' }}
                     </span>
                     @if($form->is_anonymous)
-                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-violet-50 text-violet-700">
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-brand-50 text-brand-700">
                         <svg class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                         </svg>
@@ -66,7 +66,7 @@
                 </a>
                 @if($form->submissions->count() > 0)
                 <a href="{{ route('admin.submissions.bulk', $form) }}"
-                   class="inline-flex items-center px-3.5 py-2 border border-transparent text-sm font-semibold rounded-xl text-white bg-violet-600 hover:bg-violet-700 transition-colors duration-150">
+                   class="inline-flex items-center px-3.5 py-2 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
                     <svg class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>

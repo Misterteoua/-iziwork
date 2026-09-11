@@ -3,36 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#4f46e5">
+    <meta name="theme-color" content="#0347f5">
     <title>Récapitulatif - Iziwork</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
-                    colors: {
-                        brand: { 50: '#eef2ff', 100: '#e0e7ff', 200: '#c7d2fe', 300: '#a5b4fc', 400: '#818cf8', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 800: '#3730a3', 900: '#312e81' }
-                    },
-                    boxShadow: {
-                        'card': '0 1px 2px 0 rgb(0 0 0 / 0.03), 0 1px 3px 0 rgb(0 0 0 / 0.04)',
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
-        .gradient-bg { background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); }
-        @media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
-        *:focus-visible { outline: 2px solid #6366f1; outline-offset: 2px; border-radius: 4px; }
-        a, button { -webkit-tap-highlight-color: rgba(99, 102, 241, 0.12); touch-action: manipulation; }
-        .safe-top { padding-top: env(safe-area-inset-top); }
-        .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-    </style>
+    @include('partials.theme')
 </head>
 <body class="min-h-screen bg-slate-50 safe-top safe-bottom">
     <div class="min-h-screen flex flex-col">
@@ -92,7 +65,7 @@
                                 @if($submission->anonymous_code)
                                 <div>
                                     <dt class="text-xs font-medium text-slate-500 mb-0.5">Code anonyme</dt>
-                                    <dd class="text-sm font-semibold text-violet-700">{{ $submission->anonymous_code }}</dd>
+                                    <dd class="text-sm font-semibold text-brand-700">{{ $submission->anonymous_code }}</dd>
                                 </div>
                                 @endif
                             </dl>

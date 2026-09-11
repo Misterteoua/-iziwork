@@ -51,8 +51,8 @@
 
         <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-5 sm:p-6 hover:shadow-card-hover transition-shadow duration-200 sm:col-span-2 lg:col-span-1">
             <div class="flex items-center min-w-0">
-                <div class="p-3 rounded-xl bg-violet-50 shrink-0">
-                    <svg class="h-6 w-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <div class="p-3 rounded-xl bg-brand-100 shrink-0">
+                    <svg class="h-6 w-6 text-brand-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
                     </svg>
                 </div>
