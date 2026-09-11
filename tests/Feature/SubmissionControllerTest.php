@@ -17,12 +17,13 @@ class SubmissionControllerTest extends TestCase
     use RefreshDatabase;
 
     private AdminUser $admin;
+
     private Form $form;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->admin = AdminUser::create([
             'username' => 'admin',
             'email' => 'admin@test.com',
@@ -68,7 +69,7 @@ class SubmissionControllerTest extends TestCase
     {
         $fileField = $this->form->fields()->where('field_type', 'file')->firstOrFail();
 
-        return 'file_' . $fileField->id;
+        return 'file_'.$fileField->id;
     }
 
     public function test_student_can_view_form(): void
@@ -102,7 +103,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_student_can_submit_form(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $response = $this->post("/s/{$this->form->token}", [
             'student_name' => 'John Doe',
@@ -124,7 +125,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_student_cannot_submit_duplicate_email(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         Submission::create([
             'form_id' => $this->form->id,
@@ -164,7 +165,7 @@ class SubmissionControllerTest extends TestCase
             'status' => 'validated',
         ]);
 
-        $response = $this->get("/s/{$this->form->token}/recap/{$submission->id}");
+        $response = $this->get("/s/{$this->form->token}/recap/{$submission->receipt_token}");
 
         $response->assertStatus(200);
         $response->assertSee('Récapitulatif');
@@ -180,7 +181,7 @@ class SubmissionControllerTest extends TestCase
             'status' => 'validated',
         ]);
 
-        $response = $this->get("/s/{$this->form->token}/recap/{$submission->id}/pdf");
+        $response = $this->get("/s/{$this->form->token}/recap/{$submission->receipt_token}/pdf");
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/pdf');
@@ -198,6 +199,30 @@ class SubmissionControllerTest extends TestCase
         $response = $this->get("/admin/forms/{$this->form->id}/submissions");
 
         $response->assertStatus(200);
+    }
+
+    public function test_admin_cannot_view_submission_from_another_form(): void
+    {
+        $otherForm = Form::create([
+            'title' => 'Autre formulaire',
+            'status' => 'active',
+            'created_by' => $this->admin->id,
+        ]);
+        $submission = Submission::create([
+            'form_id' => $otherForm->id,
+            'student_email' => 'other@test.com',
+            'status' => 'validated',
+        ]);
+
+        $this->session(['admin_user' => [
+            'id' => $this->admin->id,
+            'username' => $this->admin->username,
+            'email' => $this->admin->email,
+            'role' => $this->admin->role,
+        ]]);
+
+        $this->get("/admin/forms/{$this->form->id}/submissions/{$submission->id}")
+            ->assertNotFound();
     }
 
     public function test_admin_can_view_submission(): void
@@ -224,7 +249,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_admin_can_bulk_download_submissions(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $submission = Submission::create([
             'form_id' => $this->form->id,
@@ -235,9 +260,9 @@ class SubmissionControllerTest extends TestCase
 
         $dir = "submissions/{$this->form->id}/{$submission->id}";
         UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
-            ->storeAs($dir, 'rapport.pdf', 'public');
+            ->storeAs($dir, 'rapport.pdf', 'local');
         UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
-            ->storeAs($dir, 'rapport_2.pdf', 'public');
+            ->storeAs($dir, 'rapport_2.pdf', 'local');
 
         SubmissionFile::create([
             'submission_id' => $submission->id,
@@ -273,7 +298,7 @@ class SubmissionControllerTest extends TestCase
         // The archive must contain every uploaded file, even when two files
         // share the same original name, inside a folder named after the
         // student (not the email).
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $zip->open($response->getFile()->getPathname());
         $this->assertSame(2, $zip->numFiles);
         $names = [];
@@ -294,7 +319,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_admin_can_download_single_submission_zip(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $submission = Submission::create([
             'form_id' => $this->form->id,
@@ -305,9 +330,9 @@ class SubmissionControllerTest extends TestCase
 
         $dir = "submissions/{$this->form->id}/{$submission->id}";
         UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
-            ->storeAs($dir, 'rapport.pdf', 'public');
+            ->storeAs($dir, 'rapport.pdf', 'local');
         UploadedFile::fake()->create('rapport.pdf', 100, 'application/pdf')
-            ->storeAs($dir, 'rapport_2.pdf', 'public');
+            ->storeAs($dir, 'rapport_2.pdf', 'local');
 
         SubmissionFile::create([
             'submission_id' => $submission->id,
@@ -340,7 +365,7 @@ class SubmissionControllerTest extends TestCase
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/zip');
 
-        $zip = new \ZipArchive();
+        $zip = new \ZipArchive;
         $zip->open($response->getFile()->getPathname());
         $this->assertSame(2, $zip->numFiles);
         $names = [];
@@ -356,7 +381,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_two_uploaded_files_with_same_name_are_both_stored(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         $response = $this->post("/s/{$this->form->token}", [
             'student_name' => 'John Doe',
@@ -380,7 +405,7 @@ class SubmissionControllerTest extends TestCase
         $paths = $submission->files()->pluck('file_path')->all();
         $this->assertCount(2, array_unique($paths));
         foreach ($paths as $path) {
-            Storage::disk('public')->assertExists($path);
+            Storage::disk('local')->assertExists($path);
         }
     }
 
@@ -398,7 +423,7 @@ class SubmissionControllerTest extends TestCase
     {
         $this->form->update(['is_anonymous' => true]);
 
-        Storage::fake('public');
+        Storage::fake('local');
 
         $response = $this->post("/s/{$this->form->token}", [
             'student_name' => 'John Doe',
@@ -418,7 +443,7 @@ class SubmissionControllerTest extends TestCase
 
     public function test_student_can_submit_form_with_mail_labeled_email_field(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         // Mirror the user's form: the email field is labeled 'MAIL' (uppercase),
         // which must map to student_email instead of a dead student_mail input.
@@ -442,9 +467,24 @@ class SubmissionControllerTest extends TestCase
         ]);
     }
 
+    public function test_student_cannot_access_another_submission_receipt(): void
+    {
+        $submission = Submission::create([
+            'form_id' => $this->form->id,
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            'status' => 'validated',
+        ]);
+
+        $response = $this->get("/s/{$this->form->token}/recap/".str_repeat('A', 64));
+
+        $response->assertNotFound();
+        $this->assertNotEmpty($submission->receipt_token);
+    }
+
     public function test_student_must_upload_file_when_file_field_is_required(): void
     {
-        Storage::fake('public');
+        Storage::fake('local');
 
         // Required file field: submitting without any file must fail validation.
         $response = $this->post("/s/{$this->form->token}", [

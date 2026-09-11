@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\AdminUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
@@ -13,40 +14,42 @@ class AuthController extends Controller
         if (session()->has('admin_user')) {
             return redirect()->route('admin.dashboard');
         }
-        
+
         return view('auth.login');
     }
 
     public function login(Request $request)
     {
-        $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+            'password' => 'required|string|max:255',
         ]);
 
-        $user = AdminUser::where('email', $request->email)->first();
+        $email = Str::lower(trim($validated['email']));
+        $user = AdminUser::where('email', $email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password_hash)) {
+        if (! $user || ! Hash::check($validated['password'], $user->password_hash)) {
             return back()->withErrors([
                 'email' => 'Email ou mot de passe incorrect.',
             ])->onlyInput('email');
         }
 
-        session(['admin_user' => [
+        $request->session()->regenerate();
+        $request->session()->put('admin_user', [
             'id' => $user->id,
             'username' => $user->username,
             'email' => $user->email,
             'role' => $user->role,
-        ]]);
+        ]);
 
-        return redirect()->route('admin.dashboard');
+        return redirect()->intended(route('admin.dashboard'));
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
-        session()->forget('admin_user');
-        session()->invalidate();
-        session()->regenerateToken();
+        $request->session()->forget('admin_user');
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect()->route('login');
     }

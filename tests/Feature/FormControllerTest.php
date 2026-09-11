@@ -4,7 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\AdminUser;
 use App\Models\Form;
-use App\Models\FormField;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -17,7 +16,7 @@ class FormControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->admin = AdminUser::create([
             'username' => 'admin',
             'email' => 'admin@test.com',
@@ -156,6 +155,19 @@ class FormControllerTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonFragment(['link' => route('submit.form', $form->token)]);
+    }
+
+    public function test_admin_form_validation_rejects_unknown_field_types_and_oversized_descriptions(): void
+    {
+        $response = $this->post('/admin/forms', [
+            'title' => 'Test Formulaire',
+            'description' => str_repeat('x', 10001),
+            'field_labels' => ['Champ'],
+            'field_types' => ['unknown'],
+        ]);
+
+        $response->assertSessionHasErrors(['description', 'field_types.0']);
+        $this->assertDatabaseMissing('forms', ['title' => 'Test Formulaire']);
     }
 
     public function test_admin_can_view_submissions(): void

@@ -105,6 +105,9 @@ L'application sera accessible sur : `http://localhost:8000`
 - **Mot de passe** : `password`
 
 > ⚠️ Changez le mot de passe après la première connexion !
+>
+> Pour éviter de semer un compte par défaut en production, définissez
+> `ADMIN_USERNAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` avant `php artisan db:seed`.
 
 ## 📁 Structure du projet
 

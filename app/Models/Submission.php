@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class Submission extends Model
 {
@@ -16,6 +17,7 @@ class Submission extends Model
         'student_phone',
         'student_major',
         'anonymous_code',
+        'receipt_token',
         'status',
         'ip_address',
     ];
@@ -23,6 +25,15 @@ class Submission extends Model
     public function form()
     {
         return $this->belongsTo(Form::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Submission $submission): void {
+            if (empty($submission->receipt_token)) {
+                $submission->receipt_token = Str::random(64);
+            }
+        });
     }
 
     public function files()

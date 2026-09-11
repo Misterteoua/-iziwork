@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     student_phone VARCHAR(20) NULL,
     student_major VARCHAR(255) NULL,
     anonymous_code VARCHAR(255) UNIQUE NULL,
+    receipt_token VARCHAR(64) UNIQUE NULL,
     status ENUM('pending', 'validated') DEFAULT 'pending',
     ip_address VARCHAR(45) NULL,
     created_at TIMESTAMP NULL,

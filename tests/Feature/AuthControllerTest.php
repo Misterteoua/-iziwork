@@ -15,7 +15,7 @@ class AuthControllerTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->admin = AdminUser::create([
             'username' => 'admin',
             'email' => 'admin@test.com',
@@ -30,6 +30,13 @@ class AuthControllerTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertSee('Connexion');
+    }
+
+    public function test_invalid_admin_session_cannot_access_dashboard(): void
+    {
+        $this->session(['admin_user' => ['id' => 999999, 'username' => 'admin', 'email' => 'admin@test.com', 'role' => 'admin']]);
+
+        $this->get('/admin')->assertRedirect('/login');
     }
 
     public function test_user_can_login_with_valid_credentials(): void
@@ -63,6 +70,21 @@ class AuthControllerTest extends TestCase
 
         $response->assertSessionHasErrors('email');
         $response->assertRedirect();
+    }
+
+    public function test_login_is_rate_limited_after_repeated_failures(): void
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->post('/login', [
+                'email' => 'admin@test.com',
+                'password' => 'wrongpassword',
+            ])->assertRedirect();
+        }
+
+        $this->post('/login', [
+            'email' => 'admin@test.com',
+            'password' => 'wrongpassword',
+        ])->assertStatus(429);
     }
 
     public function test_user_can_logout(): void

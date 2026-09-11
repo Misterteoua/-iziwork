@@ -11,9 +11,9 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         AdminUser::create([
-            'username' => 'admin',
-            'email' => 'admin@iziwork.com',
-            'password_hash' => Hash::make('password'),
+            'username' => env('ADMIN_USERNAME', 'admin'),
+            'email' => env('ADMIN_EMAIL', 'admin@iziwork.com'),
+            'password_hash' => Hash::make((string) env('ADMIN_PASSWORD', 'password')),
             'role' => 'admin',
         ]);
     }
