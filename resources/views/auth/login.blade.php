@@ -50,6 +50,13 @@
             <h2 class="text-base font-semibold text-slate-900 mb-1">Connexion administrateur</h2>
             <p class="text-sm text-slate-500 mb-6">Accédez à votre espace de gestion</p>
 
+            @if(!empty($noAdminAccount))
+            <div class="bg-amber-50 border border-amber-200/70 text-amber-800 px-4 py-3 rounded-xl text-sm mb-5" role="status">
+                <p class="font-semibold">Aucun compte administrateur</p>
+                <p class="mt-1">{{ $noAdminMessage }}</p>
+            </div>
+            @endif
+
             <form class="space-y-5" method="POST" action="{{ route('login') }}" novalidate>
                 @csrf
 

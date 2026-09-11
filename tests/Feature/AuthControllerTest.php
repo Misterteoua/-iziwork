@@ -32,6 +32,38 @@ class AuthControllerTest extends TestCase
         $response->assertSee('Connexion');
     }
 
+    public function test_login_page_warns_when_no_admin_account_exists(): void
+    {
+        AdminUser::query()->delete();
+
+        $response = $this->get('/login');
+
+        $response->assertStatus(200);
+        $response->assertSee('Aucun compte administrateur');
+        $response->assertSee('php artisan db:seed');
+    }
+
+    public function test_login_page_has_no_warning_when_an_admin_account_exists(): void
+    {
+        $response = $this->get('/login');
+
+        $response->assertStatus(200);
+        $response->assertDontSee('Aucun compte administrateur');
+    }
+
+    public function test_login_without_admin_account_redirects_to_login_with_hint(): void
+    {
+        AdminUser::query()->delete();
+
+        $response = $this->post('/login', [
+            'email' => 'admin@test.com',
+            'password' => 'password',
+        ]);
+
+        $response->assertRedirect('/login');
+        $response->assertSessionMissing('admin_user');
+    }
+
     public function test_invalid_admin_session_cannot_access_dashboard(): void
     {
         $this->session(['admin_user' => ['id' => 999999, 'username' => 'admin', 'email' => 'admin@test.com', 'role' => 'admin']]);

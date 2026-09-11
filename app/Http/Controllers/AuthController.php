@@ -9,13 +9,19 @@ use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
+    private const NO_ADMIN_MESSAGE = "Aucun compte administrateur n'existe encore. "
+        .'Exécutez « php artisan db:seed » pour créer le compte par défaut.';
+
     public function showLogin()
     {
         if (session()->has('admin_user')) {
             return redirect()->route('admin.dashboard');
         }
 
-        return view('auth.login');
+        return view('auth.login', [
+            'noAdminAccount' => ! AdminUser::query()->exists(),
+            'noAdminMessage' => self::NO_ADMIN_MESSAGE,
+        ]);
     }
 
     public function login(Request $request)
@@ -24,6 +30,13 @@ class AuthController extends Controller
             'email' => 'required|email|max:255',
             'password' => 'required|string|max:255',
         ]);
+
+        // Without an account there is nothing to authenticate against: send
+        // the user back to the login page, which explains how to create one
+        // instead of showing a misleading "wrong password" error.
+        if (! AdminUser::query()->exists()) {
+            return redirect()->route('login');
+        }
 
         $email = Str::lower(trim($validated['email']));
         $user = AdminUser::where('email', $email)->first();
