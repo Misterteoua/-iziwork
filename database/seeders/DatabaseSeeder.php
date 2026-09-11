@@ -10,11 +10,15 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        AdminUser::create([
-            'username' => env('ADMIN_USERNAME', 'admin'),
-            'email' => env('ADMIN_EMAIL', 'admin@iziwork.com'),
-            'password_hash' => Hash::make((string) env('ADMIN_PASSWORD', 'password')),
-            'role' => 'admin',
-        ]);
+        // Idempotent: re-running the seeder must not fail or reset an
+        // existing admin's password.
+        AdminUser::firstOrCreate(
+            ['email' => env('ADMIN_EMAIL', 'admin@iziwork.com')],
+            [
+                'username' => env('ADMIN_USERNAME', 'admin'),
+                'password_hash' => Hash::make((string) env('ADMIN_PASSWORD', 'password')),
+                'role' => 'admin',
+            ]
+        );
     }
 }

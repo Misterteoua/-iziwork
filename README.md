@@ -109,6 +109,19 @@ L'application sera accessible sur : `http://localhost:8000`
 > Pour éviter de semer un compte par défaut en production, définissez
 > `ADMIN_USERNAME`, `ADMIN_EMAIL` et `ADMIN_PASSWORD` avant `php artisan db:seed`.
 
+### Connexion impossible ?
+
+Si vous obtenez « Email ou mot de passe incorrect. » avec les identifiants
+ci-dessus, c'est que le compte admin n'existe pas encore en base (les
+migrations créent les tables, pas le compte). Lancez :
+
+```bash
+php artisan db:seed
+```
+
+Le seeder est idempotent : le relancer ne crée pas de doublon et ne
+réinitialise pas un mot de passe déjà modifié.
+
 ## 📁 Structure du projet
 
 ```
