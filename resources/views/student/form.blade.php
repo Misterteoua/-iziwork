@@ -61,13 +61,11 @@
         {{-- Header --}}
         <header class="gradient-bg text-white safe-top">
             <div class="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-                <div class="flex items-center gap-2.5 mb-5">
-                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 backdrop-blur text-white">
-                        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                    </span>
-                    <span class="text-sm font-semibold tracking-wide text-white/90">Iziwork</span>
+                <div class="inline-flex items-center bg-white rounded-xl px-3 py-2 mb-5 shadow-sm">
+                    <img src="{{ asset('images/iziwork-logo.png') }}"
+                         alt="Iziwork"
+                         width="1021" height="264"
+                         class="h-6 w-auto">
                 </div>
                 <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-balance">{{ $form->title }}</h1>
                 @if($form->description)

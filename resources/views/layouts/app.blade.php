@@ -121,13 +121,11 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex items-center min-w-0">
-                    <a href="{{ route('admin.dashboard') }}" class="flex items-center gap-2 shrink-0" aria-label="Iziwork - Retour au tableau de bord">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg gradient-bg text-white">
-                            <svg class="h-4.5 w-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                        </span>
-                        <span class="text-lg font-bold tracking-tight text-slate-900">Iziwork</span>
+                    <a href="{{ route('admin.dashboard') }}" class="flex items-center shrink-0" aria-label="Iziwork - Retour au tableau de bord">
+                        <img src="{{ asset('images/iziwork-logo.png') }}"
+                             alt="Iziwork"
+                             width="1021" height="264"
+                             class="h-8 w-auto">
                     </a>
                     {{-- Desktop nav --}}
                     <div class="hidden sm:ml-8 sm:flex sm:space-x-1" role="menubar">

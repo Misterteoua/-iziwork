@@ -55,8 +55,12 @@
             </p>
         </div>
 
-        <div class="mt-6 text-center text-xs text-slate-400">
-            Propulsé par <span class="font-semibold text-slate-500">Iziwork</span>
+        <div class="mt-6 flex flex-col items-center gap-2 text-xs text-slate-400">
+            <img src="{{ asset('images/iziwork-logo.png') }}"
+                 alt="Iziwork"
+                 width="1021" height="264"
+                 class="h-6 w-auto opacity-70">
+            <span>Propulsé par <span class="font-semibold text-slate-500">Iziwork</span></span>
         </div>
     </div>
 </body>

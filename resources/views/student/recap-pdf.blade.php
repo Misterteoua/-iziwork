@@ -26,6 +26,17 @@
             margin: 10px 0 0;
             opacity: 0.8;
         }
+        .header .logo {
+            background: #ffffff;
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 8px;
+        }
+        .header .logo img {
+            display: block;
+            height: 30px;
+            width: 116px;
+        }
         .section {
             background: #f9fafb;
             border: 1px solid #e5e7eb;
@@ -74,7 +85,9 @@
 </head>
 <body>
     <div class="header">
-        <h1>Iziwork</h1>
+        <div class="logo">
+            <img src="data:image/png;base64,{{ base64_encode(file_get_contents(public_path('images/iziwork-logo.png'))) }}" alt="Iziwork">
+        </div>
         <p>Récapitulatif de dépôt</p>
     </div>
 
