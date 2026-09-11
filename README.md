@@ -98,6 +98,12 @@ php artisan serve
 
 L'application sera accessible sur : `http://localhost:8000`
 
+## 🚀 Déploiement en production (cPanel)
+
+Guide complet pas-à-pas (SSH, sous-domaine, MySQL, HTTPS, mises à jour) :
+**[DEPLOYMENT.md](DEPLOYMENT.md)**. Un template d'environnement de production est
+fourni dans [`.env.production.example`](.env.production.example).
+
 ## 🔐 Connexion Admin
 
 - **URL** : `http://localhost:8000/login`
