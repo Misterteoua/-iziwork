@@ -43,12 +43,14 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
-                    <div class="hidden md:flex items-center gap-2.5 pl-3">
+                    <a href="{{ route('admin.profile') }}"
+                       class="flex items-center gap-2.5 pl-3 pr-2 py-1.5 rounded-lg transition-colors duration-150 {{ request()->routeIs('admin.profile') ? 'bg-brand-50' : 'hover:bg-slate-50' }}"
+                       aria-label="Mon profil">
                         <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-sm font-semibold">
                             {{ strtoupper(substr(session('admin_user.username'), 0, 1)) }}
                         </span>
-                        <span class="text-sm font-medium text-slate-700">{{ session('admin_user.username') }}</span>
-                    </div>
+                        <span class="hidden md:inline text-sm font-medium text-slate-700">{{ session('admin_user.username') }}</span>
+                    </a>
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
                         <button type="submit" 
@@ -76,6 +78,11 @@
                    role="menuitem"
                    class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.forms.*') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
                     Formulaires
+                </a>
+                <a href="{{ route('admin.profile') }}" 
+                   role="menuitem"
+                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.profile') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
+                    Profil
                 </a>
             </div>
         </div>
