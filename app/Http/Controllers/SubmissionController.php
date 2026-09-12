@@ -233,6 +233,187 @@ class SubmissionController extends Controller
         return view('admin.submissions.show', compact('form', 'submission'));
     }
 
+    public function adminEdit(Form $form, Submission $submission)
+    {
+        $this->assertSubmissionBelongsToForm($form, $submission);
+        $submission->load('files');
+
+        return view('admin.submissions.edit', compact('form', 'submission'));
+    }
+
+    /**
+     * Update the editable fields of a submission. IP address and creation
+     * timestamp are deliberately immutable — they carry the audit trail.
+     */
+    public function adminUpdate(Request $request, Form $form, Submission $submission)
+    {
+        $this->assertSubmissionBelongsToForm($form, $submission);
+
+        $validated = $request->validate([
+            'student_name' => ['nullable', 'string', 'max:255'],
+            'student_email' => ['nullable', 'email', 'max:255'],
+            'student_phone' => ['nullable', 'string', 'max:20'],
+            'student_major' => ['nullable', 'string', 'max:255'],
+            'status' => ['required', Rule::in(['pending', 'validated'])],
+        ], [
+            'student_email.email' => 'L\'adresse email saisie n\'est pas valide.',
+            'status.required' => 'Le statut est obligatoire.',
+            'status.in' => 'Le statut sélectionné est invalide.',
+        ]);
+
+        $validated['student_email'] = $validated['student_email'] !== null
+            ? Str::lower(trim($validated['student_email']))
+            : null;
+
+        // Another submission of the same form already uses this email?
+        if ($validated['student_email'] !== null
+            && $form->submissions()
+                ->whereKeyNot($submission->id)
+                ->where('student_email', $validated['student_email'])
+                ->exists()) {
+            return back()
+                ->withErrors(['student_email' => 'Une autre soumission de ce formulaire utilise déjà cette adresse email.'])
+                ->withInput();
+        }
+
+        $submission->update($validated);
+
+        return redirect()
+            ->route('admin.submissions.show', ['form' => $form, 'submission' => $submission])
+            ->with('success', 'Soumission mise à jour avec succès !');
+    }
+
+    /**
+     * Delete a submission together with its stored files (rows cascade in
+     * the database; the physical files must be removed explicitly).
+     */
+    public function adminDestroy(Form $form, Submission $submission)
+    {
+        $this->assertSubmissionBelongsToForm($form, $submission);
+
+        $submission->load('files');
+
+        foreach ($submission->files as $file) {
+            Storage::disk('local')->delete($file->file_path);
+        }
+
+        $submission->delete();
+
+        return redirect()
+            ->route('admin.submissions.index', $form)
+            ->with('success', 'Soumission supprimée avec succès !');
+    }
+
+    /**
+     * Attach an extra file to an existing submission (student forgot a
+     * document). Same extension and size rules as the public upload flow.
+     */
+    public function adminAddFile(Request $request, Form $form, Submission $submission)
+    {
+        $this->assertSubmissionBelongsToForm($form, $submission);
+
+        $request->validate([
+            'file' => [
+                'required',
+                'file',
+                'max:'.self::MAX_FILE_SIZE_KB,
+                'mimes:'.implode(',', self::ALLOWED_EXTENSIONS),
+                'extensions:'.implode(',', self::ALLOWED_EXTENSIONS),
+            ],
+        ], [
+            'file.required' => 'Aucun fichier sélectionné.',
+            'file.max' => 'Le fichier ne peut pas dépasser 5 Mo.',
+            'file.mimes' => 'Le fichier doit être de type : pdf, docx, pptx ou zip.',
+        ]);
+
+        $this->storeSubmissionFile($form, $submission, $request->file('file'));
+
+        return back()->with('success', 'Fichier ajouté avec succès !');
+    }
+
+    /**
+     * Delete one attachment and its stored file.
+     */
+    public function adminDestroyFile(Form $form, Submission $submission, SubmissionFile $file)
+    {
+        $this->assertFileBelongsToAuthorizedSubmission($file);
+        $this->assertSubmissionBelongsToForm($form, $submission);
+        $this->assertFileBelongsToSubmission($submission, $file);
+
+        Storage::disk('local')->delete($file->file_path);
+        $file->delete();
+
+        return back()->with('success', 'Fichier supprimé avec succès !');
+    }
+
+    /**
+     * Replace an attachment (student uploaded the wrong document): the old
+     * stored file is removed, the new one takes its place, the row keeps its
+     * identity (created_at, field_label).
+     */
+    public function adminReplaceFile(Request $request, Form $form, Submission $submission, SubmissionFile $file)
+    {
+        $this->assertFileBelongsToAuthorizedSubmission($file);
+        $this->assertSubmissionBelongsToForm($form, $submission);
+        $this->assertFileBelongsToSubmission($submission, $file);
+
+        $request->validate([
+            'file' => [
+                'required',
+                'file',
+                'max:'.self::MAX_FILE_SIZE_KB,
+                'mimes:'.implode(',', self::ALLOWED_EXTENSIONS),
+                'extensions:'.implode(',', self::ALLOWED_EXTENSIONS),
+            ],
+        ], [
+            'file.required' => 'Aucun fichier sélectionné.',
+            'file.max' => 'Le fichier ne peut pas dépasser 5 Mo.',
+            'file.mimes' => 'Le fichier doit être de type : pdf, docx, pptx ou zip.',
+        ]);
+
+        Storage::disk('local')->delete($file->file_path);
+
+        $this->storeSubmissionFile($form, $submission, $request->file('file'), $file);
+
+        return back()->with('success', 'Fichier remplacé avec succès !');
+    }
+
+    /**
+     * Shared persistence for admin-uploaded attachments. When $file is
+     * provided the existing row is updated in place (replacement); otherwise
+     * a new row is created (addition).
+     */
+    private function storeSubmissionFile(Form $form, Submission $submission, UploadedFile $upload, ?SubmissionFile $file = null): void
+    {
+        // Store under the submission's own directory, same as public uploads.
+        $directory = "submissions/{$form->id}/{$submission->id}";
+        $extension = strtolower($upload->getClientOriginalExtension());
+        $storedName = Str::uuid()->toString().'.'.$extension;
+        $path = $upload->storeAs($directory, $storedName, 'local');
+
+        $attributes = [
+            'field_label' => $file->field_label ?? 'Ajout admin',
+            'original_name' => Str::limit($upload->getClientOriginalName(), 255, ''),
+            'stored_name' => $storedName,
+            'file_path' => $path,
+            'file_size' => $upload->getSize(),
+            'mime_type' => $upload->getMimeType() ?: 'application/octet-stream',
+        ];
+
+        if ($file !== null) {
+            $file->update($attributes);
+        } else {
+            $file = new SubmissionFile($attributes);
+            $file->submission_id = $submission->id;
+            $file->save();
+        }
+    }
+
+    private function assertFileBelongsToSubmission(Submission $submission, SubmissionFile $file): void
+    {
+        abort_unless((int) $file->submission_id === (int) $submission->id, 404);
+    }
+
     public function downloadFile(SubmissionFile $file)
     {
         $this->assertFileBelongsToAuthorizedSubmission($file);

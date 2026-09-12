@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Middleware\AdminAuth;
 use Illuminate\Support\Facades\Route;
@@ -55,4 +56,22 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
         ->whereNumber('form')->whereNumber('submission')->name('admin.submissions.show');
     Route::get('submissions/{file}/download', [SubmissionController::class, 'downloadFile'])
         ->whereNumber('file')->name('admin.submissions.download');
+
+    Route::get('forms/{form}/submissions/{submission}/edit', [SubmissionController::class, 'adminEdit'])
+        ->whereNumber('form')->whereNumber('submission')->name('admin.submissions.edit');
+    Route::put('forms/{form}/submissions/{submission}', [SubmissionController::class, 'adminUpdate'])
+        ->whereNumber('form')->whereNumber('submission')->name('admin.submissions.update');
+    Route::delete('forms/{form}/submissions/{submission}', [SubmissionController::class, 'adminDestroy'])
+        ->whereNumber('form')->whereNumber('submission')->name('admin.submissions.destroy');
+    Route::post('forms/{form}/submissions/{submission}/files', [SubmissionController::class, 'adminAddFile'])
+        ->whereNumber('form')->whereNumber('submission')->name('admin.submissions.files.store');
+    Route::delete('forms/{form}/submissions/{submission}/files/{file}', [SubmissionController::class, 'adminDestroyFile'])
+        ->whereNumber('form')->whereNumber('submission')->whereNumber('file')->name('admin.submissions.files.destroy');
+    Route::put('forms/{form}/submissions/{submission}/files/{file}', [SubmissionController::class, 'adminReplaceFile'])
+        ->whereNumber('form')->whereNumber('submission')->whereNumber('file')->name('admin.submissions.files.replace');
+
+    Route::get('profile', [ProfileController::class, 'edit'])->name('admin.profile');
+    Route::patch('profile/password', [ProfileController::class, 'updatePassword'])
+        ->middleware('throttle:admin-login')
+        ->name('admin.profile.password');
 });

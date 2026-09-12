@@ -12,9 +12,32 @@
             </svg>
             Retour aux soumissions
         </a>
-        <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 mt-3 text-balance">
-            Soumission de {{ $form->is_anonymous ? $submission->anonymous_code : ($submission->student_name ?? 'Anonyme') }}
-        </h1>
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-3">
+            <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 text-balance">
+                Soumission de {{ $form->is_anonymous ? $submission->anonymous_code : ($submission->student_name ?? 'Anonyme') }}
+            </h1>
+            <div class="flex items-center gap-2 shrink-0">
+                <a href="{{ route('admin.submissions.edit', ['form' => $form, 'submission' => $submission]) }}"
+                   class="inline-flex items-center justify-center px-3.5 py-2 border border-slate-200 text-sm font-medium rounded-xl text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150">
+                    <svg class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Modifier
+                </a>
+                <form method="POST" action="{{ route('admin.submissions.destroy', ['form' => $form, 'submission' => $submission]) }}"
+                      onsubmit="return confirm('Supprimer définitivement cette soumission et tous ses fichiers ? Cette action est irréversible.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                            class="inline-flex items-center justify-center px-3.5 py-2 border border-red-200 text-sm font-medium rounded-xl text-red-600 bg-white hover:bg-red-50 transition-colors duration-150">
+                        <svg class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Supprimer
+                    </button>
+                </form>
+            </div>
+        </div>
         <div class="mt-2">
             <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium {{ $submission->status === 'validated' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700' }}">
                 <span class="h-1.5 w-1.5 rounded-full {{ $submission->status === 'validated' ? 'bg-emerald-500' : 'bg-amber-500' }}" aria-hidden="true"></span>

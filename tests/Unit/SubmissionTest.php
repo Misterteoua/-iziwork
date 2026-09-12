@@ -84,21 +84,23 @@ class SubmissionTest extends TestCase
         $this->assertCount(1, $submission->files);
     }
 
-    public function test_submission_unique_email_per_form(): void
+    /*
+     * Depuis la révision 2026_09_12, l'unicité de l'email par formulaire
+     * est appliquée par SubmissionController (elle doit tolérer un email
+     * vide, car l'admin peut corriger — voire vider — l'email d'une
+     * soumission erronée). La base n'exprime plus cette contrainte : ces
+     * tests verrouillent le nouveau contrat.
+     */
+
+    public function test_submission_allows_blank_email(): void
     {
-        Submission::create([
+        $submission = Submission::create([
             'form_id' => $this->form->id,
-            'student_email' => 'john@test.com',
+            'student_email' => null,
             'status' => 'validated',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
-
-        Submission::create([
-            'form_id' => $this->form->id,
-            'student_email' => 'john@test.com',
-            'status' => 'validated',
-        ]);
+        $this->assertNull($submission->fresh()->student_email);
     }
 
     public function test_submission_allows_same_email_different_forms(): void
