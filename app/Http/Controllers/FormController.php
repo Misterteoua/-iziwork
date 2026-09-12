@@ -111,6 +111,8 @@ class FormController extends Controller
         $requiredIndexes = array_map('intval', $validated['field_requireds'] ?? []);
         $rawOptions = $validated['field_options'] ?? [];
 
+        $created = collect();
+
         foreach ($labels as $index => $label) {
             $fieldType = $types[$index];
             $options = null;
@@ -119,13 +121,33 @@ class FormController extends Controller
                 $options = $this->normalizeOptions($rawOptions[$index] ?? null);
             }
 
-            FormField::create([
+            $created->push(FormField::create([
                 'form_id' => $form->id,
                 'field_label' => trim($label),
                 'field_type' => $fieldType,
                 'required' => in_array($index, $requiredIndexes, true),
                 'order' => $index,
                 'options' => $options,
+            ]));
+        }
+
+        /*
+         * L'email est la clé anti-doublon des soumissions : la table
+         * `submissions` l'exige et elle est unique par formulaire. Si aucun
+         * champ du formulaire ne fournit cette valeur (pas de champ de type
+         * email, ni de champ libellé « Email » — voir FormField::getFieldName),
+         * on l'ajoute automatiquement, requis, en fin de formulaire. La vue
+         * étudiant affiche le même bloc de secours pour les formulaires
+         * créés avant cette règle.
+         */
+        if (! $created->contains(fn (FormField $field) => $field->getFieldName() === 'student_email')) {
+            FormField::create([
+                'form_id' => $form->id,
+                'field_label' => 'Adresse email',
+                'field_type' => 'email',
+                'required' => true,
+                'order' => ((int) max(array_keys($labels))) + 1,
+                'options' => null,
             ]);
         }
     }

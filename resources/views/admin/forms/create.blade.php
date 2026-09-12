@@ -103,7 +103,7 @@
                     </span>
                     <div>
                         <h2 class="text-base font-semibold text-slate-900">Champs du formulaire</h2>
-                        <p class="text-xs text-slate-500">Ajoutez les champs demandés aux étudiants</p>
+                        <p class="text-xs text-slate-500">Ajoutez les champs demandés aux étudiants. Sans champ email, il sera ajouté automatiquement (obligatoire) pour identifier chaque étudiant et éviter les doublons.</p>
                     </div>
                 </div>
                 <button type="button" onclick="addField()" class="inline-flex items-center justify-center px-3.5 py-2 text-sm font-semibold rounded-xl text-brand-700 bg-brand-50 hover:bg-brand-100" aria-label="Ajouter un champ">Ajouter un champ</button>

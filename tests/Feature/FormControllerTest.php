@@ -170,6 +170,87 @@ class FormControllerTest extends TestCase
         $this->assertDatabaseMissing('forms', ['title' => 'Test Formulaire']);
     }
 
+    public function test_created_form_gets_automatic_required_email_field_when_missing(): void
+    {
+        $response = $this->post('/admin/forms', [
+            'title' => 'Sans Email',
+            'field_labels' => ['Nom complet', 'Code CIV'],
+            'field_types' => ['text', 'text'],
+            'field_requireds' => ['0', '1'],
+        ]);
+
+        $response->assertRedirect();
+
+        $form = Form::where('title', 'Sans Email')->with('fields')->firstOrFail();
+
+        $this->assertSame(3, $form->fields->count());
+
+        $emailField = $form->fields->last();
+        $this->assertSame('email', $emailField->field_type);
+        $this->assertTrue($emailField->required);
+        $this->assertSame('student_email', $emailField->getFieldName());
+    }
+
+    public function test_created_form_with_email_field_is_not_duplicated(): void
+    {
+        $response = $this->post('/admin/forms', [
+            'title' => 'Avec Email',
+            'field_labels' => ['Nom complet', 'Adresse email'],
+            'field_types' => ['text', 'email'],
+            'field_requireds' => ['0'],
+        ]);
+
+        $response->assertRedirect();
+
+        $form = Form::where('title', 'Avec Email')->with('fields')->firstOrFail();
+
+        $this->assertSame(2, $form->fields->count());
+        $this->assertSame(1, $form->fields->where('field_type', 'email')->count());
+    }
+
+    public function test_created_form_with_text_field_labeled_email_is_not_duplicated(): void
+    {
+        // A text field labeled "Email" maps to student_email via
+        // FormField::getFieldName(), so no automatic field must be added.
+        $response = $this->post('/admin/forms', [
+            'title' => 'Email Texte',
+            'field_labels' => ['Email'],
+            'field_types' => ['text'],
+            'field_requireds' => ['0'],
+        ]);
+
+        $response->assertRedirect();
+
+        $form = Form::where('title', 'Email Texte')->with('fields')->firstOrFail();
+
+        $this->assertSame(1, $form->fields->count());
+    }
+
+    public function test_updated_form_also_gets_automatic_email_field_when_missing(): void
+    {
+        $form = Form::create([
+            'title' => 'A Modifier',
+            'status' => 'inactive',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $response = $this->put("/admin/forms/{$form->id}", [
+            'title' => 'A Modifier',
+            'field_labels' => ['Nom complet'],
+            'field_types' => ['text'],
+            'field_requireds' => ['0'],
+        ]);
+
+        $response->assertRedirect();
+
+        $form->refresh()->load('fields');
+
+        $this->assertSame(2, $form->fields->count());
+        $this->assertTrue($form->fields->contains(
+            fn ($field) => $field->field_type === 'email' && $field->required
+        ));
+    }
+
     public function test_admin_can_view_submissions(): void
     {
         $form = Form::create([
