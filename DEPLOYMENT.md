@@ -178,6 +178,41 @@ php artisan admin:reset-password --email=henri.teoua@inphb.ci
 > **Terminal**. Le seeder ne modifie jamais un admin existant, donc aucun
 > risque de conflit avec `db:seed`.
 
+### B.7.3 Sauvegardes (manuelles, à la demande)
+
+La sauvegarde est volontairement **manuelle** pour ne pas solliciter le
+serveur inutilement. Deux commandes sont disponibles :
+
+- `php artisan backup:run` — exporte la base (structure + données, SQL
+  restaurable tel quel) **et** archive tous les dépôts étudiants dans
+  `storage/app/private/backups/backup_<date>.{sql,zip}` ;
+- `php artisan backup:clean --keep=8` — supprime les paires les plus
+  anciennes au-delà de 8 sauvegardes.
+
+**Quand sauvegarder** : avant chaque mise à jour (étape B.7), avant toute
+manipulation risquée, et périodiquement (une fois par semaine suffit dans la
+plupart des cas).
+
+**Sur le serveur (cPanel → Terminal)** :
+
+```bash
+/opt/alt/php82/usr/bin/php /home/efspcinphb/iziwork/artisan backup:run
+/opt/alt/php82/usr/bin/php /home/efspcinphb/iziwork/artisan backup:clean --keep=8
+```
+
+**Récupération** : les fichiers restent sur le serveur — un problème de
+disque les perdrait avec l'application. Téléchargez-les régulièrement
+(Gestionnaire de fichiers → dossier `backups`) et gardez-en une copie sur
+votre poste. Pour restaurer : importer le `.sql` via phpMyAdmin et
+réextraire le `.zip` dans `storage/app/private/`.
+
+**En local**, même commande : `php artisan backup:run`.
+
+> Si vous changez d'avis et préférez l'automatiser : il suffit d'ajouter un
+> cron cPanel « chaque minute » exécutant `php artisan schedule:run`, puis
+> de décommenter les lignes `Schedule::command('backup:run')...` dans
+> `routes/console.php`. La procédure complète est dans l'historique git.
+
 ### B.8 Retirer l'assistant (facultatif)
 
 Une fois en ligne, l'assistant est déjà inerte (verrou + jeton supprimé). Pour

@@ -76,6 +76,16 @@ class UpdateController extends Controller
         $results = [];
         $errors = [];
 
+        // 0. Synchroniser les migrations déjà appliquées (setup.sql / import externe)
+        try {
+            $synced = $this->syncMigrations();
+            if ($synced > 0) {
+                $results['sync'] = $synced.' migration(s) synchronisee(s) dans la table Laravel.';
+            }
+        } catch (Throwable $e) {
+            $errors['sync'] = 'Synchronisation ignoree : '.$e->getMessage();
+        }
+
         // 1. Migrations
         try {
             Artisan::call('migrate', ['--force' => true]);
@@ -167,6 +177,76 @@ class UpdateController extends Controller
         } catch (Throwable) {
             return ['(impossible de vérifier)'];
         }
+    }
+
+    /**
+     * Synchronise la table migrations avec les fichiers de migration.
+     * Utilise quand la base a été créée via setup.sql (SQL brut) :
+     * les tables existent mais la table migrations est vide.
+     *
+     * @return int Nombre de migrations insérées.
+     */
+    /**
+     * Synchronise les migrations deja appliquees par setup.sql.
+     *
+     * Seules les migrations dont les tables existent deja sont marquees
+     * comme faites. Les migrations nouvelles (ajout de colonnes, etc.)
+     * restent en attente pour etre executees par Artisan::call("migrate").
+     *
+     * @return int Nombre de migrations synchronisees.
+     */
+    private function syncMigrations(): int
+    {
+        $allMigrations = collect(
+            glob(database_path('migrations/*.php'))
+        )
+            ->map(fn (string $path) => basename($path, '.php'))
+            ->sort()
+            ->values();
+
+        $existing = DB::table('migrations')
+            ->pluck('migration')
+            ->toArray();
+
+        $missing = $allMigrations->diff($existing);
+
+        if ($missing->isEmpty()) {
+            return 0;
+        }
+
+        // Pour chaque migration en attente, verifie si la table principale
+        // existe deja. Si oui, c'est que setup.sql l'a creee : on marque.
+        // Sinon, c'est une vraie migration a executer.
+        $prefix = config('database.connections.mysql.prefix', '');
+        $tables = collect(DB::select('SHOW TABLES'))
+            ->map(fn ($row) => reset($row))
+            ->toArray();
+
+        $toSync = $missing->filter(function (string $name) use ($tables, $prefix) {
+            // Extraire le nom de la table creee par cette migration
+            // Format: YYYY_MM_DD_HHMMSS_create_TABlename_table
+            if (preg_match('/_create_(\w+)_table$/', $name, $m)) {
+                $table = $prefix . $m[1];
+                return in_array($table, $tables);
+            }
+            // Migration d'ajout de colonne : on verifie si la table cible
+            // contient deja la colonne (creee par setup.sql).
+            return false;
+        })->values();
+
+        if ($toSync->isEmpty()) {
+            return 0;
+        }
+
+        DB::table('migrations')->insert(
+            $toSync->map(fn (string $name) => [
+                'migration' => $name,
+                'batch' => 1,
+                'created_at' => now(),
+            ])->all()
+        );
+
+        return $toSync->count();
     }
 
     /**

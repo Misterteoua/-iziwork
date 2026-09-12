@@ -120,6 +120,9 @@ class InstallController extends Controller
         try {
             Artisan::call('config:clear');
 
+            // Synchroniser les migrations deja appliquees (setup.sql / import externe).
+            $this->syncMigrations();
+
             Artisan::call('migrate', ['--force' => true]);
             $migrations = trim(Artisan::output());
 
@@ -400,7 +403,39 @@ class InstallController extends Controller
         }
     }
 
-    private function lockInstallation(array $values): void
+    private function syncMigrations(): void
+    {
+        $allMigrations = collect(glob(database_path('migrations/*.php')))
+            ->map(fn (string $path) => basename($path, '.php'))
+            ->sort()
+            ->values();
+
+        $existing = DB::table('migrations')->pluck('migration')->toArray();
+        $missing = $allMigrations->diff($existing);
+        if ($missing->isEmpty()) { return; }
+
+        $prefix = config('database.connections.mysql.prefix', '');
+        $tables = collect(DB::select('SHOW TABLES'))
+            ->map(fn ($row) => reset($row))
+            ->toArray();
+
+        $toSync = $missing->filter(fn (string $name) =>
+            preg_match('/_create_(\w+)_table$/', $name, $m)
+            && in_array($prefix . $m[1], $tables)
+        )->values();
+
+        if ($toSync->isEmpty()) { return; }
+
+        DB::table('migrations')->insert(
+            $toSync->map(fn (string $name) => [
+                'migration' => $name,
+                'batch' => 1,
+                'created_at' => now(),
+            ])->all()
+        );
+    }
+
+        private function lockInstallation(array $values): void
     {
         file_put_contents($this->lockPath(), json_encode([
             'installed_at' => date('c'),

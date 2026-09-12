@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     form_id BIGINT UNSIGNED NOT NULL,
     student_name VARCHAR(255) NULL,
-    student_email VARCHAR(255) NOT NULL,
+    student_email VARCHAR(255) NULL,
     student_phone VARCHAR(20) NULL,
     student_major VARCHAR(255) NULL,
     anonymous_code VARCHAR(255) UNIQUE NULL,
@@ -61,8 +61,7 @@ CREATE TABLE IF NOT EXISTS submissions (
     ip_address VARCHAR(45) NULL,
     created_at TIMESTAMP NULL,
     updated_at TIMESTAMP NULL,
-    FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_email_form (form_id, student_email)
+    FOREIGN KEY (form_id) REFERENCES forms(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Submission Files table

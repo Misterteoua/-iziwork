@@ -52,8 +52,9 @@ if ($zip->open($target, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
 
 $directory = new RecursiveDirectoryIterator(
     $source,
-    FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO
+    FilesystemIterator::SKIP_DOTS | FilesystemIterator::CURRENT_AS_FILEINFO | FilesystemIterator::FOLLOW_SYMLINKS
 );
+$directory->setFlags(RecursiveDirectoryIterator::SKIP_DOTS | RecursiveDirectoryIterator::CURRENT_AS_FILEINFO);
 
 // SELF_FIRST : les dossiers sont ajoutés avant leur contenu (dossiers vides inclus).
 $iterator = new RecursiveIteratorIterator($directory, RecursiveIteratorIterator::SELF_FIRST);
