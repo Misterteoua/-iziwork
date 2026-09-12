@@ -14,6 +14,13 @@
 /auth.json
 /node_modules
 /public/build
+
+# Artefacts locaux : archive de déploiement et environnements de test jetables
+/build/
+.freebuff/
+.install-token
+.update-token
+.env.backup-*
 /public/hot
 /public/storage
 /storage/*.key

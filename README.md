@@ -100,9 +100,21 @@ L'application sera accessible sur : `http://localhost:8000`
 
 ## 🚀 Déploiement en production (cPanel)
 
-Guide complet pas-à-pas (SSH, sous-domaine, MySQL, HTTPS, mises à jour) :
+Guide complet pas-à-pas (sous-domaine, MySQL, HTTPS, mises à jour) :
 **[DEPLOYMENT.md](DEPLOYMENT.md)**. Un template d'environnement de production est
 fourni dans [`.env.production.example`](.env.production.example).
+
+### Sans SSH ni Terminal (voie retenue)
+
+```bash
+bash tools/build-release.sh   # produit build/iziwork-release.zip
+```
+
+Uploadez l'archive dans le Gestionnaire de fichiers, extrayez-la, pointez le
+Document Root sur `iziwork/public`, puis ouvrez `/install` : l'assistant écrit
+`.env`, génère `APP_KEY`, joue les migrations et crée le compte administrateur.
+Aucune commande à taper sur le serveur. Détail complet au début de
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 🔐 Connexion Admin
 
