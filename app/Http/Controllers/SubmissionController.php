@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use ZipStream\ZipStream;
@@ -56,10 +57,19 @@ class SubmissionController extends Controller
         $rules = [];
         $fieldNames = [];
 
+        /*
+         | Libellés lisibles dans les messages d'erreur : sans eux, un
+         | étudiant verrait « le champ file_9 » au lieu du vrai intitulé
+         | du champ (« Rapport ENG2XX »).
+         */
+        $attributes = [];
+
         foreach ($form->fields as $field) {
             $fieldName = $field->getFieldName();
+            $attributes[$fieldName] = $field->field_label;
 
             if ($field->field_type === 'file') {
+                $attributes[$fieldName.'.*'] = $field->field_label;
                 $rules[$fieldName] = [$field->required ? 'required' : 'nullable', 'array', 'max:'.self::MAX_FILES_PER_FIELD];
                 $rules[$fieldName.'.*'] = [
                     'file',
@@ -104,9 +114,10 @@ class SubmissionController extends Controller
 
         if (! in_array('student_email', $fieldNames, true)) {
             $rules['student_email'] = ['required', 'email', 'max:255'];
+            $attributes['student_email'] = 'adresse email';
         }
 
-        $validated = $request->validate($rules);
+        $validated = Validator::make($request->all(), $rules, [], $attributes)->validate();
 
         $uploadedFileCount = 0;
         foreach ($form->fields as $field) {

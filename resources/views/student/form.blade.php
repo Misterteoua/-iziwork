@@ -72,6 +72,39 @@
                       novalidate>
                     @csrf
 
+                    @php
+                        /*
+                         | L'email est obligatoire en base (clé anti-doublon :
+                         | une seule soumission par email et par formulaire).
+                         | Si l'admin n'a pas mis de champ email dans son
+                         | formulaire, on l'affiche ici automatiquement.
+                         */
+                        $hasEmailField = $form->fields->contains(fn ($field) => $field->field_type === 'email');
+                    @endphp
+
+                    @if(! $hasEmailField)
+                    <div class="mb-7">
+                        <label for="student_email" class="block text-sm font-medium text-slate-700 mb-2">
+                            Adresse email
+                            <span class="text-red-500" aria-hidden="true">*</span>
+                        </label>
+                        <input type="email"
+                               name="student_email"
+                               id="student_email"
+                               required
+                               autocomplete="email"
+                               inputmode="email"
+                               spellcheck="false"
+                               class="w-full px-4 py-3 border rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150 {{ $errors->has('student_email') ? 'border-red-300 bg-red-50/30' : 'border-slate-300' }}"
+                               value="{{ old('student_email') }}"
+                               placeholder="exemple@email.com">
+                        <p class="mt-1.5 text-xs text-slate-400">Votre reçu de dépôt sera lié à cette adresse. Une seule soumission par adresse et par formulaire.</p>
+                        @error('student_email')
+                        <p class="mt-1.5 text-sm text-red-600" role="alert">{{ $message }}</p>
+                        @enderror
+                    </div>
+                    @endif
+
                     @foreach($form->fields as $field)
                     <div class="mb-7 last:mb-0">
                         @php
