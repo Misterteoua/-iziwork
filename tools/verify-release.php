@@ -191,7 +191,28 @@ foreach ($position as $name => $index) {
 
     $checked++;
 
-    if (hash_file('sha256', $local) !== hash('sha256', (string) $zip->getFromIndex($index))) {
+    /*
+     | build-release.sh horodate APP_VERSION dans la copie embarquée de
+     | .env.production.example : la ligne diffère donc volontairement du
+     | dépôt. On compare en neutralisant cette ligne des deux côtés.
+     */
+    $normalize = static function (string $content): string {
+        return implode("\n", array_filter(
+            explode("\n", $content),
+            static fn (string $line): bool => ! str_starts_with($line, 'APP_VERSION='),
+        ));
+    };
+
+    $archiveContent = (string) $zip->getFromIndex($index);
+    $localContent = (string) file_get_contents($local);
+
+    if ($relative === '.env.production.example') {
+        $staleMatch = hash('sha256', $normalize($localContent)) !== hash('sha256', $normalize($archiveContent));
+    } else {
+        $staleMatch = hash_file('sha256', $local) !== hash('sha256', $archiveContent);
+    }
+
+    if ($staleMatch) {
         $stale[] = $relative;
     }
 }

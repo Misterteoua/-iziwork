@@ -39,7 +39,7 @@ log "Copie des fichiers de l'application"
 # Liste explicite : .env, vendor, tests, build/ et .git ne doivent jamais
 # partir sur le serveur. `.env.production.example` sert de gabarit à
 # l'assistant d'installation.
-for item in app bootstrap config database public resources routes artisan \
+for item in app bootstrap config database lang public resources routes artisan \
             composer.json composer.lock .env.production.example; do
     [ -e "$item" ] || die "Élément attendu introuvable : $item"
     cp -r "$item" "$STAGE/"
