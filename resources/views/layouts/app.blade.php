@@ -117,5 +117,15 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     </script>
     @stack('scripts')
+
+    @if(session('admin_user'))
+    <footer class="border-t border-slate-100 py-4">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <p class="text-xs text-slate-400 text-center">
+                Iziwork v{{ config('app.version', 'dev') }} · Laravel {{ app()->version() }} · PHP {{ PHP_VERSION }}
+            </p>
+        </div>
+    </footer>
+    @endif
 </body>
 </html>

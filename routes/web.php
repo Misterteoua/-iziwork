@@ -11,6 +11,14 @@ Route::get('/', function () {
     return view('welcome');
 });
 
+Route::get('/version', function () {
+    return response()->json([
+        'version' => config('app.version', 'dev'),
+        'laravel' => app()->version(),
+        'php' => PHP_VERSION,
+    ]);
+});
+
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:admin-login');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

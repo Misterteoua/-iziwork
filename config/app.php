@@ -69,6 +69,18 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | This value is displayed in the admin dashboard and the /version endpoint.
+    | It is stamped automatically by tools/build-release.sh.
+    |
+    */
+
+    'version' => env('APP_VERSION', 'dev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

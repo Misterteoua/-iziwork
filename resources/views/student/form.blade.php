@@ -175,7 +175,7 @@
                                 <div class="flex text-sm text-slate-600 justify-center">
                                     <label for="file_{{ $field->id }}" class="relative cursor-pointer rounded-md font-semibold text-brand-600 hover:text-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-150">
                                         <span>Télécharger un fichier</span>
-                                        <input id="file_{{ $field->id }}" name="{{ $fieldName }}" type="file"
+                                        <input id="file_{{ $field->id }}" name="{{ $fieldName }}[]" type="file"
                                                class="sr-only" multiple
                                                accept=".pdf,.docx,.pptx,.zip">
                                     </label>
