@@ -141,9 +141,19 @@
                 Réinitialiser
             </a>
             @endif
+            <a href="{{ $exportUrl }}"
+               class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150 sm:ml-auto">
+                <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Exporter en CSV
+            </a>
         </div>
 
-        <p class="mt-3 text-xs text-slate-400">Si vous renseignez « Du » ou « Au », cette plage remplace la période choisie.</p>
+        <p class="mt-3 text-xs text-slate-400">
+            Si vous renseignez « Du » ou « Au », cette plage remplace la période choisie.
+            L'export CSV reprend les filtres actifs, sans la limite d'affichage.
+        </p>
     </form>
 
     {{-- Recent Submissions --}}

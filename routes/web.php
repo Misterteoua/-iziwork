@@ -32,6 +32,7 @@ Route::get('/s/{token}/recap/{receiptToken}/pdf', [SubmissionController::class, 
 
 Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('admin.dashboard');
+    Route::get('export/submissions', [DashboardController::class, 'export'])->name('admin.export.submissions');
 
     Route::get('forms', [FormController::class, 'index'])->name('admin.forms.index');
     Route::get('forms/create', [FormController::class, 'create'])->name('admin.forms.create');
