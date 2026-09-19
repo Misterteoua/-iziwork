@@ -62,9 +62,12 @@ class DashboardController extends Controller
         // Compté avant l'ajout de la limite, qui s'applique au même objet.
         $filteredCount = (clone $query)->count();
 
+        // Les compteurs portent sur le dépôt de travaux : une évaluation vit
+        // dans la même table, mais elle n'a ni soumission ni place dans ces
+        // trois cartes — la mêler au total ferait un chiffre incompréhensible.
         $stats = [
-            'total_forms' => Form::count(),
-            'active_forms' => Form::where('status', 'active')->count(),
+            'total_forms' => Form::where('type', Form::TYPE_DEPOSIT)->count(),
+            'active_forms' => Form::where('type', Form::TYPE_DEPOSIT)->where('status', 'active')->count(),
             'total_submissions' => Submission::count(),
             'recent_submissions' => $query
                 ->orderByDesc('created_at')
@@ -74,7 +77,7 @@ class DashboardController extends Controller
 
         return view('admin.dashboard', [
             'stats' => $stats,
-            'forms' => Form::orderBy('title')->get(['id', 'title']),
+            'forms' => Form::where('type', Form::TYPE_DEPOSIT)->orderBy('title')->get(['id', 'title']),
             'filters' => $this->viewFilters($filters),
             'isFiltered' => $isFiltered,
             'filteredCount' => $filteredCount,

@@ -609,4 +609,43 @@ class SubmissionControllerTest extends TestCase
             'student_email' => 'john@test.com',
         ]);
     }
+
+    public function test_un_jeton_d_evaluation_ne_mene_pas_au_depot_de_travaux(): void
+    {
+        Storage::fake('local');
+
+        $quiz = Form::create([
+            'title' => 'Examen Algorithmique',
+            'token' => 'JETON-QUIZ-DEPOT',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $quiz->fields()->create([
+            'field_label' => 'Capitale ?',
+            'field_type' => 'radio',
+            'required' => true,
+            'order' => 1,
+            'options' => ['Abidjan', 'Yamoussoukro'],
+            'correct_answer' => [1],
+            'points' => 1,
+        ]);
+
+        $this->get("/s/{$quiz->token}")->assertNotFound();
+
+        $this->post("/s/{$quiz->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+        ])->assertNotFound();
+
+        // Aucune soumission parasite n'a été créée pour une évaluation.
+        $this->assertDatabaseMissing('submissions', ['form_id' => $quiz->id]);
+        $this->assertSame(0, $quiz->submissions()->count());
+    }
+
+    public function test_un_jeton_de_depot_ne_mene_pas_a_une_evaluation(): void
+    {
+        $this->get("/q/{$this->form->token}")->assertNotFound();
+    }
 }

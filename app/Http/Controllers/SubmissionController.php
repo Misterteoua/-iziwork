@@ -28,6 +28,11 @@ class SubmissionController extends Controller
     {
         $form = Form::where('token', $token)->with('fields')->firstOrFail();
 
+        // Un jeton d'évaluation ne mène pas au dépôt de travaux, et inversement.
+        // Sans cette garde, le jeton d'un questionnaire ouvrirait un formulaire
+        // de dépôt vide et permettrait de créer une soumission parasite.
+        abort_if($form->isQuiz(), 404);
+
         if (! $form->isOpen()) {
             if ($form->status !== 'active') {
                 return view('student.closed', ['form' => $form, 'reason' => 'Ce formulaire est actuellement inactif.']);
@@ -50,6 +55,8 @@ class SubmissionController extends Controller
     public function submit(Request $request, string $token)
     {
         $form = Form::where('token', $token)->with('fields')->firstOrFail();
+
+        abort_if($form->isQuiz(), 404);
 
         if (! $form->isOpen()) {
             return back()->with('error', 'Ce formulaire n\'est plus ouvert.');

@@ -149,6 +149,28 @@ class DashboardControllerTest extends TestCase
         $this->assertSame(2, $stats['active_forms']);
     }
 
+    public function test_les_compteurs_et_la_liste_deroulante_ignorent_les_evaluations(): void
+    {
+        Form::create([
+            'title' => 'Examen Algorithmique',
+            'token' => 'JETON-QUIZ-TABLEAU',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $response = $this->dashboard()->assertOk();
+        $stats = $response->viewData('stats');
+
+        // Deux dépôts, pas trois : une évaluation n'est ni un formulaire de
+        // dépôt ni un formulaire « actif » au sens de cette page.
+        $this->assertSame(2, $stats['total_forms']);
+        $this->assertSame(2, $stats['active_forms']);
+
+        $response->assertDontSee('Examen Algorithmique');
+        $this->assertNotContains('Examen Algorithmique', $response->viewData('forms')->pluck('title')->all());
+    }
+
     public function test_les_formulaires_alimentent_la_liste_deroulante(): void
     {
         $response = $this->dashboard();
