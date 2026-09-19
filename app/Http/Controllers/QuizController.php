@@ -10,6 +10,7 @@ use App\Support\Import\QuestionSheet;
 use App\Support\Import\QuizTemplate;
 use App\Support\Import\StudentRoster;
 use App\Support\Import\TabularFile;
+use App\Support\QuizFilters;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Illuminate\Http\Request;
@@ -45,9 +46,11 @@ class QuizController extends Controller
         'Terminée le',
     ];
 
-    public function index()
+    public function index(Request $request)
     {
-        $quizzes = Form::where('type', Form::TYPE_QUIZ)
+        $filters = QuizFilters::fromRequest($request);
+
+        $base = Form::where('type', Form::TYPE_QUIZ)
             ->withCount([
                 'fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::QUESTION_TYPES),
                 'attempts',
@@ -55,11 +58,19 @@ class QuizController extends Controller
                     'status',
                     [QuizAttempt::STATUS_SUBMITTED, QuizAttempt::STATUS_EXPIRED]
                 ),
-            ])
-            ->orderByDesc('created_at')
-            ->get();
+            ]);
 
-        return view('admin.quizzes.index', compact('quizzes'));
+        // Le total est compté avant filtrage : c'est lui qui permet d'afficher
+        // « 1 affichée sur 3 », et donc de comprendre qu'une évaluation manque.
+        $total = (clone $base)->count();
+        $quizzes = $filters->apply($base)->get();
+
+        return view('admin.quizzes.index', [
+            'quizzes' => $quizzes,
+            'filters' => $filters,
+            'isFiltered' => $filters->isActive(),
+            'total' => $total,
+        ]);
     }
 
     public function create()

@@ -229,6 +229,10 @@ iziwork/
    sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
    en cas d'incident.
 
+La liste des évaluations se filtre par **titre ou consignes**, **période de
+création**, **état** (ouvertes / fermées) et se trie par date ou par titre. Les
+filtres sont dans l'URL : un lien vers « les évaluations ouvertes de ce mois »
+se partage tel quel.
 
 Côté étudiant : saisie de la référence, une question à la fois, temps affiché et
 rappelé par le serveur, remise de la copie ou rendu automatique à l'expiration.
