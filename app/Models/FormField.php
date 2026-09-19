@@ -9,6 +9,15 @@ class FormField extends Model
 {
     use HasFactory;
 
+    /**
+     * Types de champ qui sont des questions d'évaluation.
+     *
+     * « radio » = une seule réponse attendue, « checkbox » = plusieurs. Les
+     * autres types (texte, fichier, liste déroulante) restent propres au
+     * dépôt de travaux.
+     */
+    public const QUESTION_TYPES = ['radio', 'checkbox'];
+
     protected $fillable = [
         'form_id',
         'field_label',
@@ -16,6 +25,8 @@ class FormField extends Model
         'required',
         'order',
         'options',
+        'correct_answer',
+        'points',
     ];
 
     protected function casts(): array
@@ -23,7 +34,55 @@ class FormField extends Model
         return [
             'required' => 'boolean',
             'options' => 'array',
+            'correct_answer' => 'array',
+            'points' => 'decimal:2',
         ];
+    }
+
+    /**
+     * Cette question accepte-t-elle plusieurs réponses ?
+     */
+    public function isMultipleAnswer(): bool
+    {
+        return $this->field_type === 'checkbox';
+    }
+
+    public function isQuestion(): bool
+    {
+        return in_array($this->field_type, self::QUESTION_TYPES, true);
+    }
+
+    /**
+     * Index des bonnes réponses, triés.
+     *
+     * @return array<int, int>
+     */
+    public function correctIndexes(): array
+    {
+        $indexes = array_map('intval', array_filter($this->correct_answer ?? [], 'is_numeric'));
+
+        sort($indexes);
+
+        return $indexes;
+    }
+
+    /**
+     * Comparaison entre le choix d'un candidat et la bonne réponse.
+     *
+     * Lot 1 : la réponse est juste si l'ensemble coché correspond exactement à
+     * l'ensemble attendu. Pas de demi-point pour une réponse partielle — une
+     * seule règle, prévisible et vérifiable par l'étudiant.
+     *
+     * @param  array<int, int>  $chosen
+     */
+    public function isCorrectChoice(array $chosen): bool
+    {
+        $chosen = array_values(array_map('intval', $chosen));
+        sort($chosen);
+
+        $expected = $this->correctIndexes();
+
+        return $expected !== [] && $chosen === $expected;
     }
 
     public function form()

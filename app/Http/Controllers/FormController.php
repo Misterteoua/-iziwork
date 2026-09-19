@@ -12,7 +12,10 @@ class FormController extends Controller
 {
     public function index()
     {
-        $forms = Form::withCount('submissions')
+        // Les évaluations ont leur propre section : sans ce filtre, elles
+        // apparaîtraient aussi dans la liste des dépôts de travaux.
+        $forms = Form::where('type', Form::TYPE_DEPOSIT)
+            ->withCount('submissions')
             ->orderByDesc('created_at')
             ->get();
 

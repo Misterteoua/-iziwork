@@ -40,6 +40,11 @@
                            class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 {{ request()->routeIs('admin.forms.*') ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' }}">
                             Formulaires
                         </a>
+                        <a href="{{ route('admin.quizzes.index') }}" 
+                           role="menuitem"
+                           class="inline-flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-150 {{ request()->routeIs('admin.quizzes.*') ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50' }}">
+                            Évaluations
+                        </a>
                     </div>
                 </div>
                 <div class="flex items-center gap-2">
@@ -78,6 +83,11 @@
                    role="menuitem"
                    class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.forms.*') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
                     Formulaires
+                </a>
+                <a href="{{ route('admin.quizzes.index') }}" 
+                   role="menuitem"
+                   class="flex-1 text-center py-3 text-sm font-medium border-b-2 transition-colors duration-150 {{ request()->routeIs('admin.quizzes.*') ? 'border-brand-600 text-brand-700 bg-brand-50/50' : 'border-transparent text-slate-500' }}">
+                    Évaluations
                 </a>
                 <a href="{{ route('admin.profile') }}" 
                    role="menuitem"

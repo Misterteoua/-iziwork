@@ -4,6 +4,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\QuizAttemptController;
+use App\Http\Controllers\QuizController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\VersionController;
 use App\Http\Middleware\AdminAuth;
@@ -19,6 +21,18 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:admin-login');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
+// Évaluation en ligne : parcours entièrement séparé du dépôt de travaux.
+Route::get('/q/{quiz:token}', [QuizAttemptController::class, 'start'])->name('quiz.start');
+Route::post('/q/{quiz:token}/start', [QuizAttemptController::class, 'begin'])->name('quiz.begin');
+Route::get('/q/{quiz:token}/question', [QuizAttemptController::class, 'question'])->name('quiz.question');
+Route::post('/q/{quiz:token}/answer', [QuizAttemptController::class, 'answer'])->name('quiz.answer');
+Route::get('/q/{quiz:token}/finish', [QuizAttemptController::class, 'submitPage'])->name('quiz.submit.page');
+Route::post('/q/{quiz:token}/submit', [QuizAttemptController::class, 'submit'])->name('quiz.submit');
+Route::post('/q/{quiz:token}/infraction', [QuizAttemptController::class, 'infraction'])->name('quiz.infraction');
+Route::get('/q/{quiz:token}/resultat', [QuizAttemptController::class, 'result'])->name('quiz.result');
+Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::class, 'recapPdf'])
+    ->name('quiz.recap.pdf');
+
 Route::get('/s/{token}', [SubmissionController::class, 'showForm'])->name('submit.form');
 Route::post('/s/{token}', [SubmissionController::class, 'submit'])
     ->middleware('throttle:submissions')
@@ -33,6 +47,25 @@ Route::get('/s/{token}/recap/{receiptToken}/pdf', [SubmissionController::class, 
 Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::get('/', [DashboardController::class, 'index'])->name('admin.dashboard');
     Route::get('export/submissions', [DashboardController::class, 'export'])->name('admin.export.submissions');
+
+    // Évaluations en ligne, gérées séparément des dépôts de travaux.
+    Route::get('quizzes', [QuizController::class, 'index'])->name('admin.quizzes.index');
+    Route::get('quizzes/create', [QuizController::class, 'create'])->name('admin.quizzes.create');
+    Route::post('quizzes', [QuizController::class, 'store'])->name('admin.quizzes.store');
+    Route::get('quizzes/{quiz}', [QuizController::class, 'show'])->whereNumber('quiz')->name('admin.quizzes.show');
+    Route::put('quizzes/{quiz}', [QuizController::class, 'updateSettings'])->whereNumber('quiz')->name('admin.quizzes.update');
+    Route::delete('quizzes/{quiz}', [QuizController::class, 'destroy'])->whereNumber('quiz')->name('admin.quizzes.destroy');
+    Route::patch('quizzes/{quiz}/toggle-status', [QuizController::class, 'toggle'])->whereNumber('quiz')->name('admin.quizzes.toggle');
+    Route::post('quizzes/{quiz}/questions', [QuizController::class, 'storeQuestion'])->whereNumber('quiz')->name('admin.quizzes.questions.store');
+    Route::put('quizzes/{quiz}/questions/{field}', [QuizController::class, 'updateQuestion'])
+        ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.update');
+    Route::delete('quizzes/{quiz}/questions/{field}', [QuizController::class, 'destroyQuestion'])
+        ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.destroy');
+    Route::post('quizzes/{quiz}/references', [QuizController::class, 'generateReferences'])->whereNumber('quiz')->name('admin.quizzes.references.store');
+    Route::get('quizzes/{quiz}/results', [QuizController::class, 'results'])->whereNumber('quiz')->name('admin.quizzes.results');
+    Route::get('quizzes/{quiz}/results/export', [QuizController::class, 'exportResults'])->whereNumber('quiz')->name('admin.quizzes.results.export');
+    Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.reset');
 
     Route::get('forms', [FormController::class, 'index'])->name('admin.forms.index');
     Route::get('forms/create', [FormController::class, 'create'])->name('admin.forms.create');

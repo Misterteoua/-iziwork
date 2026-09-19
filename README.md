@@ -1,6 +1,8 @@
-# Iziwork - Gestion de dépôts de travaux
+# Iziwork - Dépôts de travaux et évaluations en ligne
 
-Application web pour la collecte et la gestion des travaux rendus par les étudiants.
+Application web pour la collecte des travaux rendus par les étudiants et pour
+l'organisation d'évaluations notées en ligne (questionnaires chronométrés,
+corrigés automatiquement).
 
 ## 🚀 Fonctionnalités
 
@@ -11,7 +13,17 @@ Application web pour la collecte et la gestion des travaux rendus par les étudi
 - **Gestion des soumissions** : Consultation, téléchargement individuel ou en lot (ZIP)
 - **Sécurité** : Authentification par session, mot de passe haché
 
-### Étudiant
+### Évaluations en ligne (questionnaires)
+- **Création du questionnaire** : question par question, avec propositions et barème
+- **Références alphanumériques** : 10 caractères générés pour la liste des étudiants ; la référence sert de numéro d'anonymat
+- **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
+- **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible
+- **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve
+- **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence
+- **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé, journal horodaté des sorties de fenêtre
+- **Résultats côté admin** : liste des participations, export CSV, réinitialisation d'une participation
+
+### Étudiant (dépôt de travaux)
 - **Accès via lien sécurisé** : Pas besoin de compte
 - **Formulaire intelligent** : Validation en temps réel
 - **Téléchargement** : PDF, Word, PowerPoint, ZIP (max 5 Mo)
@@ -197,6 +209,34 @@ iziwork/
 1. Allez dans la page du formulaire
 2. Consultez la liste des soumissions
 3. Téléchargez les fichiers individuellement ou en lot
+
+## ✍️ Organiser une évaluation en ligne
+
+1. **Créer l'évaluation** (« Évaluations » → « Nouvelle évaluation ») : titre, durée,
+   quota de participants, anonymat, affichage de la note, surveillance.
+2. **Ajouter les questions** : énoncé, propositions, case à cocher pour la ou les
+   bonnes réponses, barème. Une question à choix unique n'accepte qu'une bonne réponse.
+3. **Préparer les références** : indiquez le nombre d'étudiants. Chaque référence
+   fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L). Dès qu'une
+   référence existe, l'évaluation demande la référence au lieu du nom.
+4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}`.
+5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
+   sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
+   en cas d'incident.
+
+Côté étudiant : saisie de la référence, une question à la fois, temps affiché et
+rappelé par le serveur, remise de la copie ou rendu automatique à l'expiration.
+La note, la référence et le temps apparaissent immédiatement, avec un
+récapitulatif PDF retéléchargeable à tout moment avec la référence seule.
+
+### Ce que la surveillance ne peut pas faire
+
+Un site web ne peut **pas** empêcher techniquement les captures d'écran, ni
+fermer réellement les autres onglets : cela exige un navigateur d'examen dédié
+(Safe Exam Browser) ou une application native. Ce qui est en place ici est une
+dissuasion forte et un journal exploitable : copier-coller et clic droit bloqués,
+plein écran proposé, chaque perte de focus horodatée et comptée — et un chrono
+que le candidat ne peut pas manipuler, puisqu'il est vérifié à chaque requête.
 
 ## 🔒 Sécurité
 

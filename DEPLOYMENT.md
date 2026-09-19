@@ -167,6 +167,13 @@ Le compte admin **n'est jamais modifié** — `db:seed` est idempotent et ne
 touche pas à un mot de passe existant. Seules les nouvelles migrations sont
 jouées.
 
+> **Aucune dépendance à installer pour le module d'évaluations.** Il n'ajoute
+> ni paquet Composer ni extension PHP à activer : les sept migrations créent les
+tables `quiz_attempts` et `quiz_answers` et ajoutent des colonnes *avec valeur
+> par défaut* à `forms` et `form_fields`. Les formulaires de dépôt existants
+> gardent donc exactement leur comportement (`type = 'deposit'` par défaut),
+> et aucune donnée n'est touchée.
+
 ### B.7.1 Vérifier les limites PHP
 
 Après la première installation ou une mise à jour, vérifiez que `upload_max_filesize`
