@@ -133,16 +133,12 @@ class DashboardController extends Controller
     /**
      * Requête des soumissions retenues par les filtres, sans limite ni tri :
      * le tableau de bord y ajoute sa fenêtre, l'export CSV les prend toutes.
+     * L'application des filtres elle-même appartient à SubmissionFilters, pour
+     * que la liste, l'export et le ZIP ne puissent pas diverger.
      */
     private function filteredQuery(SubmissionFilters $filters): Builder
     {
-        [$start, $end] = $filters->bounds();
-
-        return Submission::with('form')
-            ->when($filters->formId, fn ($q, $id) => $q->where('form_id', $id))
-            ->when($filters->status, fn ($q, $status) => $q->where('status', $status))
-            ->when($start, fn ($q) => $q->where('created_at', '>=', $start))
-            ->when($end, fn ($q) => $q->where('created_at', '<=', $end));
+        return $filters->apply(Submission::with('form'));
     }
 
     /**

@@ -230,13 +230,7 @@ class SubmissionController extends Controller
     {
         $filters = SubmissionFilters::fromRequest($request, withForm: false);
 
-        [$start, $end] = $filters->bounds();
-
-        $submissions = $form->submissions()
-            ->with('files')
-            ->when($filters->status, fn ($q, $status) => $q->where('status', $status))
-            ->when($start, fn ($q) => $q->where('created_at', '>=', $start))
-            ->when($end, fn ($q) => $q->where('created_at', '<=', $end))
+        $submissions = $filters->apply($form->submissions()->with('files'))
             ->orderByDesc('created_at')
             ->get();
 
@@ -250,11 +244,31 @@ class SubmissionController extends Controller
                 'status' => $filters->status,
             ],
             'isFiltered' => $filters->isActive(),
-            // Le total non filtré sert à deux choses : dire sur combien de
-            // dépôts portent les filtres, et garder le bouton « Télécharger
-            // tout » visible même quand le filtre ne renvoie rien.
+            // Le total non filtré sert de repère : « 1 sur 3 soumissions ».
             'totalCount' => $form->submissions()->count(),
+            // Le ZIP suit les mêmes filtres que la liste : le lien embarque
+            // donc la sélection courante, sinon l'administrateur croirait
+            // télécharger ce qu'il vient d'isoler.
+            'bulkUrl' => route('admin.submissions.bulk', array_merge(
+                ['form' => $form->id],
+                $this->filterQuery($filters)
+            )),
         ]);
+    }
+
+    /**
+     * Filtres à transmettre à une URL (téléchargement), sans paramètre inutile.
+     *
+     * @return array<string, scalar>
+     */
+    private function filterQuery(SubmissionFilters $filters): array
+    {
+        return array_filter([
+            'period' => $filters->period !== 'all' ? $filters->period : null,
+            'from' => $filters->from,
+            'to' => $filters->to,
+            'status' => $filters->status,
+        ], fn ($value) => $value !== null && $value !== '');
     }
 
     public function adminShow(Form $form, Submission $submission)
@@ -456,9 +470,30 @@ class SubmissionController extends Controller
         return response()->download($path, basename($file->original_name));
     }
 
-    public function downloadBulk(Form $form)
+    /**
+     * Téléchargement ZIP des soumissions, filtré exactement comme la liste.
+     *
+     * Un administrateur qui isole « les dépôts en attente de cette semaine »
+     * s'attend à ne récupérer que ceux-là : télécharger tout le formulaire
+     * contredirait le filtre qu'il vient d'appliquer.
+     */
+    public function downloadBulk(Request $request, Form $form)
     {
-        $submissions = $form->submissions()->with('files')->get();
+        $filters = SubmissionFilters::fromRequest($request, withForm: false);
+
+        $submissions = $filters->apply($form->submissions()->with('files'))
+            ->orderByDesc('created_at')
+            ->get();
+
+        // Une archive vide n'apprend rien : on le dit plutôt que de livrer un
+        // ZIP sans contenu.
+        if ($submissions->isEmpty()) {
+            return back()->with(
+                'error',
+                'Aucune soumission ne correspond aux filtres actifs : il n\'y a rien à télécharger.'
+            );
+        }
+
         $zipFileName = 'soumissions_'.$form->id.'_'.now()->format('Y-m-d_H-i-s').'_'.Str::random(8).'.zip';
 
         $entries = [];
@@ -575,6 +610,18 @@ class SubmissionController extends Controller
      */
     private function zipDownload(string $downloadName, array $entries)
     {
+        // ZipArchive n'écrit aucun fichier quand il n'y a rien à archiver :
+        // response()->download() lèverait alors « The file does not exist »,
+        // soit une erreur 500 pour un simple téléchargement sans contenu. Le
+        // cas se produit quand les pièces jointes sont absentes du disque, ou
+        // quand les filtres ne retiennent que des soumissions sans fichier.
+        if ($entries === []) {
+            return back()->with(
+                'error',
+                'Aucun fichier à inclure : les pièces jointes de cette sélection sont introuvables sur le serveur.'
+            );
+        }
+
         if ($this->hasNativeZip() && ! config('app.zip_stream_fallback', false)) {
             $zipPath = storage_path('app/private/'.Str::uuid()->toString().'.zip');
             $zip = new \ZipArchive;
@@ -586,7 +633,10 @@ class SubmissionController extends Controller
             foreach ($entries as [$archivePath, $filePath]) {
                 $zip->addFile($filePath, $archivePath);
             }
-            $zip->close();
+
+            if (! $zip->close() || ! is_file($zipPath)) {
+                return back()->with('error', 'Impossible de finaliser l\'archive ZIP.');
+            }
 
             return response()->download($zipPath, $downloadName)->deleteFileAfterSend(true);
         }

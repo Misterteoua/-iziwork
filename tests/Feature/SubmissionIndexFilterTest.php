@@ -249,14 +249,16 @@ class SubmissionIndexFilterTest extends TestCase
         $response->assertSee('0 sur 1 soumission');
     }
 
-    public function test_le_telechargement_global_reste_disponible_meme_filtre_a_vide(): void
+    public function test_le_telechargement_disparait_quand_le_filtre_ne_renvoie_rien(): void
     {
         $this->submission($this->form, '2026-09-18 08:00:00');
 
-        // Filtre qui ne renvoie rien : le bouton « Télécharger tout » porte sur
-        // les dépôts réels du formulaire, il doit rester proposé.
+        // Le ZIP suit désormais les filtres : une sélection vide ne donne plus
+        // accès à un téléchargement, plutôt qu'à une archive sans contenu.
         $response = $this->page(['period' => 'today']);
 
-        $response->assertSee('Télécharger tout (ZIP)');
+        $response->assertDontSee('Télécharger la sélection (ZIP)');
+        $response->assertDontSee('Télécharger tout (ZIP)');
+        $response->assertSee('Aucune soumission ne correspond à ces filtres');
     }
 }

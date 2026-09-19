@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Form;
+use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -98,6 +99,24 @@ final class SubmissionFilters
             'month' => [$now->copy()->startOfMonth(), $now->copy()->endOfMonth()],
             default => [null, null],
         };
+    }
+
+    /**
+     * Applique les filtres à une requête de soumissions.
+     *
+     * Point unique d'application : la liste du tableau de bord, la page d'un
+     * formulaire, l'export CSV et le ZIP de téléchargement passent tous par ici,
+     * donc aucun d'eux ne peut filtrer « presque » comme les autres.
+     */
+    public function apply(Builder $query): Builder
+    {
+        [$start, $end] = $this->bounds();
+
+        return $query
+            ->when($this->formId, fn (Builder $q, int $id) => $q->where('form_id', $id))
+            ->when($this->status, fn (Builder $q, string $status) => $q->where('status', $status))
+            ->when($start, fn (Builder $q) => $q->where('created_at', '>=', $start))
+            ->when($end, fn (Builder $q) => $q->where('created_at', '<=', $end));
     }
 
     /**
