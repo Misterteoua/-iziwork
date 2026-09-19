@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\MigrationReconciliation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -34,19 +35,20 @@ class UpdateController extends Controller
     {
         $this->abortIfNoEnv();
         $this->abortIfNoToken();
+        $provided = $this->validatedToken($request);
 
-        $expected = $this->readToken();
-        $provided = (string) $request->input('token', $request->query('token', ''));
+        $reconciliation = app(MigrationReconciliation::class);
 
-        if ($expected === '' || ! hash_equals($expected, $provided)) {
-            abort(403, "Jeton de mise à jour invalide.");
-        }
-
-        $pending = $this->pendingMigrations();
+        // La liste affichée est celle des migrations réellement à jouer :
+        // celles dont l'effet est déjà en base (schéma créé par setup.sql)
+        // sont présentées à part, comme « déjà en place ».
+        $pending = $reconciliation->pending();
+        $alreadyInPlace = $reconciliation->satisfiable();
 
         return view('update', [
             'token' => $provided,
             'pending' => $pending,
+            'alreadyInPlace' => $alreadyInPlace,
             'php' => PHP_VERSION,
             'laravel' => app()->version(),
             'envExists' => true,
@@ -57,39 +59,47 @@ class UpdateController extends Controller
     /**
      * Lance la mise à jour : migrations + nettoyage des caches.
      */
-    public function run(Request $request)
+    public function run(Request $request): View
     {
         $this->abortIfNoEnv();
         $this->abortIfNoToken();
-
-        $expected = $this->readToken();
-        $provided = (string) $request->input('token', $request->query('token', ''));
-
-        if ($expected === '' || ! hash_equals($expected, $provided)) {
-            abort(403, "Jeton de mise à jour invalide.");
-        }
+        $this->validatedToken($request);
 
         if (! $this->dbReachable()) {
             return back()->with('error', 'Connexion à la base de données impossible.');
         }
 
+        $reconciliation = app(MigrationReconciliation::class);
+
         $results = [];
         $errors = [];
 
-        // 0. Synchroniser les migrations déjà appliquées (setup.sql / import externe)
+        // 0. Réconcilier la table `migrations` avec le schéma réellement
+        //    présent (base créée par setup.sql, import externe…).
         try {
-            $synced = $this->syncMigrations();
+            $synced = $reconciliation->reconcile();
+
             if ($synced > 0) {
-                $results['sync'] = $synced.' migration(s) synchronisee(s) dans la table Laravel.';
+                $results['synchronisation'] = $synced.' migration(s) déjà présente(s) dans la base ont été marquées comme appliquées.';
             }
         } catch (Throwable $e) {
-            $errors['sync'] = 'Synchronisation ignoree : '.$e->getMessage();
+            $errors['synchronisation'] = $e->getMessage();
         }
 
-        // 1. Migrations
+        // 1. Migrations réellement en attente.
         try {
             Artisan::call('migrate', ['--force' => true]);
-            $results['migrations'] = trim(Artisan::output()) ?: 'Aucune migration en attente.';
+
+            $results['migrations'] = trim(Artisan::output()) ?: 'Aucune migration à jouer.';
+
+            // Une migration qui vient d'échouer parce que son effet existait
+            // déjà (colonne ajoutée à la main, par exemple) est enregistrée
+            // ici, plutôt que de rester « en attente » pour toujours.
+            $late = $reconciliation->reconcile();
+
+            if ($late > 0) {
+                $results['migrations'] .= ' '.$late.' migration(s) déjà effective(s) ont été marquées comme appliquées.';
+            }
         } catch (Throwable $e) {
             $errors['migrations'] = $e->getMessage();
         }
@@ -109,21 +119,37 @@ class UpdateController extends Controller
             Artisan::call('view:clear');
             Artisan::call('cache:clear');
 
-            // Re-créer les caches de production
-            Artisan::call('config:cache');
-            Artisan::call('route:cache');
-
-            $results['caches'] = 'Config, routes et vues vidés puis recréés.';
+            $results['caches'] = 'Caches configuration, routes, vues et données vidés.';
         } catch (Throwable $e) {
             $errors['caches'] = $e->getMessage();
         }
 
-        // 4. Tourner le jeton (le prochain update nécessitera le nouveau jeton)
+        // 4. Caches d'optimisation : le gain de rapidité le plus net en
+        //    production. Aucune route du projet n'est définie par closure,
+        //    donc `route:cache` peut sérialiser la table de routage.
+        try {
+            Artisan::call('config:cache');
+            $results['optimisation'] = 'Configuration mise en cache.';
+        } catch (Throwable $e) {
+            $errors['optimisation'] = $e->getMessage();
+        }
+
+        try {
+            Artisan::call('route:cache');
+            $results['routes'] = 'Table de routage mise en cache.';
+        } catch (Throwable $e) {
+            // Une route par closure ajoutée plus tard ferait échouer la
+            // sérialisation : on continue sans cache de routes.
+            $errors['routes'] = 'Routes laissées non cachées : '.$e->getMessage();
+        }
+
+        // 5. Tourner le jeton (le prochain update nécessitera le nouveau jeton)
         $this->rotateToken();
 
         return view('update', [
             'token' => null,
             'pending' => [],
+            'alreadyInPlace' => [],
             'php' => PHP_VERSION,
             'laravel' => app()->version(),
             'envExists' => true,
@@ -133,6 +159,21 @@ class UpdateController extends Controller
             'done' => true,
             'newToken' => $this->readToken(),
         ]);
+    }
+
+    /**
+     * Vérifie le jeton fourni et le renvoie.
+     */
+    private function validatedToken(Request $request): string
+    {
+        $expected = $this->readToken();
+        $provided = (string) $request->input('token', $request->query('token', ''));
+
+        if ($expected === '' || ! hash_equals($expected, $provided)) {
+            abort(403, 'Jeton de mise à jour invalide.');
+        }
+
+        return $provided;
     }
 
     private function abortIfNoEnv(): void
@@ -145,7 +186,7 @@ class UpdateController extends Controller
     private function abortIfNoToken(): void
     {
         if (! is_file(base_path(self::TOKEN_PATH))) {
-            abort(404, "Fichier de jeton introuvable : ".base_path(self::TOKEN_PATH));
+            abort(404, 'Fichier de jeton introuvable : '.base_path(self::TOKEN_PATH));
         }
     }
 
@@ -163,90 +204,6 @@ class UpdateController extends Controller
         } catch (Throwable) {
             return false;
         }
-    }
-
-    private function pendingMigrations(): array
-    {
-        try {
-            $migrator = app('migrator');
-            $paths = [database_path('migrations')];
-            $files = $migrator->getMigrationFiles($paths);
-            $ran = DB::table('migrations')->pluck('migration')->all();
-
-            return array_values(array_diff($files, $ran));
-        } catch (Throwable) {
-            return ['(impossible de vérifier)'];
-        }
-    }
-
-    /**
-     * Synchronise la table migrations avec les fichiers de migration.
-     * Utilise quand la base a été créée via setup.sql (SQL brut) :
-     * les tables existent mais la table migrations est vide.
-     *
-     * @return int Nombre de migrations insérées.
-     */
-    /**
-     * Synchronise les migrations deja appliquees par setup.sql.
-     *
-     * Seules les migrations dont les tables existent deja sont marquees
-     * comme faites. Les migrations nouvelles (ajout de colonnes, etc.)
-     * restent en attente pour etre executees par Artisan::call("migrate").
-     *
-     * @return int Nombre de migrations synchronisees.
-     */
-    private function syncMigrations(): int
-    {
-        $allMigrations = collect(
-            glob(database_path('migrations/*.php'))
-        )
-            ->map(fn (string $path) => basename($path, '.php'))
-            ->sort()
-            ->values();
-
-        $existing = DB::table('migrations')
-            ->pluck('migration')
-            ->toArray();
-
-        $missing = $allMigrations->diff($existing);
-
-        if ($missing->isEmpty()) {
-            return 0;
-        }
-
-        // Pour chaque migration en attente, verifie si la table principale
-        // existe deja. Si oui, c'est que setup.sql l'a creee : on marque.
-        // Sinon, c'est une vraie migration a executer.
-        $prefix = config('database.connections.mysql.prefix', '');
-        $tables = collect(DB::select('SHOW TABLES'))
-            ->map(fn ($row) => reset($row))
-            ->toArray();
-
-        $toSync = $missing->filter(function (string $name) use ($tables, $prefix) {
-            // Extraire le nom de la table creee par cette migration
-            // Format: YYYY_MM_DD_HHMMSS_create_TABlename_table
-            if (preg_match('/_create_(\w+)_table$/', $name, $m)) {
-                $table = $prefix . $m[1];
-                return in_array($table, $tables);
-            }
-            // Migration d'ajout de colonne : on verifie si la table cible
-            // contient deja la colonne (creee par setup.sql).
-            return false;
-        })->values();
-
-        if ($toSync->isEmpty()) {
-            return 0;
-        }
-
-        DB::table('migrations')->insert(
-            $toSync->map(fn (string $name) => [
-                'migration' => $name,
-                'batch' => 1,
-                'created_at' => now(),
-            ])->all()
-        );
-
-        return $toSync->count();
     }
 
     /**
