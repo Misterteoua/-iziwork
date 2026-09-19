@@ -556,4 +556,57 @@ class SubmissionControllerTest extends TestCase
             'student_email' => 'john@test.com',
         ]);
     }
+
+    /*
+     * Firefox et Windows déclarent un .zip en « application/x-zip-compressed »
+     * et non en « application/zip ». Le serveur doit l'accepter : un rejet ici
+     * empêcherait des dépôts parfaitement valides.
+     */
+    public function test_zip_declared_as_zip_compressed_is_accepted(): void
+    {
+        Storage::fake('local');
+
+        $response = $this->post("/s/{$this->form->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            $this->fileFieldName() => [
+                UploadedFile::fake()->create('Releve_Notes_18092026114040_770602.zip', 100, 'application/x-zip-compressed'),
+            ],
+        ]);
+
+        $response->assertRedirect();
+
+        $submission = Submission::where('student_email', 'john@test.com')->firstOrFail();
+        $this->assertSame(1, $submission->files()->count());
+        $this->assertSame(
+            'Releve_Notes_18092026114040_770602.zip',
+            $submission->files()->first()->original_name
+        );
+        Storage::disk('local')->assertExists($submission->files()->first()->file_path);
+    }
+
+    /*
+     * Les archives restent ouvertes, mais aucune autre extension ne doit
+     * passer : le garde-fou du téléversement est toujours actif.
+     */
+    public function test_executable_file_is_still_rejected(): void
+    {
+        Storage::fake('local');
+
+        $response = $this->post("/s/{$this->form->token}", [
+            'student_name' => 'John Doe',
+            'student_email' => 'john@test.com',
+            $this->fileFieldName() => [
+                UploadedFile::fake()->create('script.exe', 100, 'application/x-msdownload'),
+            ],
+        ]);
+
+        // Le fichier étant présent mais refusé, l'erreur porte sur l'élément
+        // du tableau (file_x.0) et non sur le champ lui-même.
+        $response->assertSessionHasErrors($this->fileFieldName().'.0');
+        $this->assertDatabaseMissing('submissions', [
+            'form_id' => $this->form->id,
+            'student_email' => 'john@test.com',
+        ]);
+    }
 }

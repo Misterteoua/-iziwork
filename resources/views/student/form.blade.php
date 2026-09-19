@@ -286,8 +286,16 @@
         document.getElementById('submission-form').addEventListener('submit', function(e) {
             const files = this.querySelectorAll('input[type="file"]');
             const maxSize = 5 * 1024 * 1024;
-            const allowedTypes = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                                  'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/zip'];
+
+            /*
+             * Le contrôle se fait sur l'extension, pas sur le type MIME :
+             * Firefox et Windows déclarent un .zip en
+             * « application/x-zip-compressed » (parfois une chaîne vide
+             * selon le navigateur), ce qui bloquait à tort des fichiers
+             * pourtant valides. L'extension est le même critère que celui
+             * appliqué côté serveur (règle « extensions »).
+             */
+            const allowedExtensions = ['pdf', 'docx', 'pptx', 'zip'];
 
             for (const fileInput of files) {
                 for (const file of fileInput.files) {
@@ -296,8 +304,11 @@
                         e.preventDefault();
                         return;
                     }
-                    if (!allowedTypes.includes(file.type)) {
-                        alert(`Le fichier "${file.name}" n'est pas un format accepté.`);
+
+                    const extension = (file.name.split('.').pop() || '').toLowerCase();
+
+                    if (!allowedExtensions.includes(extension)) {
+                        alert(`Le fichier "${file.name}" n'est pas un format accepté.\nFormats autorisés : PDF, Word (.docx), PowerPoint (.pptx), ZIP.`);
                         e.preventDefault();
                         return;
                     }

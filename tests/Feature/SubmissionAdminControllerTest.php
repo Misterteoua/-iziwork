@@ -232,6 +232,21 @@ class SubmissionAdminControllerTest extends TestCase
         $this->assertSame(2, $this->submission->files()->count());
     }
 
+    /*
+     * Même tolérance que pour les étudiants : un ZIP envoyé depuis Firefox
+     * (« application/x-zip-compressed ») doit être accepté par l'admin.
+     */
+    public function test_a_zip_declared_as_zip_compressed_can_be_added(): void
+    {
+        $response = $this->post("/admin/forms/{$this->form->id}/submissions/{$this->submission->id}/files", [
+            'file' => UploadedFile::fake()->create('archive.zip', 100, 'application/x-zip-compressed'),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+        $this->assertSame(2, $this->submission->files()->count());
+    }
+
     public function test_a_file_can_be_replaced_in_place(): void
     {
         $file = $this->submission->files()->first();
