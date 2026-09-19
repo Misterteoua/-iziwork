@@ -177,6 +177,7 @@ class DashboardController extends Controller
             'from' => $filters->from,
             'to' => $filters->to,
             'status' => $filters->status,
+            'search' => $filters->search,
         ], fn ($value) => $value !== null && $value !== '');
     }
 
@@ -184,7 +185,7 @@ class DashboardController extends Controller
      * Représentation des filtres attendue par la vue (tableau indexé), pour ne
      * pas la coupler aux propriétés de l'objet partagé.
      *
-     * @return array{form_id: int|null, period: string, from: string|null, to: string|null, status: string|null}
+     * @return array{form_id: int|null, period: string, from: string|null, to: string|null, status: string|null, search: string|null}
      */
     private function viewFilters(SubmissionFilters $filters): array
     {
@@ -194,6 +195,7 @@ class DashboardController extends Controller
             'from' => $filters->from,
             'to' => $filters->to,
             'status' => $filters->status,
+            'search' => $filters->search,
         ];
     }
 }

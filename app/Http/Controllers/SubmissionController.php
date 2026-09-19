@@ -220,8 +220,8 @@ class SubmissionController extends Controller
     }
 
     /**
-     * Soumissions d'un formulaire, éventuellement filtrées par période, plage
-     * de dates et statut.
+     * Soumissions d'un formulaire, éventuellement filtrées par recherche,
+     * période, plage de dates et statut.
      *
      * Même lecture d'URL que le tableau de bord (SubmissionFilters) : le filtre
      * « formulaire » est simplement omis, la page étant déjà limitée au sien.
@@ -242,6 +242,7 @@ class SubmissionController extends Controller
                 'from' => $filters->from,
                 'to' => $filters->to,
                 'status' => $filters->status,
+                'search' => $filters->search,
             ],
             'isFiltered' => $filters->isActive(),
             // Le total non filtré sert de repère : « 1 sur 3 soumissions ».
@@ -268,6 +269,7 @@ class SubmissionController extends Controller
             'from' => $filters->from,
             'to' => $filters->to,
             'status' => $filters->status,
+            'search' => $filters->search,
         ], fn ($value) => $value !== null && $value !== '');
     }
 

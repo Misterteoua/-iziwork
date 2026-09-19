@@ -217,6 +217,18 @@ class SubmissionExportTest extends TestCase
         $this->assertCount(3, $rows);
     }
 
+    public function test_l_export_suit_la_recherche(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00', 'validated', ['student_name' => 'Jean Dupont']);
+        $this->submission($this->maths, '2026-09-17 08:00:00', 'validated', ['student_name' => 'Marie Curie']);
+
+        $rows = $this->rows($this->export(['search' => 'dupont']));
+
+        $this->assertCount(2, $rows);
+        $this->assertStringContainsString('Jean Dupont', $rows[1]);
+        $this->assertStringNotContainsString('Marie Curie', implode("\n", $rows));
+    }
+
     public function test_l_export_suit_les_filtres_combines(): void
     {
         $this->submission($this->maths, '2026-09-19 08:00:00', 'pending');

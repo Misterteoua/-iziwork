@@ -6,6 +6,7 @@ use App\Models\Form;
 use Illuminate\Contracts\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Filtres de soumissions lus depuis l'URL.
@@ -27,6 +28,9 @@ final class SubmissionFilters
     /** Statuts acceptés. */
     public const STATUSES = ['pending', 'validated'];
 
+    /** Longueur maximale d'une recherche, par simple prudence. */
+    private const MAX_SEARCH_LENGTH = 100;
+
     /**
      * @param  int|null  $formId  Formulaire sélectionné (le tableau de bord seul
      *                            propose ce filtre : la page d'un formulaire est
@@ -38,6 +42,7 @@ final class SubmissionFilters
         public readonly ?string $from,
         public readonly ?string $to,
         public readonly ?string $status,
+        public readonly ?string $search,
     ) {}
 
     /**
@@ -52,6 +57,7 @@ final class SubmissionFilters
             from: self::date($request->query('from')),
             to: self::date($request->query('to')),
             status: self::status($request->query('status')),
+            search: self::search($request->query('search')),
         );
     }
 
@@ -67,7 +73,8 @@ final class SubmissionFilters
             || $this->status !== null
             || $this->period !== 'all'
             || $this->from !== null
-            || $this->to !== null;
+            || $this->to !== null
+            || $this->search !== null;
     }
 
     /**
@@ -116,7 +123,27 @@ final class SubmissionFilters
             ->when($this->formId, fn (Builder $q, int $id) => $q->where('form_id', $id))
             ->when($this->status, fn (Builder $q, string $status) => $q->where('status', $status))
             ->when($start, fn (Builder $q) => $q->where('created_at', '>=', $start))
-            ->when($end, fn (Builder $q) => $q->where('created_at', '<=', $end));
+            ->when($end, fn (Builder $q) => $q->where('created_at', '<=', $end))
+            ->when($this->search, fn (Builder $q, string $term) => $this->applySearch($q, $term));
+    }
+
+    /**
+     * Recherche « nom ou email », insensible à la casse quand la collation de
+     * la base le permet (MySQL en utf8mb4_*_ci et SQLite sur l'ASCII).
+     *
+     * Le code anonyme est inclus dans la recherche : sur un formulaire anonyme,
+     * c'est l'identifiant affiché à la place du nom, et un administrateur qui
+     * chercherait un code sans le trouver croirait à une panne.
+     */
+    private function applySearch(Builder $query, string $term): Builder
+    {
+        $pattern = '%'.$term.'%';
+
+        return $query->where(function (Builder $q) use ($pattern): void {
+            $q->where('student_name', 'like', $pattern)
+                ->orWhere('student_email', 'like', $pattern)
+                ->orWhere('anonymous_code', 'like', $pattern);
+        });
     }
 
     /**
@@ -133,6 +160,28 @@ final class SubmissionFilters
         $id = (int) $value;
 
         return Form::whereKey($id)->exists() ? $id : null;
+    }
+
+    /**
+     * Terme de recherche, nettoyé.
+     *
+     * Les jokers SQL (`%`, `_`) et l'antislash sont retirés : sans cela, une
+     * recherche « % » listerait tout le monde, et « _ » ferait correspondre
+     * n'importe quel caractère. Un nom d'étudiant n'en a jamais besoin.
+     */
+    private static function search(mixed $value): ?string
+    {
+        if (! is_scalar($value)) {
+            return null;
+        }
+
+        $term = trim(str_replace(['%', '_', '\\'], '', (string) $value));
+
+        if ($term === '') {
+            return null;
+        }
+
+        return Str::limit($term, self::MAX_SEARCH_LENGTH, '');
     }
 
     private static function period(mixed $value): string

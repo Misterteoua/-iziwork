@@ -312,6 +312,98 @@ class DashboardControllerTest extends TestCase
         $this->assertSame(1, $response->viewData('filteredCount'));
     }
 
+    // ----------------------------------------------------------------- Recherche
+
+    public function test_recherche_par_nom_d_etudiant(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00');
+        $this->submission($this->maths, '2026-09-17 08:00:00');
+        $this->submission($this->maths, '2026-09-16 08:00:00');
+
+        $response = $this->dashboard(['search' => 'Etudiant 2']);
+
+        $this->assertTrue($response->viewData('isFiltered'));
+        $this->assertSame(1, $response->viewData('filteredCount'));
+        $this->assertSame('Etudiant 2', $this->listed($response)->first()->student_name);
+    }
+
+    public function test_recherche_par_email_d_etudiant(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00');
+        $this->submission($this->maths, '2026-09-17 08:00:00');
+
+        // Recherche partielle : l'administrateur tape un morceau d'adresse.
+        $response = $this->dashboard(['search' => 'etudiant2@']);
+
+        $this->assertSame(1, $response->viewData('filteredCount'));
+        $this->assertSame('etudiant2@test.com', $this->listed($response)->first()->student_email);
+    }
+
+    public function test_recherche_insensible_a_la_casse(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00', 'validated');
+
+        $this->assertSame(1, $this->dashboard(['search' => 'eTuDiAnT 1'])->viewData('filteredCount'));
+    }
+
+    public function test_recherche_combinee_aux_autres_filtres(): void
+    {
+        $this->submission($this->maths, '2026-09-19 08:00:00', 'pending');
+        $this->submission($this->maths, '2026-09-19 09:00:00', 'validated');
+        $this->submission($this->autreForm(), '2026-09-19 10:00:00', 'pending');
+
+        // « Etudiant 2 » existe, mais pas avec le statut demandé.
+        $this->assertSame(0, $this->dashboard(['search' => 'Etudiant 2', 'status' => 'pending'])->viewData('filteredCount'));
+        $this->assertSame(1, $this->dashboard(['search' => 'Etudiant 2', 'status' => 'validated'])->viewData('filteredCount'));
+    }
+
+    public function test_recherche_sans_resultat_affiche_l_etat_vide(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00');
+
+        $response = $this->dashboard(['search' => 'inconnu']);
+
+        $response->assertOk();
+        $this->assertTrue($response->viewData('isFiltered'));
+        $response->assertSee('Aucune soumission ne correspond à ces filtres');
+    }
+
+    public function test_les_jokers_sql_sont_neutralises(): void
+    {
+        $this->submission($this->maths, '2026-09-18 08:00:00');
+        $this->submission($this->maths, '2026-09-17 08:00:00');
+
+        // « % » et « _ » ne doivent pas transformer la recherche en joker :
+        // retirés du terme, il ne reste rien à filtrer.
+        $response = $this->dashboardRaw('search=%25');
+
+        $this->assertFalse($response->viewData('isFiltered'));
+        $this->assertCount(2, $this->listed($response));
+
+        $response = $this->dashboardRaw('search=_');
+
+        $this->assertFalse($response->viewData('isFiltered'));
+        $this->assertCount(2, $this->listed($response));
+    }
+
+    public function test_le_lien_d_export_reprend_la_recherche(): void
+    {
+        $response = $this->dashboard(['search' => 'jean']);
+
+        $this->assertStringContainsString('search=jean', $response->viewData('exportUrl'));
+    }
+
+    /**
+     * Second formulaire, pour les tests de combinaison de filtres.
+     */
+    private function autreForm(): Form
+    {
+        return Form::firstOrCreate(
+            ['title' => 'PHYSIQUE'],
+            ['status' => 'active', 'created_by' => $this->admin->id]
+        );
+    }
+
     // -------------------------------------------------- Robustesse des paramètres
 
     public function test_parametres_invalides_sont_ignores_sans_erreur(): void

@@ -76,11 +76,11 @@
             </span>
             <div>
                 <h2 class="text-base font-semibold text-slate-900">Filtrer les soumissions</h2>
-                <p class="text-xs text-slate-500">Par formulaire, période, plage de dates ou statut</p>
+                <p class="text-xs text-slate-500">Par étudiant, formulaire, période, plage de dates ou statut</p>
             </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
                 <label for="filter-form" class="block text-sm font-medium text-slate-700 mb-1.5">Formulaire</label>
                 <select name="form" id="filter-form"
@@ -90,6 +90,14 @@
                     <option value="{{ $formOption->id }}" @selected($filters['form_id'] === $formOption->id)>{{ $formOption->title }}</option>
                     @endforeach
                 </select>
+            </div>
+
+            <div>
+                <label for="filter-search" class="block text-sm font-medium text-slate-700 mb-1.5">Recherche</label>
+                <input type="search" name="search" id="filter-search" value="{{ $filters['search'] }}"
+                       autocomplete="off"
+                       placeholder="Nom, email ou code anonyme…"
+                       class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">
             </div>
 
             <div>

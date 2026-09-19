@@ -220,6 +220,46 @@ class SubmissionIndexFilterTest extends TestCase
         $this->assertCount(1, $this->listed($response));
     }
 
+    // ----------------------------------------------------------------- Recherche
+
+    public function test_recherche_par_nom_ou_email(): void
+    {
+        $this->submission($this->form, '2026-09-18 08:00:00');
+        $this->submission($this->form, '2026-09-17 08:00:00');
+
+        $parNom = $this->page(['search' => 'etudiant 1']);
+
+        $this->assertTrue($parNom->viewData('isFiltered'));
+        $this->assertCount(1, $this->listed($parNom));
+        $this->assertSame('Etudiant 1', $this->listed($parNom)->first()->student_name);
+
+        $parEmail = $this->page(['search' => 'etudiant2@test']);
+
+        $this->assertCount(1, $this->listed($parEmail));
+        $this->assertSame('Etudiant 2', $this->listed($parEmail)->first()->student_name);
+    }
+
+    public function test_recherche_combinee_au_statut(): void
+    {
+        $this->submission($this->form, '2026-09-18 08:00:00', 'validated');
+        $this->submission($this->form, '2026-09-17 08:00:00', 'pending');
+
+        $response = $this->page(['search' => 'Etudiant 2', 'status' => 'validated']);
+
+        $this->assertCount(0, $this->listed($response));
+        $response->assertSee('Aucune soumission ne correspond à ces filtres');
+    }
+
+    public function test_les_jokers_sql_ne_transforment_pas_la_recherche_en_liste_complete(): void
+    {
+        $this->submission($this->form, '2026-09-18 08:00:00');
+
+        $response = $this->get('/admin/forms/'.$this->form->id.'/submissions?search=%25');
+
+        $response->assertOk();
+        $this->assertFalse($response->viewData('isFiltered'));
+    }
+
     // --------------------------------------------------- Robustesse & état vide
 
     public function test_parametres_invalides_sont_ignores(): void

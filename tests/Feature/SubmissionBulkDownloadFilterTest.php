@@ -203,6 +203,16 @@ class SubmissionBulkDownloadFilterTest extends TestCase
         $this->assertSame(['Dupont_Jean/DEVOIR/devoir.pdf'], $names);
     }
 
+    public function test_l_archive_suit_la_recherche(): void
+    {
+        $this->submission('2026-09-18 08:00:00', 'validated', 'Jean Dupont');
+        $this->submission('2026-09-17 08:00:00', 'validated', 'Marie Curie');
+
+        $names = $this->entries($this->download(['search' => 'curie']));
+
+        $this->assertSame(['Curie_Marie/DEVOIR/devoir.pdf'], $names);
+    }
+
     public function test_les_parametres_invalides_sont_ignores_dans_l_archive(): void
     {
         $this->submission('2026-09-18 08:00:00', 'validated', 'Jean Dupont');
