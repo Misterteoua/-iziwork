@@ -597,6 +597,69 @@ class QuizAdminControllerTest extends TestCase
 
     // -------------------------------------------------------------- Résultats
 
+    public function test_le_mode_libre_ne_bascule_pas_en_mode_liste_apres_une_copie(): void
+    {
+        // Évaluation créée par l'écran d'administration, comme en production :
+        // elle est en mode libre, et elle doit le rester.
+        $this->post(route('admin.quizzes.store'), $this->settingsPayload([
+            'title' => 'Evaluation libre',
+            'is_anonymous' => null,
+        ]))->assertRedirect();
+
+        $quiz = Form::where('title', 'Evaluation libre')->firstOrFail();
+
+        $quiz->fields()->create([
+            'field_label' => 'Une question ?',
+            'field_type' => 'radio',
+            'required' => true,
+            'order' => 1,
+            'options' => ['Un', 'Deux'],
+            'correct_answer' => [1],
+            'points' => 1,
+        ]);
+
+        $quiz->update(['status' => 'active']);
+
+        // Un premier étudiant a déjà rendu sa copie sur ce poste.
+        $quiz->attempts()->create([
+            'reference' => 'ABCDEFGHJK',
+            'student_name' => 'Jean',
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(10),
+            'submitted_at' => Carbon::now(),
+        ]);
+
+        // Salle informatique : le suivant saisit son nom, pas une référence qu'il
+        // n'a jamais reçue. Compter les participations faisait basculer en mode
+        // liste dès la première copie, et bloquait tout le monde.
+        $this->get(route('quiz.start', $quiz->token))
+            ->assertOk()
+            ->assertSee('Nom complet')
+            ->assertDontSee('Votre référence');
+    }
+
+    public function test_la_generation_de_references_fige_le_mode_liste(): void
+    {
+        $this->question();
+        // L'évaluation doit être ouverte : fermée, la page d'accès affiche un
+        // message et cache le formulaire, ce qui ne prouverait rien.
+        $this->quiz->update(['status' => 'active']);
+
+        $this->post(route('admin.quizzes.references.store', $this->quiz), ['count' => 1])->assertRedirect();
+
+        // Toutes les références sont consommées : l'évaluation reste pourtant en
+        // mode liste, et un étudiant sans référence ne peut pas entrer.
+        $this->quiz->attempts()->update([
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(5),
+            'submitted_at' => Carbon::now(),
+        ]);
+
+        $this->get(route('quiz.start', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Votre référence');
+    }
+
     public function test_la_reinitialisation_efface_les_reponses_et_rend_la_place(): void
     {
         $question = $this->question();

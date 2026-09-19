@@ -49,6 +49,23 @@
             @endif
         </ul>
 
+        @if($finishedAttempt ?? null)
+        {{-- Salle informatique : la copie précédente ne doit pas confisquer le
+             poste. Elle reste accessible par ce lien, et le formulaire
+             ci-dessous est celui du candidat suivant. --}}
+        <div class="mt-6 rounded-xl bg-slate-50 border border-slate-200 px-4 py-3">
+            <p class="text-sm text-slate-700">
+                Une copie a déjà été rendue sur cet appareil
+                (référence <span class="font-mono font-semibold">{{ $finishedAttempt->reference }}</span>).
+                <a href="{{ route('quiz.result', $quiz->token) }}" class="font-semibold text-brand-700 hover:text-brand-800">Voir ce résultat</a>
+            </p>
+            <p class="mt-2 text-xs text-slate-500">
+                Vous êtes l'étudiant suivant ? Remplissez le formulaire ci-dessous : vous obtiendrez
+                votre propre copie, avec votre propre référence.
+            </p>
+        </div>
+        @endif
+
         @if(! $quiz->quizIsOpen())
         <div class="mt-6 rounded-xl bg-slate-100 border border-slate-200 px-4 py-3 text-sm text-slate-700" role="alert">
             Cette évaluation n'est pas ouverte actuellement.

@@ -137,5 +137,15 @@
         </ul>
     </div>
     @endif
+
+    {{-- Salle informatique : l'étudiant suivant ne doit pas rester sur cette page.
+         La route refuse d'abandonner une épreuve en cours, seul un rendu se
+         détache. --}}
+    <form method="POST" action="{{ route('quiz.new-candidate', $quiz->token) }}" class="mt-8 text-center">
+        @csrf
+        <button type="submit" class="text-xs font-medium text-slate-500 hover:text-brand-600 transition-colors duration-150">
+            Ce n'est pas ma copie — laisser la place à un autre étudiant
+        </button>
+    </form>
 </div>
 @endsection

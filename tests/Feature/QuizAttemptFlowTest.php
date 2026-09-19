@@ -218,15 +218,149 @@ class QuizAttemptFlowTest extends TestCase
         $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $premier->status);
     }
 
-    public function test_une_copie_rendue_ramene_au_resultat_et_non_au_formulaire_d_acces(): void
+    public function test_une_copie_rendue_laisse_le_formulaire_au_candidat_suivant(): void
     {
         $question = $this->question();
         $this->start(['student_name' => 'Jean']);
         $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
         $this->post(route('quiz.submit', $this->quiz->token));
 
+        // Le poste doit pouvoir servir au candidat suivant (salle informatique) :
+        // la copie rendue est rappelée par un lien, le formulaire reste affiché.
         $this->get(route('quiz.start', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Une copie a déjà été rendue sur cet appareil')
+            ->assertSee('Commencer')
+            ->assertSee(route('quiz.result', $this->quiz->token));
+    }
+
+    public function test_en_mode_libre_un_second_candidat_demarre_sur_le_meme_navigateur(): void
+    {
+        $question = $this->question();
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $premier = $this->quiz->attempts()->firstOrFail();
+
+        // C'est la fin de l'épreuve du premier qui libère le poste, sans qu'il
+        // faille fermer le navigateur : l'étudiant suivant saisit son nom et
+        // obtient sa propre copie, avec sa propre référence.
+        $this->start(['student_name' => 'Awa'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(2, $this->quiz->attempts()->count());
+
+        $second = $this->quiz->attempts()->orderByDesc('id')->firstOrFail();
+
+        $this->assertNotSame($premier->id, $second->id);
+        $this->assertSame('Awa', $second->student_name);
+        $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $second->status);
+        $this->assertNotSame($premier->reference, $second->reference);
+
+        // La copie du premier n'a pas bougé d'un pouce.
+        $this->assertSame(QuizAttempt::STATUS_SUBMITTED, $premier->refresh()->status);
+        $this->assertSame(1, $premier->answers()->count());
+    }
+
+    public function test_en_mode_liste_un_second_candidat_demarre_avec_sa_reference(): void
+    {
+        $question = $this->question();
+
+        $premier = $this->attempt(['reference' => 'ABCDEFGHJK']);
+        $second = $this->attempt(['reference' => 'ABCDEFGHJM']);
+
+        $this->start(['reference' => 'ABCD EFGH JK', 'student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->assertSame(QuizAttempt::STATUS_SUBMITTED, $premier->refresh()->status);
+
+        $this->get(route('quiz.start', $this->quiz->token))->assertOk();
+
+        $this->start(['reference' => $second->reference, 'student_name' => 'Awa'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $second->refresh()->status);
+        $this->assertSame('Awa', $second->student_name);
+    }
+
+    public function test_le_candidat_qui_ressaisit_sa_reference_retrouve_son_resultat(): void
+    {
+        $question = $this->question();
+        $premier = $this->attempt(['reference' => 'ABCDEFGHJK']);
+
+        $this->start(['reference' => $premier->reference, 'student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // Il revient sur la page d'accès et ressaisit ce qu'il a déjà utilisé :
+        // c'est la même personne, on lui montre sa copie — et surtout on n'en
+        // ouvre pas une seconde.
+        $this->start(['reference' => $premier->reference])
             ->assertRedirect(route('quiz.result', $this->quiz->token));
+
+        $this->assertSame(1, $this->quiz->attempts()->count());
+        $this->assertSame(QuizAttempt::STATUS_SUBMITTED, $premier->refresh()->status);
+    }
+
+    public function test_une_reference_deja_servie_reste_refusee_sur_un_poste_libre(): void
+    {
+        $question = $this->question();
+
+        $premier = $this->attempt(['reference' => 'ABCDEFGHJK']);
+        $autre = $this->attempt([
+            'reference' => 'ABCDEFGHJM',
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(10),
+            'submitted_at' => Carbon::now(),
+        ]);
+
+        $this->start(['reference' => $premier->reference]);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // La libération du poste n'ouvre pas une porte dérobée : la référence
+        // d'un autre candidat, déjà servie, reste refusée.
+        $this->start(['reference' => $autre->reference])->assertSessionHasErrors('reference');
+
+        $this->assertSame(2, $this->quiz->attempts()->count());
+    }
+
+    public function test_le_poste_se_detache_apres_une_copie_rendue(): void
+    {
+        $question = $this->question();
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->post(route('quiz.new-candidate', $this->quiz->token))
+            ->assertRedirect(route('quiz.start', $this->quiz->token));
+
+        // Le poste est vierge : plus de bandeau, plus de copie rattachée.
+        $this->get(route('quiz.start', $this->quiz->token))
+            ->assertOk()
+            ->assertDontSee('Une copie a déjà été rendue sur cet appareil');
+    }
+
+    public function test_une_epreuve_en_cours_ne_se_detache_pas(): void
+    {
+        $premiere = $this->question();
+        $this->question();
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $premiere->id, 'choice' => 1]);
+
+        // Détacher une épreuve en cours ferait perdre à son auteur le fil de sa
+        // copie : le candidat qui se trompe de poste est arrêté ici.
+        $this->post(route('quiz.new-candidate', $this->quiz->token))
+            ->assertRedirect(route('quiz.question', $this->quiz->token))
+            ->assertSessionHas('error');
+
+        // La copie est intacte : la deuxième question attend toujours son auteur.
+        $this->get(route('quiz.question', $this->quiz->token))->assertOk();
+        $this->assertSame(1, $this->quiz->attempts()->count());
     }
 
     public function test_une_epreuve_en_cours_reprend_sans_repasser_par_la_page_d_acces(): void

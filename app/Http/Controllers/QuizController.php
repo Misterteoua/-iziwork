@@ -133,7 +133,7 @@ class QuizController extends Controller
             'close_date' => $validated['close_date'] ?? null,
             'max_submissions' => $validated['max_submissions'] ?? null,
             'is_anonymous' => $request->boolean('is_anonymous'),
-            'quiz_settings' => $this->settingsPayload($request, $validated),
+            'quiz_settings' => $this->settingsPayload($request, $validated, $quiz),
         ]);
 
         return redirect()->route('admin.quizzes.show', $quiz)
@@ -235,6 +235,10 @@ class QuizController extends Controller
             $quiz->attempts()->create(['reference' => QuizReference::generate()]);
         }
 
+        // Des références existent : l'entrée se fera par référence, et cela ne doit
+        // plus dépendre du nombre de participations en cours.
+        $quiz->markReferencesPrepared();
+
         return back()->with('success', $validated['count'].' référence(s) générée(s).');
     }
 
@@ -314,6 +318,10 @@ class QuizController extends Controller
         });
 
         $outcome->ignored += count($skipped);
+
+        // Une liste nominative importée fige le mode d'accès, même si toutes les
+        // copies sont rendues ou réinitialisées par la suite.
+        $quiz->markReferencesPrepared();
 
         return back()->with('import_students', [
             'summary' => $outcome->summary('étudiant importé', 'étudiants importés'),
@@ -612,10 +620,17 @@ class QuizController extends Controller
     /**
      * Réglages d'une évaluation, à partir de la requête déjà validée.
      *
+     * `requires_reference` n'est pas modifiable depuis le formulaire : il est
+     * repris tel quel. C'est la trace du mode d'accès (liste préparée ou libre),
+     * et elle ne doit pas se perdre parce qu'un enseignant a changé la durée ou
+     * les dates. Pour une évaluation créée avant ce réglage, la reprise classe la
+     * question une fois pour toutes au lieu de la laisser être redécidée à chaque
+     * étudiant.
+     *
      * @param  array<string, mixed>  $validated
      * @return array<string, mixed>
      */
-    private function settingsPayload(Request $request, array $validated): array
+    private function settingsPayload(Request $request, array $validated, ?Form $existing = null): array
     {
         $draw = $validated['draw_count'] ?? null;
 
@@ -626,6 +641,7 @@ class QuizController extends Controller
             'draw_count' => $draw === null || $draw === '' ? null : (int) $draw,
             'shuffle_questions' => $request->boolean('shuffle_questions'),
             'shuffle_options' => $request->boolean('shuffle_options'),
+            'requires_reference' => $existing !== null && $existing->quizHasPreparedReferences(),
         ];
     }
 

@@ -30,6 +30,11 @@ Route::post('/q/{quiz:token}/answer', [QuizAttemptController::class, 'answer'])-
 Route::get('/q/{quiz:token}/finish', [QuizAttemptController::class, 'submitPage'])->name('quiz.submit.page');
 Route::post('/q/{quiz:token}/submit', [QuizAttemptController::class, 'submit'])->name('quiz.submit');
 Route::post('/q/{quiz:token}/infraction', [QuizAttemptController::class, 'infraction'])->name('quiz.infraction');
+
+// Salle informatique : laisser le poste au candidat suivant, une fois la copie
+// rendue. La route refuse d'abandonner une épreuve en cours.
+Route::post('/q/{quiz:token}/nouveau-candidat', [QuizAttemptController::class, 'newCandidate'])
+    ->name('quiz.new-candidate');
 Route::get('/q/{quiz:token}/resultat', [QuizAttemptController::class, 'result'])->name('quiz.result');
 Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::class, 'recapPdf'])
     ->name('quiz.recap.pdf');

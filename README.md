@@ -220,11 +220,15 @@ iziwork/
    quota de participants, anonymat, affichage de la note, surveillance.
 2. **Ajouter les questions** : énoncé, propositions, case à cocher pour la ou les
    bonnes réponses, barème. Une question à choix unique n'accepte qu'une bonne réponse.
-3. **Préparer les références** : soit en important la liste des étudiants
-   (nom, email, filière), soit en générant un nombre de références. Chaque
-   référence fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L). Dès
-   qu'une référence existe, l'évaluation demande la référence au lieu du nom.
+3. **Préparer les références** (facultatif) : soit en important la liste des
+   étudiants (nom, email, filière), soit en générant un nombre de références.
+   Chaque référence fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L).
    Le bouton « Télécharger la liste (CSV) » donne les références à distribuer.
+   Importer une liste ou générer des références **fige le mode d'accès** :
+   l'évaluation demandera la référence au lieu du nom, définitivement — même
+   après que toutes les copies ont été rendues. Sans référence préparée,
+   l'évaluation reste en **mode libre** : l'étudiant saisit son nom et reçoit sa
+   propre référence, autant de fois que de candidats qui se présentent.
 4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}`.
 5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
    sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
@@ -239,6 +243,25 @@ Côté étudiant : saisie de la référence, une question à la fois, temps affi
 rappelé par le serveur, remise de la copie ou rendu automatique à l'expiration.
 La note, la référence et le temps apparaissent immédiatement, avec un
 récapitulatif PDF retéléchargeable à tout moment avec la référence seule.
+
+### Salle informatique : plusieurs candidats sur le même poste
+
+Le poste n'est jamais confisqué par la copie précédente. Une fois une copie
+rendue, la page d'accès reste affichée, avec un bandeau qui rappelle la copie
+rendue et mène à son résultat ; le candidat suivant remplit le formulaire et
+obtient **sa propre copie**, avec sa propre référence. Le bouton « Ce n'est pas
+ma copie — laisser la place à un autre étudiant », présent sur la page de
+résultat, détache aussi le poste.
+
+Ce qui reste verrouillé :
+
+- une **épreuve en cours** ne peut pas être détachée — le candidat qui se trompe
+  de poste ne fait pas perdre à un autre le fil de sa copie ;
+- une **référence déjà servie** reste refusée : libérer le poste n'ouvre pas une
+  porte dérobée ;
+- en mode libre, où rien ne distingue deux candidats, le garde-fou est le
+  **quota de participants** (`max_submissions`) : posez-le si l'évaluation est
+  ouverte sur un parc partagé.
 
 ### Importer les questions
 

@@ -26,6 +26,11 @@ class Form extends Model
         'draw_count' => null,
         'shuffle_questions' => false,
         'shuffle_options' => false,
+        // Mode d'accès : libre par défaut. Un import de liste ou une génération
+        // de références le bascule en « liste préparée » — et il ne rebascule
+        // jamais tout seul, ce qui compte : c'est ce qui garantit qu'un candidat
+        // suivant, sur le même poste, n'est pas mis dehors après la première copie.
+        'requires_reference' => false,
     ];
 
     protected $fillable = [
@@ -255,16 +260,47 @@ class Form extends Model
     {
         return $this->quizQuestions()->where('field_type', FormField::OPEN_TYPE)->exists();
     }
-
     /**
      * L'administration a-t-elle préparé des références ?
      *
      * Si oui, l'étudiant doit saisir la sienne et une référence inconnue est
      * refusée. Sinon l'évaluation est en mode libre : l'étudiant s'identifie,
      * et une référence lui est attribuée à ce moment-là.
+     *
+     * C'est un **réglage**, et non un décompte des participations. La différence
+     * n'est pas cosmétique : compter les participations faisait basculer en mode
+     * liste dès la première copie rendue, si bien que le deuxième étudiant du
+     * même poste — en mode libre — se voyait réclamer une référence qu'il n'avait
+     * jamais reçue. Impossible de commencer.
      */
     public function quizHasPreparedReferences(): bool
     {
-        return $this->attempts()->exists();
+        // Réglage enregistré : il fait foi, même après que toutes les copies ont
+        // été rendues ou réinitialisées.
+        if (array_key_exists('requires_reference', $this->quiz_settings ?? [])) {
+            return (bool) $this->quizSettings()['requires_reference'];
+        }
+
+        // Évaluation créée avant que ce réglage existe : on retombe sur l'indice
+        // d'origine, resserré pour ne pas confondre une liste préparée avec les
+        // copies déjà commencées par les étudiants.
+        return $this->attempts()
+            ->where(fn ($query) => $query
+                ->whereNull('started_at')
+                ->orWhere('status', QuizAttempt::STATUS_PENDING))
+            ->exists();
+    }
+
+    /**
+     * Fige l'évaluation en mode « liste préparée ».
+     *
+     * Appelé dès qu'une référence est créée pour un étudiant nommé ou générée en
+     * série : à partir de là, l'entrée se fait par référence, définitivement.
+     */
+    public function markReferencesPrepared(): void
+    {
+        $this->update([
+            'quiz_settings' => array_merge($this->quizSettings(), ['requires_reference' => true]),
+        ]);
     }
 }

@@ -47,20 +47,18 @@ class QuizAttemptController extends Controller
             return redirect()->route('quiz.question', $quiz->token);
         }
 
-        // Copie déjà rendue : le bouton « retour » du navigateur ne doit pas
-        // ramener le candidat sur un formulaire d'accès qui lui proposerait de
-        // recommencer une épreuve terminée.
-        if ($attempt !== null && $attempt->isFinished()) {
-            return redirect()->route('quiz.result', $quiz->token);
-        }
-
         $questionsCount = $quiz->quizQuestions()->count();
 
+        // Copie déjà rendue sur cet appareil : le formulaire reste affiché, parce
+        // que le poste doit pouvoir servir au candidat suivant (salle
+        // informatique). Elle est rappelée par un bandeau, qui mène à son
+        // résultat — la page ne renvoie plus directement à la copie du précédent.
         return view('student.quiz.start', [
             'quiz' => $quiz,
             'usesReferences' => $quiz->quizHasPreparedReferences(),
             'questionsCount' => $questionsCount,
             'maxScore' => $quiz->quizMaxScore(),
+            'finishedAttempt' => $attempt !== null && $attempt->isFinished() ? $attempt : null,
         ]);
     }
 
@@ -75,15 +73,20 @@ class QuizAttemptController extends Controller
             return back()->with('error', 'Cette évaluation n\'est pas ouverte actuellement.');
         }
 
-        $attempt = $this->resumableAttempt($request, $quiz);
+        $session = $this->sessionAttempt($quiz);
 
         // Reprise : un rechargement de page ne doit pas consommer une nouvelle
         // participation ni remettre le chrono à zéro.
-        if ($attempt !== null && $attempt->isInProgress() && ! $attempt->hasExpired()) {
+        $resumable = $this->resumableAttempt($request, $session);
+
+        if ($resumable !== null && $resumable->isInProgress() && ! $resumable->hasExpired()) {
             return redirect()->route('quiz.question', $quiz->token);
         }
 
-        if ($attempt !== null && $attempt->isFinished()) {
+        // Même candidat qui ressaisit sa propre référence sur sa copie rendue :
+        // c'est la même personne, on lui montre son résultat. Un candidat
+        // différent passe par la suite — sa référence, elle, n'a pas encore servi.
+        if ($session !== null && $session->isFinished() && $this->postsOwnReference($request, $session)) {
             return redirect()->route('quiz.result', $quiz->token);
         }
 
@@ -92,6 +95,9 @@ class QuizAttemptController extends Controller
         // l'administration n'a pas encore chargé de liste. Sans cette condition,
         // une référence saisie au hasard créerait une participation en mode
         // libre, avec une nouvelle référence — l'étudiant croirait être entré.
+        // Le poste est au candidat qui se présente : sur une copie rendue, une
+        // nouvelle saisie de nom (mode libre) ouvre une copie à lui, et une
+        // référence déjà servie est refusée par beginWithReference().
         $attempt = $request->filled('reference') || $quiz->quizHasPreparedReferences()
             ? $this->beginWithReference($request, $quiz)
             : $this->beginFree($request, $quiz);
@@ -499,17 +505,52 @@ class QuizAttemptController extends Controller
      * il ne doit pas être déposé dans la copie du précédent, sinon ses réponses
      * seraient enregistrées sous la référence d'un autre.
      */
-    private function resumableAttempt(Request $request, Form $quiz): ?QuizAttempt
+    private function resumableAttempt(Request $request, ?QuizAttempt $session): ?QuizAttempt
     {
-        $attempt = $this->sessionAttempt($quiz);
-
-        if ($attempt === null) {
+        if ($session === null) {
             return null;
         }
 
         $reference = QuizReference::normalize($request->input('reference'));
 
-        return $reference === null || $reference === $attempt->reference ? $attempt : null;
+        return $reference === null || $reference === $session->reference ? $session : null;
+    }
+
+    /**
+     * Le candidat a-t-il ressaisi la référence de sa propre copie ?
+     *
+     * Sert uniquement à le renvoyer vers son résultat après une copie rendue :
+     * sa référence, elle, a déjà servi et ne peut plus ouvrir d'épreuve.
+     */
+    private function postsOwnReference(Request $request, QuizAttempt $session): bool
+    {
+        $reference = QuizReference::normalize($request->input('reference'));
+
+        return $reference !== null && $reference === $session->reference;
+    }
+
+    /**
+     * Détache le poste de la copie qu'il vient de rendre.
+     *
+     * Salle informatique : le candidat suivant doit pouvoir commencer sans être
+     * renvoyé sur le résultat du précédent. Seule une copie **rendue** peut être
+     * détachée — abandonner une épreuve en cours ferait perdre à son auteur le
+     * fil de sa propre copie, et personne d'autre ne peut le décider à sa place.
+     */
+    public function newCandidate(Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        $attempt = $this->sessionAttempt($quiz);
+
+        if ($attempt !== null && ! $attempt->isFinished()) {
+            return redirect()->route('quiz.question', $quiz->token)
+                ->with('error', 'Cette épreuve est en cours : terminez-la ou laissez le temps s\'écouler avant de laisser la place à un autre étudiant.');
+        }
+
+        session()->forget('quiz_attempt.'.$quiz->id);
+
+        return redirect()->route('quiz.start', $quiz->token);
     }
 
     private function sessionAttempt(Form $quiz): ?QuizAttempt

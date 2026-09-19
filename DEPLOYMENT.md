@@ -177,6 +177,17 @@ jouées.
 > `ADD`/`MODIFY COLUMN` : aucune donnée existante n'est réécrite, et les copies
 > déjà notées gardent leur note.
 
+> **Mode d'accès (liste préparée / libre), sans migration.** Il est désormais
+> enregistré dans les réglages de l'évaluation, et non déduit du nombre de
+> participations : compter les participations faisait basculer une évaluation
+> libre en « liste préparée » dès la première copie rendue, ce qui bloquait
+> l'étudiant suivant du même poste, à qui l'on réclamait une référence jamais
+> reçue. Importer une liste ou générer des références enregistre le mode liste ;
+> une évaluation plus ancienne, sans ce réglage, est classée la première fois que
+> ses réglages sont enregistrés depuis l'écran d'administration (et, d'ici là,
+> l'ancien indice est resserré : une référence encore non commencée suffit à
+> reconnaître une liste préparée).
+
 > **Aucune dépendance à installer pour le module d'évaluations.** Il n'ajoute
 > ni paquet Composer ni extension PHP à activer : les migrations créent les
 tables `quiz_attempts` et `quiz_answers` et ajoutent des colonnes *avec valeur
