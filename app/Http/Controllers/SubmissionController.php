@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\Submission;
 use App\Models\SubmissionFile;
+use App\Support\SubmissionFilters;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -218,11 +219,42 @@ class SubmissionController extends Controller
         return $pdf->download("recapitulatif_{$submission->id}.pdf");
     }
 
-    public function adminIndex(Form $form)
+    /**
+     * Soumissions d'un formulaire, éventuellement filtrées par période, plage
+     * de dates et statut.
+     *
+     * Même lecture d'URL que le tableau de bord (SubmissionFilters) : le filtre
+     * « formulaire » est simplement omis, la page étant déjà limitée au sien.
+     */
+    public function adminIndex(Request $request, Form $form)
     {
-        $submissions = $form->submissions()->with('files')->orderByDesc('created_at')->get();
+        $filters = SubmissionFilters::fromRequest($request, withForm: false);
 
-        return view('admin.submissions.index', compact('form', 'submissions'));
+        [$start, $end] = $filters->bounds();
+
+        $submissions = $form->submissions()
+            ->with('files')
+            ->when($filters->status, fn ($q, $status) => $q->where('status', $status))
+            ->when($start, fn ($q) => $q->where('created_at', '>=', $start))
+            ->when($end, fn ($q) => $q->where('created_at', '<=', $end))
+            ->orderByDesc('created_at')
+            ->get();
+
+        return view('admin.submissions.index', [
+            'form' => $form,
+            'submissions' => $submissions,
+            'filters' => [
+                'period' => $filters->period,
+                'from' => $filters->from,
+                'to' => $filters->to,
+                'status' => $filters->status,
+            ],
+            'isFiltered' => $filters->isActive(),
+            // Le total non filtré sert à deux choses : dire sur combien de
+            // dépôts portent les filtres, et garder le bouton « Télécharger
+            // tout » visible même quand le filtre ne renvoie rien.
+            'totalCount' => $form->submissions()->count(),
+        ]);
     }
 
     public function adminShow(Form $form, Submission $submission)
