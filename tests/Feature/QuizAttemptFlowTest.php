@@ -198,6 +198,26 @@ class QuizAttemptFlowTest extends TestCase
             ->assertSee('aucune question');
     }
 
+    public function test_un_second_candidat_sur_le_meme_navigateur_n_entre_pas_dans_la_copie_du_premier(): void
+    {
+        $this->question();
+
+        $premier = $this->attempt(['reference' => 'ABCDEFGHJK']);
+        $second = $this->attempt(['reference' => 'ABCDEFGHJM']);
+
+        $this->start(['reference' => $premier->reference, 'student_name' => 'Jean']);
+
+        // Salle informatique : un deuxième étudiant utilise le même poste. Sa
+        // référence doit le mener à sa propre copie, pas à celle du précédent.
+        $this->start(['reference' => $second->reference, 'student_name' => 'Awa'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame('Awa', $second->refresh()->student_name);
+        $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $second->status);
+        $this->assertSame('Jean', $premier->refresh()->student_name);
+        $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $premier->status);
+    }
+
     public function test_une_copie_rendue_ramene_au_resultat_et_non_au_formulaire_d_acces(): void
     {
         $question = $this->question();
@@ -303,7 +323,10 @@ class QuizAttemptFlowTest extends TestCase
 
     public function test_une_reponse_apres_l_echeance_est_refusee_et_la_copie_corrigee(): void
     {
+        // Les deux questions existent avant le démarrage : depuis le tirage figé,
+        // une question créée en cours d'épreuve ne rejoint pas la copie en cours.
         $question = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+        $second = $this->question(['A', 'B'], [0], 'radio', 3);
         $attempt = $this->attempt();
 
         $this->start(['reference' => $attempt->reference, 'student_name' => 'Jean']);
@@ -314,8 +337,6 @@ class QuizAttemptFlowTest extends TestCase
             'question_id' => $question->id,
             'choice' => 1,
         ]);
-
-        $second = $this->question(['A', 'B'], [0], 'radio', 3);
 
         $attempt->refresh()->update(['expires_at' => Carbon::now()->subMinute()]);
 

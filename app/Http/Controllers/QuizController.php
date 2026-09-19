@@ -5,8 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAttempt;
+use App\Support\Import\ImportException;
+use App\Support\Import\QuestionSheet;
+use App\Support\Import\QuizTemplate;
+use App\Support\Import\StudentRoster;
+use App\Support\Import\TabularFile;
+use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -74,11 +81,7 @@ class QuizController extends Controller
             'is_anonymous' => $request->boolean('is_anonymous'),
             'status' => 'inactive',
             'type' => Form::TYPE_QUIZ,
-            'quiz_settings' => [
-                'duration_minutes' => (int) $validated['duration_minutes'],
-                'show_score' => $request->boolean('show_score'),
-                'proctoring' => $request->boolean('proctoring'),
-            ],
+            'quiz_settings' => $this->settingsPayload($request, $validated),
             'created_by' => $request->session()->get('admin_user.id'),
         ]);
 
@@ -110,11 +113,7 @@ class QuizController extends Controller
             'close_date' => $validated['close_date'] ?? null,
             'max_submissions' => $validated['max_submissions'] ?? null,
             'is_anonymous' => $request->boolean('is_anonymous'),
-            'quiz_settings' => [
-                'duration_minutes' => (int) $validated['duration_minutes'],
-                'show_score' => $request->boolean('show_score'),
-                'proctoring' => $request->boolean('proctoring'),
-            ],
+            'quiz_settings' => $this->settingsPayload($request, $validated),
         ]);
 
         return redirect()->route('admin.quizzes.show', $quiz)
@@ -149,17 +148,12 @@ class QuizController extends Controller
     {
         $this->assertQuiz($quiz);
 
-        $attributes = $this->validatedQuestion($request);
+        $question = $this->validatedQuestion($request);
 
-        $quiz->fields()->create([
-            'field_label' => trim((string) $request->input('field_label')),
-            'field_type' => $attributes['field_type'],
-            'required' => true,
-            'order' => (int) $quiz->quizQuestions()->max('order') + 1,
-            'options' => $attributes['options'],
-            'correct_answer' => $attributes['correct'],
-            'points' => $attributes['points'],
-        ]);
+        $quiz->fields()->create(QuizQuestionData::attributes(
+            $question,
+            (int) $quiz->quizQuestions()->max('order') + 1
+        ));
 
         return back()->with('success', 'Question ajoutée.');
     }
@@ -169,14 +163,14 @@ class QuizController extends Controller
         $this->assertQuiz($quiz);
         $this->assertQuestion($quiz, $field);
 
-        $attributes = $this->validatedQuestion($request);
+        $question = $this->validatedQuestion($request);
 
         $field->update([
-            'field_label' => trim((string) $request->input('field_label')),
-            'field_type' => $attributes['field_type'],
-            'options' => $attributes['options'],
-            'correct_answer' => $attributes['correct'],
-            'points' => $attributes['points'],
+            'field_label' => $question['field_label'],
+            'field_type' => $question['field_type'],
+            'options' => $question['options'],
+            'correct_answer' => $question['correct_answer'],
+            'points' => $question['points'],
         ]);
 
         return back()->with('success', 'Question mise à jour.');
@@ -219,6 +213,139 @@ class QuizController extends Controller
         }
 
         return back()->with('success', $validated['count'].' référence(s) générée(s).');
+    }
+
+    /**
+     * Import des questions depuis un fichier Excel, Word, CSV ou texte.
+     *
+     * Les lignes valides sont créées, les autres sont listées avec leur numéro
+     * et leur motif : importer quarante-sept questions sur cinquante en silence
+     * se découvrirait le jour de l'épreuve.
+     */
+    public function importQuestions(Request $request, Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        try {
+            [$questions, $outcome] = QuestionSheet::parse($this->uploadedRows($request));
+        } catch (ImportException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        DB::transaction(function () use ($quiz, $questions): void {
+            $order = (int) $quiz->quizQuestions()->max('order');
+
+            foreach ($questions as $question) {
+                $quiz->fields()->create(QuizQuestionData::attributes($question, ++$order));
+            }
+        });
+
+        return back()->with('import_questions', [
+            'summary' => $outcome->summary('question importée', 'questions importées'),
+            'errors' => $outcome->shownErrors(),
+            'hidden' => $outcome->hiddenErrorsCount(),
+        ]);
+    }
+
+    /**
+     * Import de la liste des étudiants : une référence est générée pour chacun.
+     *
+     * Chaque ligne devient une participation en attente, qui porte le nom et
+     * l'email importés. C'est la référence — et non le nom — que l'étudiant devra
+     * saisir : pour une évaluation anonyme, c'est elle qui tient lieu de numéro
+     * d'anonymat, et les noms restent hors des résultats et des exports.
+     */
+    public function importStudents(Request $request, Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        try {
+            [$students, $outcome] = StudentRoster::parse($this->uploadedRows($request));
+        } catch (ImportException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        $existingEmails = $quiz->attempts()
+            ->whereNotNull('student_email')
+            ->pluck('student_email')
+            ->map(static fn ($email): string => mb_strtolower((string) $email))
+            ->all();
+
+        $skipped = [];
+
+        DB::transaction(function () use ($quiz, $students, $existingEmails, &$skipped): void {
+            foreach ($students as $student) {
+                if ($student['email'] !== null && in_array($student['email'], $existingEmails, true)) {
+                    $skipped[] = $student['name'].' ('.$student['email'].') figure déjà dans la liste.';
+
+                    continue;
+                }
+
+                $quiz->attempts()->create([
+                    'reference' => QuizReference::generate(),
+                    'student_name' => $student['name'],
+                    'student_email' => $student['email'],
+                    'student_major' => $student['major'],
+                ]);
+            }
+        });
+
+        $outcome->ignored += count($skipped);
+
+        return back()->with('import_students', [
+            'summary' => $outcome->summary('étudiant importé', 'étudiants importés'),
+            'errors' => array_merge($outcome->shownErrors(), $skipped),
+            'hidden' => $outcome->hiddenErrorsCount(),
+        ]);
+    }
+
+    /** Modèle Excel des questions, à remplir puis à importer. */
+    public function questionTemplate()
+    {
+        return $this->template(QuizTemplate::questionRows(), 'Questions', 'modele-questions-evaluation.xlsx');
+    }
+
+    /** Modèle Excel de la liste des étudiants. */
+    public function studentTemplate()
+    {
+        return $this->template(QuizTemplate::studentRows(), 'Etudiants', 'modele-liste-etudiants.xlsx');
+    }
+
+    /**
+     * Liste des références à distribuer.
+     *
+     * Fichier nominatif : c'est la liste de distribution de l'enseignant, celui
+     * qui a importé les noms. Il n'est jamais montré à un étudiant, et l'export
+     * des résultats, lui, masque les noms des évaluations anonymes.
+     */
+    public function exportReferences(Form $quiz): StreamedResponse
+    {
+        $this->assertQuiz($quiz);
+
+        $attempts = $quiz->attempts()->orderBy('reference');
+
+        return response()->streamDownload(function () use ($attempts): void {
+            $handle = fopen('php://output', 'w');
+
+            fwrite($handle, "\xEF\xBB\xBF");
+            $this->writeCsvRow($handle, ['Référence', 'Nom', 'Email', 'Filière', 'État']);
+
+            $attempts->chunk(200, function ($rows) use ($handle): void {
+                foreach ($rows as $attempt) {
+                    $this->writeCsvRow($handle, [
+                        $attempt->reference,
+                        $attempt->student_name,
+                        $attempt->student_email,
+                        $attempt->student_major,
+                        $this->statusLabel($attempt->status),
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        }, 'references-evaluation-'.$quiz->id.'-'.now()->format('Y-m-d').'.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function resetAttempt(Form $quiz, QuizAttempt $attempt)
@@ -312,6 +439,7 @@ class QuizController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:5000'],
             'duration_minutes' => ['required', 'integer', 'min:1', 'max:600'],
+            'draw_count' => ['nullable', 'integer', 'min:1', 'max:'.QuestionSheet::MAX_QUESTIONS],
             'max_submissions' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'open_date' => ['nullable', 'date'],
             'close_date' => ['nullable', 'date', 'after_or_equal:open_date'],
@@ -321,19 +449,19 @@ class QuizController extends Controller
             'duration_minutes.min' => 'La durée doit être d\'au moins une minute.',
             'duration_minutes.max' => 'La durée ne peut pas dépasser 600 minutes (10 heures).',
             'max_submissions.integer' => 'Le quota de participants doit être un nombre entier.',
+            'draw_count.integer' => 'Le nombre de questions posées doit être un nombre entier.',
+            'draw_count.min' => 'Une épreuve comporte au moins une question.',
+            'draw_count.max' => 'Le tirage est limité à '.QuestionSheet::MAX_QUESTIONS.' questions.',
             'close_date.after_or_equal' => 'La date de fermeture doit suivre la date d\'ouverture.',
         ]);
     }
 
     /**
-     * Valide une question et remet ses options à plat.
+     * Valide une question saisie à la main, puis délègue la mise en forme à
+     * {@see QuizQuestionData} — le même code que l'import par fichier, pour que
+     * les deux chemins ne puissent pas accepter des choses différentes.
      *
-     * Les propositions vides sont retirées (l'administrateur qui n'utilise que
-     * trois options laisse la quatrième vide) et les index des bonnes réponses
-     * sont recalculés en conséquence — sans ce remappage, désigner la bonne
-     * réponse décalerait dès qu'une option vide traîne au milieu.
-     *
-     * @return array{field_type: string, options: array<int, string>, correct: array<int, int>, points: float}
+     * @return array{field_label: string, field_type: string, options: array<int, string>, correct_answer: array<int, int>, points: float}
      */
     private function validatedQuestion(Request $request): array
     {
@@ -357,54 +485,32 @@ class QuizController extends Controller
             'points.min' => 'Le barème doit être d\'au moins 0,5 point.',
         ]);
 
-        $options = [];
-        $remap = [];
+        return QuizQuestionData::normalize(
+            (string) $request->input('field_label'),
+            (array) $request->input('options', []),
+            array_map('intval', (array) $request->input('correct', [])),
+            (float) $request->input('points'),
+            (string) $request->input('field_type')
+        );
+    }
 
-        foreach ((array) $request->input('options') as $index => $label) {
-            $label = trim((string) $label);
-
-            if ($label === '') {
-                continue;
-            }
-
-            $remap[(int) $index] = count($options);
-            $options[] = $label;
-        }
-
-        if (count($options) < 2) {
-            throw ValidationException::withMessages([
-                'options' => 'Une question demande au moins deux propositions non vides.',
-            ]);
-        }
-
-        $correct = [];
-
-        foreach ((array) $request->input('correct') as $index) {
-            if (isset($remap[(int) $index])) {
-                $correct[] = $remap[(int) $index];
-            }
-        }
-
-        $correct = array_values(array_unique($correct));
-        sort($correct);
-
-        if ($correct === []) {
-            throw ValidationException::withMessages([
-                'correct' => 'Désignez la bonne réponse parmi les propositions non vides.',
-            ]);
-        }
-
-        if ($request->input('field_type') === 'radio' && count($correct) > 1) {
-            throw ValidationException::withMessages([
-                'correct' => 'Une question à choix unique ne peut avoir qu\'une seule bonne réponse.',
-            ]);
-        }
+    /**
+     * Réglages d'une évaluation, à partir de la requête déjà validée.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    private function settingsPayload(Request $request, array $validated): array
+    {
+        $draw = $validated['draw_count'] ?? null;
 
         return [
-            'field_type' => (string) $request->input('field_type'),
-            'options' => $options,
-            'correct' => $correct,
-            'points' => round((float) $request->input('points'), 2),
+            'duration_minutes' => (int) $validated['duration_minutes'],
+            'show_score' => $request->boolean('show_score'),
+            'proctoring' => $request->boolean('proctoring'),
+            'draw_count' => $draw === null || $draw === '' ? null : (int) $draw,
+            'shuffle_questions' => $request->boolean('shuffle_questions'),
+            'shuffle_options' => $request->boolean('shuffle_options'),
         ];
     }
 
@@ -429,6 +535,55 @@ class QuizController extends Controller
             QuizAttempt::STATUS_IN_PROGRESS => 'En cours',
             default => 'Non commencée',
         };
+    }
+
+    /**
+     * Lit le fichier envoyé et le rend sous forme de lignes.
+     *
+     * La validation se fait sur l'extension annoncée puis sur le contenu : la
+     * règle `mimes:` a déjà coûté un déploiement, un .xlsx étant annoncé par les
+     * navigateurs comme un simple zip. On vérifie donc ce qui est contrôlable, et
+     * le lecteur refuse un contenu illisible avec un message clair.
+     *
+     * @return array<int, array<int, string>>
+     */
+    private function uploadedRows(Request $request): array
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'max:5120'],
+        ], [
+            'file.required' => 'Choisissez un fichier à importer.',
+            'file.max' => 'Le fichier ne doit pas dépasser 5 Mo.',
+        ]);
+
+        $upload = $request->file('file');
+        $extension = strtolower((string) $upload->getClientOriginalExtension());
+
+        if (! in_array($extension, TabularFile::ACCEPTED, true)) {
+            throw new ImportException('Format non pris en charge : utilisez un fichier .xlsx, .docx, .csv ou .txt.');
+        }
+
+        return TabularFile::rows((string) $upload->getRealPath(), (string) $upload->getClientOriginalName());
+    }
+
+    /**
+     * Téléchargement d'un modèle, avec un message clair si le serveur ne peut
+     * pas le fabriquer (extension ZIP inactive).
+     *
+     * @param  array<int, array<int, string>>  $rows
+     */
+    private function template(array $rows, string $sheetName, string $filename)
+    {
+        try {
+            $content = QuizTemplate::xlsx($rows, $sheetName);
+        } catch (ImportException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return response($content, 200, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+        ]);
     }
 
     private function assertQuiz(Form $quiz): void

@@ -26,15 +26,17 @@
             @csrf
             <input type="hidden" name="question_id" value="{{ $question->id }}">
 
-            @foreach($options as $index => $option)
+            @foreach($options as $position => $option)
             <label class="flex items-start gap-3 p-4 rounded-xl border border-slate-200 hover:border-brand-300 hover:bg-brand-50/40 cursor-pointer transition-colors duration-150">
                 <input type="{{ $question->isMultipleAnswer() ? 'checkbox' : 'radio' }}"
                        name="choice{{ $question->isMultipleAnswer() ? '[]' : '' }}"
-                       value="{{ $index }}"
-                       @checked(in_array((string) $index, array_map('strval', (array) old('choice', [])), true))
+                       value="{{ $option['original'] }}"
+                       @checked(in_array((string) $option['original'], array_map('strval', (array) old('choice', [])), true))
                        class="mt-0.5 h-4 w-4 border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500/40">
                 <span class="text-sm text-slate-800">
-                    <span class="font-semibold text-slate-500 mr-1">{{ chr(65 + $index) }}.</span> {{ $option }}
+                    {{-- La lettre est la position affichée, pas l'index d'origine :
+                         c'est ce que le candidat voit, et elle change s'il y a mélange. --}}
+                    <span class="font-semibold text-slate-500 mr-1">{{ chr(65 + $position) }}.</span> {{ $option['label'] }}
                 </span>
             </label>
             @endforeach

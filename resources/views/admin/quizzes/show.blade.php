@@ -130,6 +130,35 @@
                 </label>
             </div>
 
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 border-t border-slate-100 pt-5">
+                <div>
+                    <label for="draw_count" class="block text-sm font-medium text-slate-700 mb-1.5">Questions posées à chaque candidat</label>
+                    <input type="number" name="draw_count" id="draw_count" min="1" max="300"
+                           value="{{ old('draw_count', $quiz->quizDrawCount()) }}" placeholder="Toutes"
+                           class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">
+                    <p class="mt-1.5 text-xs text-slate-500">
+                        Laissez vide pour poser toutes les questions. Une valeur plus petite fait tirer
+                        un sous-ensemble au hasard, différent pour chaque candidat.
+                    </p>
+                </div>
+
+                <div class="space-y-3">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="shuffle_questions" value="1" @checked(old('shuffle_questions', $quiz->quizShufflesQuestions()))
+                               class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
+                        <span class="text-sm text-slate-700">Mélanger l'ordre des questions pour chaque candidat</span>
+                    </label>
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="checkbox" name="shuffle_options" value="1" @checked(old('shuffle_options', $quiz->quizShufflesOptions()))
+                               class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
+                        <span class="text-sm text-slate-700">Mélanger les propositions (A, B, C…) pour chaque candidat</span>
+                    </label>
+                    <p class="text-xs text-slate-500">
+                        L'ordre tiré est fixé au démarrage de l'épreuve : un rechargement de page ne le change pas.
+                    </p>
+                </div>
+            </div>
+
             <button type="submit"
                     class="inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
                 Enregistrer les réglages
@@ -211,6 +240,77 @@
         </div>
     </section>
 
+    {{-- Import par fichier --}}
+    <section class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8 mb-8">
+        <h2 class="text-base font-semibold text-slate-900 mb-2">Importer depuis un fichier</h2>
+        <p class="text-sm text-slate-600">
+            Excel (.xlsx), Word (.docx), CSV ou texte. Les fichiers sont lus sur le serveur, sans installation
+            supplémentaire : une ligne refusée est signalée avec son numéro et son motif.
+        </p>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {{-- Questions --}}
+            <div class="rounded-xl border border-slate-200/70 p-5">
+                <h3 class="text-sm font-semibold text-slate-900">Questions</h3>
+                <p class="mt-1 text-xs text-slate-500">
+                    Une ligne par question : l'énoncé, les propositions A à F, la ou les bonnes réponses
+                    (par exemple <span class="font-mono">B</span>, <span class="font-mono">A C</span> ou
+                    <span class="font-mono">2</span>), puis le barème. Le type de question se déduit du nombre
+                    de bonnes réponses.
+                </p>
+
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <a href="{{ route('admin.quizzes.questions.template') }}"
+                       class="inline-flex items-center justify-center px-3.5 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                        Télécharger le modèle
+                    </a>
+                </div>
+
+                <form method="POST" action="{{ route('admin.quizzes.questions.import', $quiz) }}" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
+                    @csrf
+                    <input type="file" name="file" required accept=".xlsx,.docx,.csv,.txt"
+                           aria-label="Fichier des questions"
+                           class="block w-full text-xs text-slate-600 file:mr-3 file:px-3.5 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+                        Importer les questions
+                    </button>
+                </form>
+
+                @include('admin.quizzes._import-report', ['key' => 'import_questions'])
+            </div>
+
+            {{-- Liste des étudiants --}}
+            <div class="rounded-xl border border-slate-200/70 p-5">
+                <h3 class="text-sm font-semibold text-slate-900">Liste des étudiants</h3>
+                <p class="mt-1 text-xs text-slate-500">
+                    Un étudiant par ligne : nom, email (facultatif), filière (facultative). Une référence de
+                    10 caractères est générée pour chacun ; c'est elle que l'étudiant saisira à la place de son nom.
+                </p>
+
+                <div class="flex flex-wrap items-center gap-3 mt-4">
+                    <a href="{{ route('admin.quizzes.students.template') }}"
+                       class="inline-flex items-center justify-center px-3.5 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                        Télécharger le modèle
+                    </a>
+                </div>
+
+                <form method="POST" action="{{ route('admin.quizzes.students.import', $quiz) }}" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
+                    @csrf
+                    <input type="file" name="file" required accept=".xlsx,.docx,.csv,.txt"
+                           aria-label="Fichier de la liste des étudiants"
+                           class="block w-full text-xs text-slate-600 file:mr-3 file:px-3.5 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
+                    <button type="submit"
+                            class="inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+                        Importer la liste
+                    </button>
+                </form>
+
+                @include('admin.quizzes._import-report', ['key' => 'import_students'])
+            </div>
+        </div>
+    </section>
+
     {{-- Références --}}
     <section class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8 mb-8">
         <h2 class="text-base font-semibold text-slate-900 mb-2">Références des participants</h2>
@@ -252,6 +352,11 @@
                class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
                 Voir les résultats ({{ $attempts->count() }})
             </a>
+            <a href="{{ route('admin.quizzes.references.export', $quiz) }}"
+               class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                Télécharger la liste (CSV)
+            </a>
+            <span class="text-xs text-slate-500">Liste nominative, à conserver de votre côté — elle n'est jamais montrée aux étudiants.</span>
         </div>
         @endif
     </section>

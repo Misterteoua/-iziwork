@@ -34,6 +34,8 @@ class QuizAttempt extends Model
         'student_name',
         'student_email',
         'student_major',
+        'question_order',
+        'option_order',
         'status',
         'started_at',
         'expires_at',
@@ -55,6 +57,8 @@ class QuizAttempt extends Model
             'max_score' => 'decimal:2',
             'infractions' => 'array',
             'infraction_count' => 'integer',
+            'question_order' => 'array',
+            'option_order' => 'array',
         ];
     }
 
@@ -150,12 +154,84 @@ class QuizAttempt extends Model
     }
 
     /**
-     * Questions de l'évaluation, dans l'ordre prévu par l'administrateur.
+     * Questions posées à ce candidat, dans l'ordre qu'il a reçu.
+     *
+     * Sans plan enregistré (participation créée avant le tirage aléatoire, ou
+     * reprise d'une épreuve en cours), l'ordre naturel de l'administrateur
+     * s'applique : c'est exactement ce que le candidat voyait déjà.
      *
      * @return Collection<int, FormField>
      */
     public function questions(): Collection
     {
-        return $this->form->quizQuestions()->get();
+        $questions = $this->form->quizQuestions()->get();
+        $order = $this->question_order;
+
+        if (! is_array($order) || $order === []) {
+            return $questions;
+        }
+
+        // Une question supprimée pendant l'épreuve disparaît simplement du
+        // parcours : le candidat passe à la suivante au lieu de voir un trou.
+        $byId = $questions->keyBy('id');
+
+        return collect($order)
+            ->map(static fn ($id): ?FormField => $byId->get((int) $id))
+            ->filter()
+            ->values();
+    }
+
+    /**
+     * Propositions dans l'ordre vu par le candidat.
+     *
+     * Chaque entrée porte son index d'origine : le formulaire envoyé utilise cet
+     * index, donc la correction reste indépendante du mélange.
+     *
+     * @return array<int, array{original: int, label: string}>
+     */
+    public function displayOptions(FormField $question): array
+    {
+        $options = $question->getOptionsList();
+        $order = $this->displayOrder($question);
+
+        $display = [];
+
+        foreach ($order as $original) {
+            $display[] = [
+                'original' => $original,
+                'label' => (string) ($options[$original] ?? ''),
+            ];
+        }
+
+        return $display;
+    }
+
+    /**
+     * Index d'origine des propositions, dans l'ordre d'affichage.
+     *
+     * @return array<int, int>
+     */
+    public function displayOrder(FormField $question): array
+    {
+        $count = count($question->getOptionsList());
+        $natural = $count > 0 ? range(0, $count - 1) : [];
+        $stored = $this->option_order[(string) $question->id] ?? $this->option_order[$question->id] ?? null;
+
+        // Un ordre enregistré qui ne serait pas une permutation exacte des
+        // propositions est ignoré : mieux vaut l'ordre naturel qu'une proposition
+        // manquante ou affichée deux fois devant un candidat.
+        if (! is_array($stored)) {
+            return $natural;
+        }
+
+        $stored = array_values(array_unique(array_map('intval', $stored)));
+
+        // Attention : on compare l'ensemble trié, mais on renvoie l'ordre reçu.
+        // Trier la valeur retournée remettrait les propositions dans l'ordre
+        // d'origine et annulerait silencieusement le mélange.
+        $asSet = $stored;
+        sort($asSet);
+
+        return $asSet === $natural ? $stored : $natural;
     }
 }

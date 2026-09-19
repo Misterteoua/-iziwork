@@ -74,14 +74,16 @@
                 </div>
 
                 <ul class="mt-3 space-y-1">
-                    @foreach($question->getOptionsList() as $optionIndex => $option)
-                    @php($isCorrect = in_array($optionIndex, $question->correctIndexes(), true))
-                    @php($isChosen = in_array($optionIndex, $chosen, true))
+                    {{-- Propositions dans l'ordre reçu par ce candidat : afficher
+                         l'ordre d'origine lui ferait relire une autre épreuve. --}}
+                    @foreach($attempt->displayOptions($question) as $position => $option)
+                    @php($isCorrect = in_array($option['original'], $question->correctIndexes(), true))
+                    @php($isChosen = in_array($option['original'], $chosen, true))
                     <li class="text-xs flex items-start gap-2
                         {{ $isCorrect ? 'text-emerald-700 font-medium' : ($isChosen ? 'text-red-700' : 'text-slate-500') }}">
                         <span aria-hidden="true">{{ $isCorrect ? '✓' : ($isChosen ? '✗' : '·') }}</span>
                         <span>
-                            {{ chr(65 + $optionIndex) }}. {{ $option }}
+                            {{ chr(65 + $position) }}. {{ $option['label'] }}
                             @if($isChosen) <span class="text-slate-400">(votre réponse)</span> @endif
                         </span>
                     </li>

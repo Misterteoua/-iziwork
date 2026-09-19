@@ -61,7 +61,16 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
         ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.update');
     Route::delete('quizzes/{quiz}/questions/{field}', [QuizController::class, 'destroyQuestion'])
         ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.destroy');
+
+    // Import par fichier : le modèle téléchargeable évite à l'enseignant de
+    // deviner le format, et l'import se fait au moment où il choisit le type.
+    Route::get('quizzes/questions/template', [QuizController::class, 'questionTemplate'])->name('admin.quizzes.questions.template');
+    Route::post('quizzes/{quiz}/questions/import', [QuizController::class, 'importQuestions'])->whereNumber('quiz')->name('admin.quizzes.questions.import');
+    Route::get('quizzes/students/template', [QuizController::class, 'studentTemplate'])->name('admin.quizzes.students.template');
+    Route::post('quizzes/{quiz}/students/import', [QuizController::class, 'importStudents'])->whereNumber('quiz')->name('admin.quizzes.students.import');
+
     Route::post('quizzes/{quiz}/references', [QuizController::class, 'generateReferences'])->whereNumber('quiz')->name('admin.quizzes.references.store');
+    Route::get('quizzes/{quiz}/references/export', [QuizController::class, 'exportReferences'])->whereNumber('quiz')->name('admin.quizzes.references.export');
     Route::get('quizzes/{quiz}/results', [QuizController::class, 'results'])->whereNumber('quiz')->name('admin.quizzes.results');
     Route::get('quizzes/{quiz}/results/export', [QuizController::class, 'exportResults'])->whereNumber('quiz')->name('admin.quizzes.results.export');
     Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])

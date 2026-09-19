@@ -6,6 +6,7 @@ use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Support\QuizDraw;
 use App\Support\QuizGrader;
 use App\Support\QuizReference;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -73,7 +74,7 @@ class QuizAttemptController extends Controller
             return back()->with('error', 'Cette évaluation n\'est pas ouverte actuellement.');
         }
 
-        $attempt = $this->sessionAttempt($quiz);
+        $attempt = $this->resumableAttempt($request, $quiz);
 
         // Reprise : un rechargement de page ne doit pas consommer une nouvelle
         // participation ni remettre le chrono à zéro.
@@ -132,9 +133,10 @@ class QuizAttemptController extends Controller
             'quiz' => $quiz,
             'attempt' => $attempt,
             'question' => $current,
-            // Les options sont envoyées dans un ordre stable : le mélange
-            // (lot suivant) fera l'objet d'un tirage figé par candidat.
-            'options' => $current->getOptionsList(),
+            // Propositions dans l'ordre de ce candidat. Le formulaire envoie
+            // l'index d'origine de la proposition, donc la correction ne dépend
+            // pas du mélange reçu.
+            'options' => $attempt->displayOptions($current),
             'position' => $position + 1,
             'total' => $questions->count(),
             'remaining' => $attempt->remainingSeconds(),
@@ -352,6 +354,13 @@ class QuizAttemptController extends Controller
         }
 
         if (! $quiz->is_anonymous) {
+            // Nom déjà fourni par la liste importée : on ne le redemande pas et
+            // on ne l'écrase pas, sinon la liste de distribution ne correspondrait
+            // plus à ce qui est enregistré.
+            if ($attempt->student_name !== null) {
+                return $attempt;
+            }
+
             $request->validate([
                 'student_name' => ['required', 'string', 'max:255'],
                 'student_email' => ['nullable', 'email', 'max:255'],
@@ -411,12 +420,19 @@ class QuizAttemptController extends Controller
     private function startTimer(Form $quiz, QuizAttempt $attempt)
     {
         if ($attempt->started_at === null) {
+            // Le tirage est calculé ici, une fois pour toutes : quelles questions,
+            // dans quel ordre, et l'ordre des propositions. Un plan recalculé à
+            // chaque page donnerait une épreuve différente à chaque rechargement.
+            $plan = QuizDraw::plan($quiz);
+
             $attempt->update([
                 'status' => QuizAttempt::STATUS_IN_PROGRESS,
                 'started_at' => Carbon::now(),
                 'expires_at' => Carbon::now()->addMinutes($quiz->quizDurationMinutes()),
                 'ip_address' => request()->ip(),
-                'max_score' => $quiz->quizMaxScore(),
+                'question_order' => $plan['question_order'] === [] ? null : $plan['question_order'],
+                'option_order' => $plan['option_order'] === [] ? null : $plan['option_order'],
+                'max_score' => $plan['max_score'],
             ]);
         }
 
@@ -453,6 +469,27 @@ class QuizAttemptController extends Controller
         }
 
         return $attempt;
+    }
+
+    /**
+     * Participation à reprendre sur ce navigateur, ou null.
+     *
+     * Une référence saisie qui n'est pas celle de la session signifie qu'un autre
+     * candidat utilise le même ordinateur (salle informatique, poste partagé) :
+     * il ne doit pas être déposé dans la copie du précédent, sinon ses réponses
+     * seraient enregistrées sous la référence d'un autre.
+     */
+    private function resumableAttempt(Request $request, Form $quiz): ?QuizAttempt
+    {
+        $attempt = $this->sessionAttempt($quiz);
+
+        if ($attempt === null) {
+            return null;
+        }
+
+        $reference = QuizReference::normalize($request->input('reference'));
+
+        return $reference === null || $reference === $attempt->reference ? $attempt : null;
     }
 
     private function sessionAttempt(Form $quiz): ?QuizAttempt

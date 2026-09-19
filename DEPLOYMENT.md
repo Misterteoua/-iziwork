@@ -168,11 +168,14 @@ touche pas à un mot de passe existant. Seules les nouvelles migrations sont
 jouées.
 
 > **Aucune dépendance à installer pour le module d'évaluations.** Il n'ajoute
-> ni paquet Composer ni extension PHP à activer : les sept migrations créent les
+> ni paquet Composer ni extension PHP à activer : les migrations créent les
 tables `quiz_attempts` et `quiz_answers` et ajoutent des colonnes *avec valeur
 > par défaut* à `forms` et `form_fields`. Les formulaires de dépôt existants
 > gardent donc exactement leur comportement (`type = 'deposit'` par défaut),
-> et aucune donnée n'est touchée.
+> et aucune donnée n'est touchée. L'import des questions et de la liste des
+> étudiants se fait en PHP natif (lecture directe des archives .xlsx et .docx) :
+> les extensions `zip` et `simplexml` sont les seules nécessaires (voir le
+tableau des extensions plus bas).
 
 ### B.7.1 Vérifier les limites PHP
 
@@ -275,7 +278,15 @@ Changer le PHP du *sous-domaine* n'affecte **pas** les autres applis du compte.
 | `pdo_mysql` | base de données | ✅ |
 | `mbstring`, `fileinfo`, `openssl`, `ctype`, `tokenizer`, `curl`, `dom` | framework / PDF | ✅ |
 | `gd` | logo dans les PDF | ✅ |
-| **`zip`** | téléchargement des dépôts en ZIP | ♻️ optionnel (repli auto) |
+| `simplexml`, `libxml` | lecture des fichiers Excel et Word importés | ✅ (activée avec `dom`) |
+| **`zip`** | téléchargement des dépôts en ZIP, **import .xlsx / .docx** | ♻️ obligatoire pour l'import (repli auto pour le ZIP de dépôts) |
+
+> **Import et extension `zip` :** les fichiers Excel et Word sont des archives
+> ZIP. Sans l'extension `zip`, le téléchargement des dépôts reste possible (repli
+> automatique) mais **l'import de questions et de listes d'étudiants ne l'est
+> pas** : l'application affiche alors un message explicite invitant à activer
+> l'extension dans MultiPHP Manager, ou à importer un fichier `.csv`, qui ne
+> demande rien de particulier.
 
 **À propos du « conflit » `zip` / `pdo_mysql` :** ces deux extensions sont en
 réalité **indépendantes** et peuvent être actives en même temps. La plupart du

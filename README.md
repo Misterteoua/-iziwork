@@ -15,6 +15,9 @@ corrigés automatiquement).
 
 ### Évaluations en ligne (questionnaires)
 - **Création du questionnaire** : question par question, avec propositions et barème
+- **Import des questions** : depuis un fichier Excel (.xlsx), Word (.docx), CSV ou texte — modèle téléchargeable, lignes refusées signalées avec leur numéro
+- **Import de la liste des étudiants** : nom, email et filière, avec génération automatique d'une référence par étudiant et liste nominative à télécharger
+- **Tirage aléatoire** : un sous-ensemble de questions et/ou des propositions mélangées, différentes pour chaque candidat — l'ordre est figé au démarrage de l'épreuve
 - **Références alphanumériques** : 10 caractères générés pour la liste des étudiants ; la référence sert de numéro d'anonymat
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
 - **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible
@@ -216,18 +219,57 @@ iziwork/
    quota de participants, anonymat, affichage de la note, surveillance.
 2. **Ajouter les questions** : énoncé, propositions, case à cocher pour la ou les
    bonnes réponses, barème. Une question à choix unique n'accepte qu'une bonne réponse.
-3. **Préparer les références** : indiquez le nombre d'étudiants. Chaque référence
-   fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L). Dès qu'une
-   référence existe, l'évaluation demande la référence au lieu du nom.
+3. **Préparer les références** : soit en important la liste des étudiants
+   (nom, email, filière), soit en générant un nombre de références. Chaque
+   référence fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L). Dès
+   qu'une référence existe, l'évaluation demande la référence au lieu du nom.
+   Le bouton « Télécharger la liste (CSV) » donne les références à distribuer.
 4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}`.
 5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
    sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
    en cas d'incident.
 
+
 Côté étudiant : saisie de la référence, une question à la fois, temps affiché et
 rappelé par le serveur, remise de la copie ou rendu automatique à l'expiration.
 La note, la référence et le temps apparaissent immédiatement, avec un
 récapitulatif PDF retéléchargeable à tout moment avec la référence seule.
+
+### Importer les questions
+
+Téléchargez le **modèle Excel** depuis la page de l'évaluation : une ligne par
+question, avec l'énoncé en première colonne, les propositions (A à F) ensuite,
+puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
+
+- Le **type se déduit** du nombre de bonnes réponses : une seule → choix unique,
+  plusieurs → choix multiple.
+- Les propositions laissées vides sont ignorées, et les bonnes réponses
+  désignées par leur lettre restent correctes (la lettre désigne la colonne).
+- Une **ligne refusée n'est jamais perdue en silence** : elle est listée avec son
+  numéro et son motif, et les autres lignes sont bien importées.
+- Word est accepté sous les deux formes habituelles : un tableau (une ligne par
+  question) ou un paragraphe par question, propositions séparées par `|`.
+- Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi
+  faire : « Enregistrer sous » en `.xlsx` ou `.docx`.
+
+### Tirage aléatoire et mélange des propositions
+
+Trois réglages, tous désactivés par défaut :
+
+- **Questions posées à chaque candidat** : laissez vide pour poser tout le
+  questionnaire, ou indiquez un nombre pour tirer un sous-ensemble au hasard.
+- **Mélanger l'ordre des questions** : chaque candidat reçoit le même ensemble
+  dans un ordre différent.
+- **Mélanger les propositions** : l'ordre A, B, C, D change d'un candidat à
+  l'autre.
+
+Ce qui rend ces réglages utilisables en examen : l'ordre tiré est **figé au
+moment où le candidat commence** et enregistré pour sa copie. Recharger la page,
+fermer l'onglet ou revenir plus tard redonne exactement la même épreuve. Une
+question ajoutée pendant l'épreuve ne s'ajoute pas à une copie en cours. Enfin,
+la correction est indépendante du mélange : deux candidats ayant coché la même
+proposition obtiennent la même note, quel que soit l'ordre reçu — le barème suit
+les questions réellement posées, pas la banque entière.
 
 ### Ce que la surveillance ne peut pas faire
 

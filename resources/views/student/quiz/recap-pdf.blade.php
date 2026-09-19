@@ -84,15 +84,22 @@
                     <span class="bad">Faux — 0 point</span>
                 @endif
             </div>
-            <div class="meta">
-                Votre réponse :
-                @if($chosen === [])
-                    —
-                @else
-                    {{ implode(', ', array_map(fn ($i) => chr(65 + $i), $chosen)) }}
+            {{-- Les réponses sont désignées par leur intitulé et non par une
+                 lettre : avec un mélange des propositions, la lettre « B »
+                 n'est pas la même d'un candidat à l'autre. --}}
+            @php($chosenLabels = [])
+            @php($correctLabels = [])
+            @foreach($attempt->displayOptions($question) as $option)
+                @if(in_array($option['original'], $chosen, true))
+                    @php($chosenLabels[] = $option['label'])
                 @endif
-                · Bonne réponse :
-                {{ implode(', ', array_map(fn ($i) => chr(65 + $i), $question->correctIndexes())) }}
+                @if(in_array($option['original'], $question->correctIndexes(), true))
+                    @php($correctLabels[] = $option['label'])
+                @endif
+            @endforeach
+            <div class="meta">
+                Votre réponse : {{ $chosenLabels === [] ? '—' : implode(' ; ', $chosenLabels) }}
+                · Bonne réponse : {{ implode(' ; ', $correctLabels) }}
             </div>
         </div>
         @endforeach

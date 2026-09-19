@@ -21,6 +21,11 @@ class Form extends Model
         'duration_minutes' => 30,
         'show_score' => true,
         'proctoring' => true,
+        // Tirage aléatoire : désactivé par défaut, pour qu'une évaluation créée
+        // sans y penser reste celle que son auteur a écrite, question par question.
+        'draw_count' => null,
+        'shuffle_questions' => false,
+        'shuffle_options' => false,
     ];
 
     protected $fillable = [
@@ -146,6 +151,31 @@ class Form extends Model
     public function quizUsesProctoring(): bool
     {
         return (bool) $this->quizSettings()['proctoring'];
+    }
+
+    /**
+     * Nombre de questions posées à chaque candidat, ou null si toutes le sont.
+     *
+     * Une valeur supérieure à la banque de questions est ramenée au total : on
+     * ne peut pas poser plus de questions qu'il n'en existe.
+     */
+    public function quizDrawCount(): ?int
+    {
+        $count = (int) ($this->quizSettings()['draw_count'] ?? 0);
+
+        return $count > 0 ? $count : null;
+    }
+
+    /** Le même questionnaire dans un ordre différent pour chaque candidat. */
+    public function quizShufflesQuestions(): bool
+    {
+        return (bool) $this->quizSettings()['shuffle_questions'];
+    }
+
+    /** Les propositions mélangées (A, B, C, D) pour chaque candidat. */
+    public function quizShufflesOptions(): bool
+    {
+        return (bool) $this->quizSettings()['shuffle_options'];
     }
 
     /**
