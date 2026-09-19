@@ -107,14 +107,15 @@ fourni dans [`.env.production.example`](.env.production.example).
 ### Sans SSH ni Terminal (voie retenue)
 
 ```bash
-bash tools/build-release.sh   # produit build/iziwork-release.zip
+php tools/release.php   # construit, contrôle, horodate et affiche le jeton /update
 ```
 
-Uploadez l'archive dans le Gestionnaire de fichiers, extrayez-la, pointez le
-Document Root sur `iziwork/public`, puis ouvrez `/install` : l'assistant écrit
-`.env`, génère `APP_KEY`, joue les migrations et crée le compte administrateur.
-Aucune commande à taper sur le serveur. Détail complet au début de
-[DEPLOYMENT.md](DEPLOYMENT.md).
+La commande imprime à la fin le **jeton de mise à jour à utiliser** et l'URL
+`/update?token=…` correspondante. Uploadez l'archive dans le Gestionnaire de
+fichiers, extrayez-la, pointez le Document Root sur `iziwork/public`, puis ouvrez
+`/install` : l'assistant écrit `.env`, génère `APP_KEY`, joue les migrations et
+crée le compte administrateur. Aucune commande à taper sur le serveur. Détail
+complet au début de [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 🔐 Connexion Admin
 

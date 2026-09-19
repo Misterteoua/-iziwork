@@ -41,21 +41,39 @@ L'archive contient `vendor/`, et un assistant web exécute `migrate` puis
 
 ### B.1 Construire l'archive (sur votre poste)
 
+**Une seule commande**, toujours la même, pour la première installation comme
+pour les mises à jour :
+
 ```bash
-bash tools/build-release.sh
+php tools/release.php
 ```
 
-Produit `build/iziwork-release.zip` (~12 Mo) : code, `vendor/` (paquets de
-production uniquement), gabarit `.env.production.example` et un jeton
-d'installation aléatoire dans `.install-token`. **Le script affiche le jeton à la
-fin** — notez-le, il sera demandé à l'étape B.5.
+Elle enchaîne quatre étapes et se termine par un encadré où le **jeton `/update`
+à utiliser** est affiché en clair :
 
-> `build/` est ignoré par Git : rien de tout cela n'est committé.
+1. **construction** de `build/iziwork-release.zip` (~12 Mo) : code, `vendor/`
+   (paquets de production uniquement), gabarit `.env.production.example`, et
+   deux jetons aléatoires (`.install-token`, `.update-token`) ;
+2. **contrôle d'intégrité** (voir plus bas). Si un problème est relevé, le script
+   s'arrête sur `NE PAS DÉPLOYER` et **ne touche pas** à l'archive précédente ;
+3. **horodatage** : copie dans `build/releases/iziwork-release-AAAA.MM.JJ-HHMM.zip`.
+   Les 3 dernières sont conservées (`--keep=N`, `0` = toutes) ;
+4. **affichage** : version, empreinte SHA-256, jeton à utiliser, étapes de
+   déploiement de l'installation **et** de la mise à jour. Le récapitulatif est
+   aussi écrit dans `build/DERNIERE-RELEASE.txt`.
 
-**Contrôler l'archive avant de l'uploader :**
+Options utiles : `--check` interroge la prod (`/version`) et dit si l'archive
+apporte vraiment quelque chose, `--no-build` relit la dernière archive sans
+reconstruire, `--url=https://exemple.tld` change de domaine.
+
+> `build/` est ignoré par Git : archives, jetons et récapitulatif ne sont jamais
+> committés.
+
+Le contrôle d'intégrité est indispensable et inclus dans la commande ci-dessus.
+Pour le relancer seul (par exemple sur une archive déplacée) :
 
 ```bash
-php tools/verify-release.php
+php tools/verify-release.php [chemin/vers/iziwork-release.zip]
 ```
 
 Il vérifie l'intégrité du ZIP, le préfixe `iziwork/`, la présence des fichiers
@@ -125,15 +143,16 @@ clic droit → **Change Permissions** → `755` (voire `775`) sur `storage`
 ### B.7 Mettre à jour l'application
 
 ```bash
-bash tools/build-release.sh
+php tools/release.php
 ```
 
 Puis :
 
 1. uploader le nouvel `iziwork-release.zip` et l'**extraire par-dessus**
    (`.env` et `storage/` ne sont pas dans l'archive : ils sont donc conservés) ;
-2. ouvrir `https://votre-domaine/update?token=JETON_DE_MISE_A_JOUR`
-   (le jeton est affiché en fin de `build-release.sh` et dans `.update-token`).
+2. ouvrir l'URL d'update **affichée en bas du script**, de la forme
+   `https://votre-domaine/update?token=JETON_DE_MISE_A_JOUR`
+   (le jeton est aussi dans `.update-token` et dans `build/DERNIERE-RELEASE.txt`).
 
 L'assistant de mise à jour lance automatiquement les migrations et vide les
 caches. **Plus besoin de supprimer `install.lock` ni de ressaisir les
@@ -560,6 +579,7 @@ bash deploy.sh
 | `/install` affiche *Jeton de sécurité manquant* | `.install-token` est absent → recréez-le dans le Gestionnaire de fichiers avec une longue chaîne aléatoire |
 | Assistant : *Le fichier .env ne relit pas DB_PASSWORD correctement* | mot de passe MySQL trop exotique → utilisez lettres, chiffres et tirets (ex. `Iziwork2026-Db9x`), puis relancez |
 | Assistant : *Connexion à la base impossible* | base ou utilisateur mal nommés (il faut le **nom complet** préfixé), ou utilisateur non rattaché à la base avec tous les privilèges |
+| `php tools/release.php` : *Aucun interpréteur shell trouvé* | définissez `RELEASE_SHELL=/chemin/vers/bash`, ou lancez `bash tools/build-release.sh` suivi de `php tools/verify-release.php` |
 | `build-release.sh` : *L'extension PHP `zip` est absente* | activez `ext-zip` dans le `php.ini` de votre installation locale |
 | **403 « Access to this resource on the server is denied! »** sur `/up`, `/install`, `/index.php`, alors que `/favicon.ico` répond 200 | Le vhost n'a **pas de handler PHP** : LiteSpeed refuse de servir un `.php` comme fichier statique. Le journal du domaine (cPanel → **Metrics → Errors**) affiche `MIME type [application/x-httpd-php] for suffix '.php' does not allow serving as static file`. → cPanel → **MultiPHP Manager** → cocher le sous-domaine → **PHP 8.2** → Apply (pour forcer la reconstruction du vhost : passer en 8.1, Apply, puis revenir en 8.2, Apply). Si le 403 persiste, ouvrir un ticket en citant cette ligne de journal : la configuration du vhost doit être reconstruite |
 | Le site affiche un **« Index of / » vide** | Le Document Root pointe sur un dossier vide — voir B.4 (préfixe `/home/<compte>` doublé par cPanel) |

@@ -31,8 +31,10 @@ fi
 
 cd "$ROOT"
 
-log "Nettoyage de $BUILD"
-rm -rf "$BUILD"
+# On ne supprime que l'espace de travail et l'archive stable : le dossier
+# build/releases/ (archives horodatées par tools/release.php) est conservé.
+log "Nettoyage de l'espace de travail"
+rm -rf "$STAGE" "$ZIP"
 mkdir -p "$STAGE"
 
 log "Copie des fichiers de l'application"
@@ -82,6 +84,9 @@ php tools/zip.php "$STAGE" "$ZIP"
 INSTALL_TOKEN="$(cat "$STAGE/.install-token")"
 UPDATE_TOKEN="$(cat "$STAGE/.update-token")"
 
+# RELEASE_QUIET=1 : tools/release.php enchaîne les étapes et affiche lui-même
+# le mode opératoire complet ; ce bandeau ferait alors doublon.
+if [ -z "${RELEASE_QUIET:-}" ]; then
 cat <<EOF
 
 Archive prête : $ZIP
@@ -104,3 +109,6 @@ Archive prête : $ZIP
 
 Le mot de passe du compte admin doit faire 12 caractères minimum.
 EOF
+else
+    printf 'Archive prete : %s (%s)\n' "$ZIP" "$(du -h "$ZIP" | cut -f1)"
+fi
