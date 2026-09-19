@@ -5,20 +5,15 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\SubmissionController;
+use App\Http\Controllers\VersionController;
 use App\Http\Middleware\AdminAuth;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// Aucune route par closure dans ce fichier : `php artisan route:cache` doit
+// pouvoir sérialiser l'ensemble du projet (voir VersionController).
+Route::view('/', 'welcome');
 
-Route::get('/version', function () {
-    return response()->json([
-        'version' => config('app.version', 'dev'),
-        'laravel' => app()->version(),
-        'php' => PHP_VERSION,
-    ]);
-});
+Route::get('/version', VersionController::class);
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:admin-login');
