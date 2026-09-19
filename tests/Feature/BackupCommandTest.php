@@ -47,6 +47,30 @@ class BackupCommandTest extends TestCase
         );
     }
 
+    /*
+     * ZipArchive n'écrit pas une archive sans entrée : sans aucun dépôt
+     * étudiant, la sauvegarde ne produisait pas de .zip du tout. La paire
+     * .sql + .zip doit exister dans tous les cas.
+     */
+    public function test_backup_run_creates_a_zip_even_without_submissions(): void
+    {
+        Storage::disk('local')->deleteDirectory('submissions');
+
+        $this->artisan('backup:run')->assertSuccessful();
+
+        $zips = array_values(array_filter(
+            Storage::disk('local')->files('backups'),
+            fn (string $file) => str_ends_with($file, '.zip')
+        ));
+
+        $this->assertCount(1, $zips);
+
+        $zip = new \ZipArchive;
+        $this->assertTrue($zip->open(Storage::disk('local')->path($zips[0])) === true);
+        $this->assertNotFalse($zip->locateName('AUCUN_DEPOT.txt'));
+        $zip->close();
+    }
+
     public function test_backup_sql_contains_schema_and_data(): void
     {
         $this->artisan('backup:run');

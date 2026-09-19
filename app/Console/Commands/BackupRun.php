@@ -155,6 +155,19 @@ class BackupRun extends Command
             }
         }
 
+        /*
+         * ZipArchive supprime silencieusement une archive sans aucune entrée :
+         * sans dépôt étudiant, la sauvegarde ne produirait aucun .zip. On ajoute
+         * donc toujours une note, pour que la paire .sql + .zip existe vraiment.
+         */
+        if ($count === 0) {
+            $zip->addFromString(
+                'AUCUN_DEPOT.txt',
+                "Aucun dépôt étudiant n'était présent au moment de la sauvegarde.\n"
+                .'Date : '.now()->format('Y-m-d H:i:s')."\n"
+            );
+        }
+
         $zip->close();
 
         return $count;
