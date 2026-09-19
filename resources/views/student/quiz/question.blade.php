@@ -18,7 +18,11 @@
         <h1 class="mt-6 text-lg font-semibold text-slate-900 whitespace-pre-line">{{ $question->field_label }}</h1>
 
         <p class="mt-1 text-xs text-slate-500">
-            {{ $question->isMultipleAnswer() ? 'Plusieurs réponses possibles' : 'Une seule réponse' }}
+            @if($question->isOpen())
+                Réponse rédigée
+            @else
+                {{ $question->isMultipleAnswer() ? 'Plusieurs réponses possibles' : 'Une seule réponse' }}
+            @endif
             · {{ $question->points }} point(s)
         </p>
 
@@ -26,6 +30,27 @@
             @csrf
             <input type="hidden" name="question_id" value="{{ $question->id }}">
 
+            @if($question->isOpen())
+            {{-- Question ouverte : la réponse est un texte, corrigé ensuite par
+                 l'enseignant. Aucune proposition, donc aucun risque qu'une bonne
+                 réponse fuite dans le HTML. --}}
+            <div>
+                <label for="answer_text" class="block text-sm font-medium text-slate-700 mb-1.5">Votre réponse</label>
+                <textarea name="answer_text" id="answer_text" rows="7" required
+                          maxlength="{{ \App\Support\QuizQuestionData::MAX_STUDENT_ANSWER }}"
+                          placeholder="Rédigez votre réponse ici."
+                          class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('answer_text') }}</textarea>
+                <p class="mt-1.5 text-xs text-slate-500">
+                    <span id="answer-counter" style="font-variant-numeric: tabular-nums">0</span>
+                    / {{ \App\Support\QuizQuestionData::MAX_STUDENT_ANSWER }} caractères
+                </p>
+                @if($quiz->quizUsesProctoring())
+                <p class="mt-1.5 text-xs text-amber-700">
+                    La surveillance de fenêtre désactive le collage : votre réponse doit être saisie au clavier.
+                </p>
+                @endif
+            </div>
+            @else
             @foreach($options as $position => $option)
             <label class="flex items-start gap-3 p-4 rounded-xl border border-slate-200 hover:border-brand-300 hover:bg-brand-50/40 cursor-pointer transition-colors duration-150">
                 <input type="{{ $question->isMultipleAnswer() ? 'checkbox' : 'radio' }}"
@@ -40,8 +65,10 @@
                 </span>
             </label>
             @endforeach
+            @endif
 
             @error('choice')<p class="text-sm text-red-600" role="alert">{{ $message }}</p>@enderror
+            @error('answer_text')<p class="text-sm text-red-600" role="alert">{{ $message }}</p>@enderror
 
             <button type="submit"
                     class="w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-sm font-semibold rounded-xl text-white gradient-bg hover:opacity-95 transition-all duration-150">
@@ -55,3 +82,19 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    const field = document.getElementById('answer_text');
+    const counter = document.getElementById('answer-counter');
+
+    if (!field || !counter) { return; }
+
+    function refresh() { counter.textContent = field.value.length; }
+
+    field.addEventListener('input', refresh);
+    refresh();
+})();
+</script>
+@endpush

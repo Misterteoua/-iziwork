@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AdminUser;
 use App\Models\Form;
+use App\Models\FormField;
 use App\Models\QuizAttempt;
 use App\Support\Import\QuizTemplate;
 use App\Support\Import\XlsxReader;
@@ -130,6 +131,52 @@ class QuizImportTest extends TestCase
         $this->assertSame(5.0, $this->quiz->quizMaxScore());
         // L'ordre suit le fichier : la première ligne devient la première question.
         $this->assertSame([1, 2], $questions->pluck('order')->map(fn ($order) => (int) $order)->all());
+    }
+
+    public function test_l_import_d_une_question_ouverte_par_excel_la_cree(): void
+    {
+        $response = $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'Type', 'A', 'B', 'C', 'D', 'E', 'F', 'Bonnes réponses', 'Points'],
+                ['Expliquez la saponification en deux ou trois lignes.', 'Ouvert', '', '', '', '', '', '', '', '4'],
+                ['Capitale de la Côte d\'Ivoire ?', 'QCM', 'Abidjan', 'Yamoussoukro', 'Bouaké', '', '', '', 'B', '1'],
+            ]),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionHas('import_questions');
+
+        $questions = $this->quiz->quizQuestions()->get();
+
+        $this->assertCount(2, $questions);
+        $this->assertSame(FormField::OPEN_TYPE, $questions[0]->field_type);
+        $this->assertSame([], $questions[0]->getOptionsList());
+        $this->assertSame([], $questions[0]->correctIndexes());
+        $this->assertSame('4.00', $questions[0]->points);
+        // Le guide de correction ne s'importe pas : il se rédige à la main.
+        $this->assertNull($questions[0]->expected_answer);
+        // Le barème global compte la question rédigée.
+        $this->assertSame(5.0, $this->quiz->quizMaxScore());
+        $this->assertSame('radio', $questions[1]->field_type);
+    }
+
+    public function test_une_question_ouverte_importee_est_annoncee_avec_ses_lignes_fautives(): void
+    {
+        $response = $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'Type', 'A', 'B', 'Bonnes réponses', 'Points'],
+                ['Expliquez la saponification.', 'Ouvert', '', '', '', '4'],
+                ['Une question ouverte avec des propositions ?', 'Ouvert', 'Un', 'Deux', 'A', '2'],
+            ]),
+        ]);
+
+        $report = $response->getSession()->get('import_questions');
+
+        // Une question ouverte n'a pas de propositions : la ligne qui en contient
+        // est refusée et annoncée, elle n'est pas convertie en silence.
+        $this->assertSame(1, $this->quiz->quizQuestions()->count());
+        $this->assertSame('1 question importée · 1 erreur(s) à corriger', $report['summary']);
+        $this->assertStringContainsString('question ouverte', $report['errors'][0]);
     }
 
     public function test_un_import_s_ajoute_aux_questions_existantes(): void
@@ -303,13 +350,16 @@ class QuizImportTest extends TestCase
         $rows = XlsxReader::rows($path);
 
         $this->assertSame('Question', $rows[0][0]);
-        $this->assertSame('Bonnes réponses', $rows[0][7]);
+        $this->assertSame('Type', $rows[0][1]);
+        $this->assertSame('Bonnes réponses', $rows[0][8]);
         // Le modèle est directement importable : c'est la garantie qui compte.
         $this->post(route('admin.quizzes.questions.import', $this->quiz), [
             'file' => new UploadedFile($path, 'modele.xlsx', null, null, true),
         ])->assertRedirect();
 
-        $this->assertSame(3, $this->quiz->quizQuestions()->count());
+        // Trois QCM et une question ouverte : le modèle montre les deux familles.
+        $this->assertSame(4, $this->quiz->quizQuestions()->count());
+        $this->assertSame(1, $this->quiz->quizQuestions()->where('field_type', FormField::OPEN_TYPE)->count());
     }
 
     public function test_le_modele_de_la_liste_etudiants_se_telecharge(): void

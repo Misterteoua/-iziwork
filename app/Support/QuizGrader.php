@@ -3,16 +3,24 @@
 namespace App\Support;
 
 use App\Models\FormField;
+use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use Illuminate\Support\Carbon;
 
 /**
- * Correction automatique d'une évaluation.
+ * Correction d'une évaluation.
  *
  * Le calcul vit ici, et non dans un contrôleur, pour deux raisons : il est
  * testable seul, et surtout il n'existe qu'un seul endroit qui décide d'une
  * note — la page de résultat, le PDF et la liste de l'administrateur lisent
  * tous la même valeur stockée, ils ne la recalculent jamais.
+ *
+ * Deux familles de questions, deux régimes :
+ *   - les questions à propositions sont corrigées automatiquement à la remise ;
+ *   - les questions ouvertes reçoivent leur note plus tard, de l'enseignant. Tant
+ *     qu'elles n'en ont pas, `points_awarded` reste `null` : « en attente » n'est
+ *     pas « zéro point », et c'est cette différence qui permet de compter les
+ *     copies à corriger.
  */
 final class QuizGrader
 {
@@ -32,27 +40,35 @@ final class QuizGrader
         $questions = $attempt->questions();
         $answers = $attempt->answers()->get()->keyBy('form_field_id');
 
-        $score = 0.0;
-
         foreach ($questions as $question) {
             $answer = $answers[$question->id] ?? null;
-            $chosen = $answer?->chosenIndexes() ?? [];
 
-            $isCorrect = $question->isCorrectChoice($chosen);
-            $points = $isCorrect ? (float) $question->points : 0.0;
-
-            if ($answer !== null) {
-                $answer->update([
-                    'is_correct' => $isCorrect,
-                    'points_awarded' => $points,
-                ]);
+            // Une question non répondue vaut zéro par absence : elle n'a pas de
+            // ligne de réponse, il n'y a donc rien à écrire — exactement comme
+            // avant ce lot.
+            if ($answer === null) {
+                continue;
             }
 
-            $score += $points;
+            // Question ouverte : aucune machine ne note un texte libre. Elle est
+            // marquée « en attente » et non « zéro », sinon l'enseignant n'aurait
+            // plus aucun moyen de retrouver ce qui lui reste à corriger.
+            if ($question->isOpen()) {
+                $answer->update(['is_correct' => null, 'points_awarded' => null]);
+
+                continue;
+            }
+
+            $isCorrect = $question->isCorrectChoice($answer->chosenIndexes());
+
+            $answer->update([
+                'is_correct' => $isCorrect,
+                'points_awarded' => $isCorrect ? (float) $question->points : 0.0,
+            ]);
         }
 
         $attempt->update([
-            'score' => round($score, 2),
+            'score' => $this->computedScore($attempt),
             'max_score' => round((float) $questions->sum('points'), 2),
             'status' => $expired
                 ? QuizAttempt::STATUS_EXPIRED
@@ -64,11 +80,60 @@ final class QuizGrader
     }
 
     /**
+     * Attribue les points d'une réponse rédigée.
+     *
+     * La note est bornée au barème de la question : accepter davantage donnerait
+     * une épreuve notée au-dessus de son total, ce qu'aucun jury n'accepte. Une
+     * note partielle est possible — c'est l'intérêt d'une correction humaine — et
+     * dans ce cas la réponse n'est pas déclarée « juste » : seul le barème entier
+     * l'est.
+     */
+    public function award(QuizAnswer $answer, float $points): QuizAnswer
+    {
+        $question = $answer->field;
+        $max = $question === null ? 0.0 : (float) $question->points;
+
+        $points = max(0.0, min($points, $max));
+
+        $answer->update([
+            'points_awarded' => round($points, 2),
+            'is_correct' => $points >= $max && $max > 0,
+        ]);
+
+        return $answer;
+    }
+
+    /**
+     * Recalcule la note d'une copie après une correction manuelle.
+     *
+     * `score` est la somme de ce qui a été attribué, QCM automatiques compris :
+     * une seule valeur stockée, donc aucun risque que l'affichage et l'export
+     * racontent deux histoires différentes.
+     */
+    public function recompute(QuizAttempt $attempt): QuizAttempt
+    {
+        $attempt->update(['score' => $this->computedScore($attempt)]);
+
+        return $attempt;
+    }
+
+    /**
      * Une question non répondue vaut zéro : la réponse est simplement absente
      * du bulletin, elle n'est pas comptée comme fausse dans un total d'erreurs.
      */
     public function isAnswered(QuizAttempt $attempt, FormField $question): bool
     {
         return $attempt->answers()->where('form_field_id', $question->id)->exists();
+    }
+
+    /**
+     * Somme des points attribués, en ignorant les réponses non encore corrigées.
+     *
+     * Les ignorer — et non les compter zéro — est ce qui rend la note provisoire
+     * honnête : elle annonce ce qui est acquis, pas ce qui reste à décider.
+     */
+    private function computedScore(QuizAttempt $attempt): float
+    {
+        return round((float) $attempt->answers()->whereNotNull('points_awarded')->sum('points_awarded'), 2);
     }
 }

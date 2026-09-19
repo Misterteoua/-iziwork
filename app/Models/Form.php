@@ -185,8 +185,11 @@ class Form extends Model
      */
     public function quizQuestions()
     {
+        // ANSWER_TYPES et non QUESTION_TYPES : une question à réponse rédigée est
+        // une question. Elle doit entrer dans le barème, dans le tirage et dans le
+        // décompte, même si sa correction est manuelle.
         return $this->fields()
-            ->whereIn('field_type', FormField::QUESTION_TYPES)
+            ->whereIn('field_type', FormField::ANSWER_TYPES)
             ->orderBy('order')
             ->orderBy('id');
     }
@@ -234,10 +237,23 @@ class Form extends Model
 
     /**
      * Total des points de l'évaluation, barème des questions additionné.
+     *
+     * Les questions ouvertes y comptent : une épreuve notée sur 20 dont 8 points
+     * relèvent de la rédaction est bien notée sur 20, pas sur 12.
      */
     public function quizMaxScore(): float
     {
         return (float) $this->quizQuestions()->sum('points');
+    }
+
+    /**
+     * L'évaluation comporte-t-elle au moins une question à réponse rédigée ?
+     *
+     * C'est ce qui décide si une copie peut être « en attente de correction ».
+     */
+    public function quizHasOpenQuestions(): bool
+    {
+        return $this->quizQuestions()->where('field_type', FormField::OPEN_TYPE)->exists();
     }
 
     /**

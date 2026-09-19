@@ -51,12 +51,14 @@ class QuizImportParsingTest extends TestCase
         $path = $this->temporary('xlsx', QuizTemplate::xlsx(QuizTemplate::questionRows(), 'Questions'));
         $rows = XlsxReader::rows($path);
 
-        $this->assertCount(4, $rows);
+        $this->assertCount(5, $rows);
         $this->assertSame('Question', $rows[0][0]);
-        $this->assertSame('Bonnes réponses', $rows[0][7]);
+        // La colonne « Type » est ce qui permet d'écrire une question ouverte.
+        $this->assertSame('Type', $rows[0][1]);
+        $this->assertSame('Bonnes réponses', $rows[0][8]);
         // Les accents et les apostrophes typographiques traversent le format.
         $this->assertStringContainsString('capitale de la Côte d\'Ivoire', $rows[1][0]);
-        $this->assertSame('B', $rows[1][7]);
+        $this->assertSame('B', $rows[1][8]);
     }
 
     public function test_une_feuille_excel_sans_en_tete_est_refusee(): void
@@ -129,6 +131,109 @@ class QuizImportParsingTest extends TestCase
         // occupe la troisième place — et c'est bien celle-là qui est juste.
         $this->assertSame(['Un', 'Deux', 'Quatre'], $questions[0]['options']);
         $this->assertSame([2], $questions[0]['correct_answer']);
+    }
+
+    // ------------------------------------------------------- Questions ouvertes
+
+    public function test_une_colonne_type_declare_une_question_ouverte(): void
+    {
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx([
+            ['Question', 'Type', 'A', 'B', 'C', 'D', 'E', 'F', 'Bonnes réponses', 'Points'],
+            ['Expliquez la saponification en deux ou trois lignes.', 'Ouvert', '', '', '', '', '', '', '', '4'],
+            ['Quelle est la capitale ?', 'QCM', 'Abidjan', 'Yamoussoukro', 'Bouaké', '', '', '', 'B', '1'],
+        ]));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame(2, $outcome->imported);
+        $this->assertSame([], $outcome->errors);
+
+        // Une question ouverte n'a ni proposition ni bonne réponse.
+        $this->assertSame('textarea', $questions[0]['field_type']);
+        $this->assertSame([], $questions[0]['options']);
+        $this->assertSame([], $questions[0]['correct_answer']);
+        $this->assertSame(4.0, $questions[0]['points']);
+
+        // Et le QCM de la même feuille reste un QCM.
+        $this->assertSame('radio', $questions[1]['field_type']);
+        $this->assertSame([1], $questions[1]['correct_answer']);
+    }
+
+    public function test_une_question_ouverte_avec_des_propositions_est_refusee(): void
+    {
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx([
+            ['Question', 'Type', 'A', 'B', 'C', 'D', 'E', 'F', 'Bonnes réponses', 'Points'],
+            ['Expliquez la saponification.', 'Ouvert', 'Saponification', 'Distillation', '', '', '', '', 'A', '4'],
+        ]));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame([], $questions);
+        $this->assertCount(1, $outcome->errors);
+        $this->assertStringStartsWith('Ligne 2 :', $outcome->errors[0]);
+        $this->assertStringContainsString('question ouverte', $outcome->errors[0]);
+    }
+
+    public function test_un_type_de_question_inconnu_est_signale(): void
+    {
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx([
+            ['Question', 'Type', 'A', 'B', 'Bonnes réponses', 'Points'],
+            ['Quelque chose ?', 'Peut-être', 'Un', 'Deux', 'A', '1'],
+        ]));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame([], $questions);
+        $this->assertStringContainsString('inconnu', $outcome->errors[0]);
+    }
+
+    public function test_une_colonne_type_laissée_vide_est_signalee(): void
+    {
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx([
+            ['Question', 'Type', 'A', 'B', 'Bonnes réponses', 'Points'],
+            ['Quelque chose ?', '', 'Un', 'Deux', 'A', '1'],
+        ]));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame([], $questions);
+        $this->assertStringContainsString('vide', $outcome->errors[0]);
+    }
+
+    public function test_un_fichier_sans_colonne_type_garde_le_comportement_d_origine(): void
+    {
+        // C'est la garantie de compatibilité : les fichiers préparés avant les
+        // questions ouvertes ne doivent pas changer de sens.
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx([
+            ['Question', 'A', 'B', 'C', 'Bonnes réponses', 'Points'],
+            ['Choix unique ?', 'Un', 'Deux', 'Trois', 'B', '1'],
+            ['Choix multiple ?', 'Un', 'Deux', 'Trois', 'A C', '2'],
+            // Sans colonne « Type », une ligne sans bonne réponse reste une erreur
+            // et n'est pas convertie en question ouverte.
+            ['Sans bonne réponse ?', 'Un', 'Deux', 'Trois', '', '1'],
+        ]));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame(2, $outcome->imported);
+        $this->assertSame('radio', $questions[0]['field_type']);
+        $this->assertSame('checkbox', $questions[1]['field_type']);
+        $this->assertCount(1, $outcome->errors);
+        $this->assertStringContainsString('aucune bonne réponse', $outcome->errors[0]);
+    }
+
+    public function test_le_modele_avec_une_question_ouverte_s_importe_sans_erreur(): void
+    {
+        $path = $this->temporary('xlsx', QuizTemplate::xlsx(QuizTemplate::questionRows(), 'Questions'));
+
+        [$questions, $outcome] = QuestionSheet::parse(TabularFile::rows($path, 'questions.xlsx'));
+
+        $this->assertSame(4, $outcome->imported);
+        $this->assertSame([], $outcome->errors);
+        $this->assertSame(
+            1,
+            count(array_filter($questions, static fn (array $question): bool => $question['field_type'] === 'textarea'))
+        );
     }
 
     // -------------------------------------------------------------------- CSV

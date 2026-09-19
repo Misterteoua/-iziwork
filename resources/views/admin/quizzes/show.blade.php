@@ -184,10 +184,22 @@
                             {{ $question->field_label }}
                         </p>
                         <p class="mt-1 text-xs text-slate-500">
-                            {{ $question->isMultipleAnswer() ? 'Choix multiple' : 'Choix unique' }} ·
-                            {{ $question->points }} point(s) ·
-                            {{ count($question->getOptionsList()) }} proposition(s)
+                            @if($question->isOpen())
+                                Réponse rédigée · corrigée à la main
+                            @else
+                                {{ $question->isMultipleAnswer() ? 'Choix multiple' : 'Choix unique' }} ·
+                                {{ count($question->getOptionsList()) }} proposition(s)
+                            @endif
+                            · {{ $question->points }} point(s)
                         </p>
+                        @if($question->isOpen())
+                            @if($question->expected_answer)
+                            <p class="mt-2 text-xs text-slate-500">
+                                <span class="font-medium text-slate-600">Réponse attendue :</span>
+                                {{ $question->expected_answer }}
+                            </p>
+                            @endif
+                        @else
                         <ul class="mt-2 space-y-0.5">
                             @foreach($question->getOptionsList() as $optionIndex => $option)
                             <li class="text-xs {{ in_array($optionIndex, $question->correctIndexes(), true) ? 'text-emerald-700 font-medium' : 'text-slate-500' }}">
@@ -196,6 +208,7 @@
                             </li>
                             @endforeach
                         </ul>
+                        @endif
                     </div>
                     <form method="POST" action="{{ route('admin.quizzes.questions.destroy', [$quiz, $question]) }}"
                           onsubmit="return confirm('Supprimer cette question ?');" class="shrink-0">

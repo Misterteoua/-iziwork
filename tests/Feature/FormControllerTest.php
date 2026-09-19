@@ -170,6 +170,24 @@ class FormControllerTest extends TestCase
         $this->assertDatabaseMissing('forms', ['title' => 'Test Formulaire']);
     }
 
+    public function test_le_type_de_question_ouverte_n_est_pas_un_champ_de_depot(): void
+    {
+        // Le type « textarea » sert aux questions rédigées d'une évaluation. Il
+        // existe dans l'énumération en base, mais le constructeur de formulaires
+        // de dépôt garde sa propre liste : il ne doit pas pouvoir en produire un,
+        // sinon un dépôt de travaux afficherait un champ que sa vue ne sait pas
+        // rendre.
+        $response = $this->post('/admin/forms', [
+            'title' => 'Dépôt avec question ouverte',
+            'field_labels' => ['Expliquez'],
+            'field_types' => [\App\Models\FormField::OPEN_TYPE],
+        ]);
+
+        $response->assertSessionHasErrors('field_types.0');
+        $this->assertDatabaseMissing('forms', ['title' => 'Dépôt avec question ouverte']);
+        $this->assertSame(0, \App\Models\FormField::where('field_type', \App\Models\FormField::OPEN_TYPE)->count());
+    }
+
     public function test_created_form_gets_automatic_required_email_field_when_missing(): void
     {
         $response = $this->post('/admin/forms', [

@@ -72,6 +72,36 @@ class QuizAttempt extends Model
         return $this->hasMany(QuizAnswer::class);
     }
 
+    /**
+     * Réponses rédigées qui attendent encore une note de l'enseignant.
+     *
+     * Une question sans réponse n'y figure pas : il n'y a rien à corriger, la
+     * question vaut zéro par absence, comme pour un QCM non répondu.
+     */
+    public function pendingOpenAnswers()
+    {
+        return $this->answers()
+            ->whereHas('field', fn ($query) => $query->where('field_type', FormField::OPEN_TYPE))
+            ->whereNull('points_awarded');
+    }
+
+    /** Nombre de réponses rédigées encore à corriger. */
+    public function pendingManualCount(): int
+    {
+        return $this->pendingOpenAnswers()->count();
+    }
+
+    /**
+     * La copie attend-elle une correction de l'enseignant ?
+     *
+     * Seules les copies remises sont concernées : une épreuve en cours n'a rien
+     * à corriger, et une copie entièrement composée de QCM est notée d'emblée.
+     */
+    public function awaitsManualGrading(): bool
+    {
+        return $this->isFinished() && $this->pendingManualCount() > 0;
+    }
+
     public function isFinished(): bool
     {
         return in_array($this->status, [self::STATUS_SUBMITTED, self::STATUS_EXPIRED], true);

@@ -167,6 +167,16 @@ Le compte admin **n'est jamais modifié** — `db:seed` est idempotent et ne
 touche pas à un mot de passe existant. Seules les nouvelles migrations sont
 jouées.
 
+> **Questions à réponse rédigée (mise à jour du 20/09).** Trois migrations :
+> l'énumération `form_fields.field_type` accepte une valeur de plus
+> (`textarea`, ajoutée **en fin de liste** : les questions existantes restent
+> valides), `form_fields.expected_answer` est créée, et `quiz_answers` gagne
+> `answer_text` tandis que `is_correct` et `points_awarded` deviennent
+> nullables — c'est ce `null` qui veut dire « pas encore corrigée ». Sur MySQL,
+> ces trois migrations se traduisent par un `MODIFY` d'énumération et des
+> `ADD`/`MODIFY COLUMN` : aucune donnée existante n'est réécrite, et les copies
+> déjà notées gardent leur note.
+
 > **Aucune dépendance à installer pour le module d'évaluations.** Il n'ajoute
 > ni paquet Composer ni extension PHP à activer : les migrations créent les
 tables `quiz_attempts` et `quiz_answers` et ajoutent des colonnes *avec valeur

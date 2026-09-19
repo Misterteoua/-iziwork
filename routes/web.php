@@ -6,6 +6,7 @@ use App\Http\Controllers\FormController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\QuizAttemptController;
 use App\Http\Controllers\QuizController;
+use App\Http\Controllers\QuizGradingController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\VersionController;
 use App\Http\Middleware\AdminAuth;
@@ -73,8 +74,17 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::get('quizzes/{quiz}/references/export', [QuizController::class, 'exportReferences'])->whereNumber('quiz')->name('admin.quizzes.references.export');
     Route::get('quizzes/{quiz}/results', [QuizController::class, 'results'])->whereNumber('quiz')->name('admin.quizzes.results');
     Route::get('quizzes/{quiz}/results/export', [QuizController::class, 'exportResults'])->whereNumber('quiz')->name('admin.quizzes.results.export');
+    Route::get('quizzes/{quiz}/results/open-answers', [QuizController::class, 'exportOpenAnswers'])
+        ->whereNumber('quiz')->name('admin.quizzes.results.open-answers');
     Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.reset');
+
+    // Correction manuelle des réponses rédigées : une copie rendue, un guide,
+    // une note par réponse. Séparée de QuizController pour rester lisible.
+    Route::get('quizzes/{quiz}/attempts/{attempt}/grade', [QuizGradingController::class, 'show'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.grade');
+    Route::post('quizzes/{quiz}/attempts/{attempt}/grade', [QuizGradingController::class, 'store'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.grade.store');
 
     Route::get('forms', [FormController::class, 'index'])->name('admin.forms.index');
     Route::get('forms/create', [FormController::class, 'create'])->name('admin.forms.create');

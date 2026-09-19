@@ -58,18 +58,25 @@ final class QuizTemplate
     }
 
     /**
-     * Modèle de questions : l'en-tête attendu par l'import, puis trois exemples
-     * qui montrent le choix unique, le choix multiple et le barème.
+     * Modèle de questions : l'en-tête attendu par l'import, puis quatre exemples
+     * qui montrent le choix unique, le choix multiple, le barème décimal, et la
+     * question ouverte.
+     *
+     * La colonne « Type » est facultative : un fichier qui ne l'a pas s'importe
+     * selon les règles d'origine. Elle est présente dans le modèle parce que
+     * c'est le seul moyen d'écrire une question rédigée — sans elle, une ligne
+     * sans bonne réponse est une erreur, pas une question ouverte.
      *
      * @return array<int, array<int, string>>
      */
     public static function questionRows(): array
     {
         return [
-            ['Question', 'A', 'B', 'C', 'D', 'E', 'F', 'Bonnes réponses', 'Points'],
-            ['Quelle est la capitale de la Côte d\'Ivoire ?', 'Abidjan', 'Yamoussoukro', 'Bouaké', '', '', '', 'B', '1'],
-            ['Quelles structures sont des files de priorité ?', 'Tas binaire', 'Pile', 'Tas de Fibonacci', 'Liste chaînée', '', '', 'A C', '2'],
-            ['Vrai ou faux : PHP est compilé.', 'Vrai', 'Faux', '', '', '', '', '2', '0,5'],
+            ['Question', 'Type', 'A', 'B', 'C', 'D', 'E', 'F', 'Bonnes réponses', 'Points'],
+            ['Quelle est la capitale de la Côte d\'Ivoire ?', 'QCM', 'Abidjan', 'Yamoussoukro', 'Bouaké', '', '', '', 'B', '1'],
+            ['Quelles structures sont des files de priorité ?', 'QCM', 'Tas binaire', 'Pile', 'Tas de Fibonacci', 'Liste chaînée', '', '', 'A C', '2'],
+            ['Vrai ou faux : PHP est compilé.', 'QCM', 'Vrai', 'Faux', '', '', '', '', '2', '0,5'],
+            ['Expliquez en deux ou trois lignes le processus de fabrication du savon.', 'Ouvert', '', '', '', '', '', '', '', '4'],
         ];
     }
 

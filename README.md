@@ -22,7 +22,8 @@ corrigés automatiquement).
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
 - **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible
 - **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve
-- **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence
+- **Questions à réponse rédigée** : l'étudiant tape un texte, l'enseignant attribue les points depuis une page de correction ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
+- **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
 - **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé, journal horodaté des sorties de fenêtre
 - **Résultats côté admin** : liste des participations, export CSV, réinitialisation d'une participation
 
@@ -255,6 +256,40 @@ puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
   question) ou un paragraphe par question, propositions séparées par `|`.
 - Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi
   faire : « Enregistrer sous » en `.xlsx` ou `.docx`.
+
+### Questions à réponse rédigée
+
+Une question ouverte se crée comme les autres : dans le formulaire, choisissez
+« **Réponse rédigée (question ouverte)** ». Il n'y a alors ni proposition ni
+bonne réponse — aucune machine ne note un texte libre — mais un champ
+« **Réponse attendue** », votre guide de correction, jamais montré à l'étudiant.
+
+À l'import, c'est la colonne **`Type`** du modèle qui les déclare : `QCM` ou
+`Ouvert`. Un fichier sans cette colonne s'importe exactement comme avant. Une
+ligne déclarée `Ouvert` qui contient des propositions est **refusée avec son
+numéro**, jamais convertie en silence.
+
+Ce qui se passe ensuite, dans l'ordre :
+
+1. L'étudiant tape sa réponse dans une zone de texte (5 000 caractères maximum).
+2. À la remise, les QCM sont notés ; les réponses rédigées sont marquées
+   **en attente** — `null`, et non `0`, ce qui est toute la différence.
+3. Sa note est annoncée comme **provisoire**, avec le nombre de réponses à
+   corriger ; le récapitulatif PDF porte la même mention.
+4. Dans **Résultats**, la copie apparaît avec un bouton « **Corriger (n)** ». La
+   page de correction montre l'énoncé, votre guide, le texte de l'étudiant et un
+   champ de points (0 au barème, **notes partielles acceptées**).
+5. Dès que plus rien n'attend, la note devient définitive — l'étudiant la voit
+   en retéléchargeant son récapitulatif avec sa référence, sans se reconnecter.
+
+Sur une question ouverte **sans réponse** (temps écoulé), il n'y a rien à
+corriger : la question vaut zéro par absence, comme un QCM non répondu, et la
+copie n'est pas laissée en attente.
+
+Deux exports complètent la page des résultats : l'export CSV des résultats
+gagne une colonne « Réponses libres à corriger », et « **Réponses rédigées
+(CSV)** » produit une ligne par réponse (question, texte, points, barème,
+état de correction) — les noms restent absents d'une évaluation anonyme.
 
 ### Tirage aléatoire et mélange des propositions
 

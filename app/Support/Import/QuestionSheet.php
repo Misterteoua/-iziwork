@@ -3,6 +3,7 @@
 namespace App\Support\Import;
 
 use App\Support\QuizQuestionData;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -14,6 +15,19 @@ use Illuminate\Validation\ValidationException;
  * qu'après l'épreuve. Un fichier sans en-tête reconnaissable est donc refusé avec
  * un message qui renvoie au modèle téléchargeable.
  *
+ * Deux familles de questions cohabitent :
+ *   - les questions à propositions (« radio », « checkbox »), dont le type se
+ *     déduit du nombre de bonnes réponses désignées ;
+ *   - les questions ouvertes (« textarea »), déclarées par une colonne « Type »
+ *     valant « Ouvert ». Une question ouverte n'a ni proposition ni bonne
+ *     réponse : si l'une des deux est renseignée, la ligne est refusée plutôt que
+ *     corrigée en silence, parce qu'un fichier qui se contredit signale le plus
+ *     souvent une erreur de colonne.
+ *
+ * Sans colonne « Type », le comportement historique s'applique ligne pour ligne —
+ * les fichiers préparés avant cette évolution s'importent donc exactement comme
+ * avant.
+ *
  * Les propositions vides sont conservées pendant l'analyse (pour que « la bonne
  * réponse est C » vise bien la colonne C), puis retirées par
  * {@see QuizQuestionData::normalize()} qui remappe les bonnes réponses.
@@ -22,6 +36,11 @@ final class QuestionSheet
 {
     /** Au-delà, le fichier relève de la banque de questions, pas d'un import. */
     public const MAX_QUESTIONS = 300;
+
+    /** Types de questions acceptés dans la colonne « Type ». */
+    private const KIND_OPEN = 'open';
+
+    private const KIND_QCM = 'qcm';
 
     /**
      * @param  array<int, array<int, string>>  $rows
@@ -78,8 +97,12 @@ final class QuestionSheet
     /**
      * Colonnes déduites de l'en-tête.
      *
+     * La colonne « Type » est facultative. Quand elle est présente, elle rend le
+     * fichier lisible même s'il ne contient que des questions ouvertes : il n'y a
+     * alors ni colonne de propositions utilisable, ni bonne réponse à désigner.
+     *
      * @param  array<int, string>  $row
-     * @return array{question: int, options: array<int, int>, correct: ?int, points: ?int}|null
+     * @return array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}|null
      */
     private static function headerColumns(array $row): ?array
     {
@@ -92,6 +115,7 @@ final class QuestionSheet
         $options = [];
         $correct = null;
         $points = null;
+        $type = null;
 
         foreach ($row as $index => $cell) {
             if ($index === 0) {
@@ -101,6 +125,13 @@ final class QuestionSheet
             $header = self::clean($cell);
 
             if ($header === '') {
+                continue;
+            }
+
+            // « Type », « Nature » : ce qui distingue une question rédigée d'un QCM.
+            if ($type === null && preg_match('/^(type|nature)\b/iu', $header) === 1) {
+                $type = (int) $index;
+
                 continue;
             }
 
@@ -122,7 +153,9 @@ final class QuestionSheet
             }
         }
 
-        if (count($options) < 2 || $correct === null) {
+        // Sans colonne « Type », les règles d'avant s'appliquent : il faut de quoi
+        // écrire une question à propositions.
+        if ($type === null && (count($options) < 2 || $correct === null)) {
             return null;
         }
 
@@ -135,12 +168,13 @@ final class QuestionSheet
             'options' => $options,
             'correct' => $correct,
             'points' => $points,
+            'type' => $type,
         ];
     }
 
     /**
      * @param  array<int, string>  $row
-     * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int}  $columns
+     * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
      * @return array<string, mixed>|null
      */
     private static function questionFromRow(array $row, array $columns, int $line, ImportOutcome $outcome): ?array
@@ -155,10 +189,132 @@ final class QuestionSheet
             return null;
         }
 
+        $kind = self::KIND_QCM;
+
+        if ($columns['type'] !== null) {
+            $kind = self::declaredKind(self::clean($row[$columns['type']] ?? ''), $line, $outcome);
+
+            if ($kind === null) {
+                return null;
+            }
+        }
+
         $options = [];
 
         foreach ($columns['options'] as $column) {
             $options[] = self::clean($row[$column] ?? '');
+        }
+
+        $points = self::parsePoints($row, $columns, $line, $outcome);
+
+        if ($points === false) {
+            return null;
+        }
+
+        try {
+            // QuizQuestionData tranche les règles de fond dans les deux cas : une
+            // question importée ne peut pas être acceptée là où la saisie manuelle
+            // la refuserait.
+            if ($kind === self::KIND_OPEN) {
+                $question = self::openQuestion($label, $options, $row, $columns, $line, $outcome, $points);
+            } else {
+                $question = self::choiceQuestion($label, $options, $row, $columns, $line, $outcome, $points);
+            }
+        } catch (ValidationException $e) {
+            $outcome->addError($line, (string) (collect($e->errors())->flatten()->first() ?? 'question invalide.'));
+
+            return null;
+        }
+
+        if ($question === null) {
+            return null;
+        }
+
+        $outcome->imported++;
+
+        return $question;
+    }
+
+    /**
+     * Type déclaré par la ligne, ou null si la valeur est inutilisable (l'erreur
+     * est alors déjà consignée).
+     */
+    private static function declaredKind(string $cell, int $line, ImportOutcome $outcome): ?string
+    {
+        if ($cell === '') {
+            $outcome->addError($line, 'la colonne « Type » est vide : indiquez « QCM » ou « Ouvert ».');
+
+            return null;
+        }
+
+        $value = Str::lower(Str::ascii($cell));
+
+        foreach (['ouvert', 'redig', 'redaction', 'texte', 'libre', 'developpement', 'essai', 'dissertation'] as $needle) {
+            if (str_contains($value, $needle)) {
+                return self::KIND_OPEN;
+            }
+        }
+
+        foreach (['qcm', 'choix', 'multiple', 'radio', 'checkbox', 'objectif'] as $needle) {
+            if (str_contains($value, $needle)) {
+                return self::KIND_QCM;
+            }
+        }
+
+        $outcome->addError($line, 'le type « '.$cell.' » est inconnu : écrivez « QCM » ou « Ouvert ».');
+
+        return null;
+    }
+
+    /**
+     * @param  array<int, string>  $options  propositions telles qu'écrites
+     * @param  array<int, string>  $row
+     * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
+     * @return array<string, mixed>|null
+     */
+    private static function openQuestion(
+        string $label,
+        array $options,
+        array $row,
+        array $columns,
+        int $line,
+        ImportOutcome $outcome,
+        float $points,
+    ): ?array {
+        $correctCell = $columns['correct'] === null ? '' : self::clean($row[$columns['correct']] ?? '');
+        $filled = array_values(array_filter($options, static fn (string $option): bool => $option !== ''));
+
+        if ($filled !== [] || $correctCell !== '') {
+            $outcome->addError(
+                $line,
+                'une question ouverte n\'a pas de propositions ni de bonne réponse : laissez les colonnes A à H et « Bonnes réponses » vides.'
+            );
+
+            return null;
+        }
+
+        return QuizQuestionData::normalizeOpen($label, $points);
+    }
+
+    /**
+     * @param  array<int, string>  $options
+     * @param  array<int, string>  $row
+     * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
+     * @return array<string, mixed>|null
+     */
+    private static function choiceQuestion(
+        string $label,
+        array $options,
+        array $row,
+        array $columns,
+        int $line,
+        ImportOutcome $outcome,
+        float $points,
+    ): ?array {
+        if ($columns['correct'] === null) {
+            $outcome->addError($line, 'ce fichier n\'a pas de colonne « Bonnes réponses » : impossible de savoir quelle proposition est juste.');
+
+            return null;
         }
 
         $correct = self::parseCorrect(self::clean($row[$columns['correct']] ?? ''), $options, $line, $outcome);
@@ -167,37 +323,7 @@ final class QuestionSheet
             return null;
         }
 
-        $points = 1.0;
-
-        if ($columns['points'] !== null) {
-            $raw = self::clean($row[$columns['points']] ?? '');
-
-            if ($raw !== '') {
-                // Une virgule décimale française est fréquente dans un tableur :
-                // la refuser ferait échouer un fichier parfaitement lisible.
-                $raw = str_replace(',', '.', $raw);
-
-                if (! is_numeric($raw)) {
-                    $outcome->addError($line, 'le barème « '.$raw.' » n\'est pas un nombre.');
-
-                    return null;
-                }
-
-                $points = (float) $raw;
-            }
-        }
-
-        try {
-            $normalized = QuizQuestionData::normalize($label, $options, $correct, $points);
-        } catch (ValidationException $e) {
-            $outcome->addError($line, (string) (collect($e->errors())->flatten()->first() ?? 'question invalide.'));
-
-            return null;
-        }
-
-        $outcome->imported++;
-
-        return $normalized;
+        return QuizQuestionData::normalize($label, $options, $correct, $points);
     }
 
     /**
@@ -241,6 +367,40 @@ final class QuestionSheet
         sort($indexes);
 
         return $indexes === [] ? null : $indexes;
+    }
+
+    /**
+     * Barème de la ligne : 1 point par défaut, comme avant.
+     *
+     * Rend `false` quand la valeur est illisible — l'erreur est alors consignée —
+     * ce qui évite de confondre « barème invalide » et « barème absent ».
+     *
+     * @param  array<int, string>  $row
+     * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
+     */
+    private static function parsePoints(array $row, array $columns, int $line, ImportOutcome $outcome): float|false
+    {
+        if ($columns['points'] === null) {
+            return 1.0;
+        }
+
+        $raw = self::clean($row[$columns['points']] ?? '');
+
+        if ($raw === '') {
+            return 1.0;
+        }
+
+        // Une virgule décimale française est fréquente dans un tableur : la
+        // refuser ferait échouer un fichier parfaitement lisible.
+        $raw = str_replace(',', '.', $raw);
+
+        if (! is_numeric($raw)) {
+            $outcome->addError($line, 'le barème « '.$raw.' » n\'est pas un nombre.');
+
+            return false;
+        }
+
+        return (float) $raw;
     }
 
     /**

@@ -21,15 +21,39 @@
                 </p>
             </div>
             @if($attempts->isNotEmpty())
-            <a href="{{ route('admin.quizzes.results.export', $quiz) }}"
-               class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150 shrink-0">
-                <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                Exporter en CSV
-            </a>
+            <div class="flex flex-wrap gap-2 shrink-0">
+                <a href="{{ route('admin.quizzes.results.export', $quiz) }}"
+                   class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Exporter en CSV
+                </a>
+
+                @if($quiz->quizHasOpenQuestions())
+                {{-- Les textes rédigés se lisent groupés, pas dans un tableau :
+                     une ligne par réponse, avec ce qui reste à noter. --}}
+                <a href="{{ route('admin.quizzes.results.open-answers', $quiz) }}"
+                   class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    Réponses rédigées (CSV)
+                </a>
+                @endif
+            </div>
             @endif
         </div>
+
+        @php($toBeGraded = $attempts->filter(fn ($attempt) => $attempt->pending_manual_count > 0)->count())
+        @if($toBeGraded > 0)
+        <p class="mt-4 inline-flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200/70 px-3 py-2 rounded-xl">
+            <svg class="h-4 w-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>
+                {{ $toBeGraded }} copie(s) attendent une correction : les réponses rédigées ne sont pas notées automatiquement.
+                Les notes correspondantes sont provisoires pour les étudiants.
+            </span>
+        </p>
+        @endif
     </div>
 
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 overflow-hidden">
@@ -50,6 +74,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Statut</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Note</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Temps</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Correction</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Sorties de fenêtre</th>
                         <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -79,10 +104,28 @@
                             @else
                                 <span class="font-semibold">{{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }}</span>
                                 <span class="text-slate-500">/ {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
+                                @if($attempt->pending_manual_count > 0)
+                                <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">provisoire</span>
+                                @endif
                             @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600" style="font-variant-numeric: tabular-nums">
                             {{ $attempt->started_at ? gmdate('i:s', $attempt->elapsedSeconds()) : '—' }}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm">
+                            @if($attempt->pending_manual_count > 0)
+                            <a href="{{ route('admin.quizzes.attempts.grade', [$quiz, $attempt]) }}"
+                               class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+                                Corriger ({{ $attempt->pending_manual_count }})
+                            </a>
+                            @elseif($attempt->isFinished())
+                            <a href="{{ route('admin.quizzes.attempts.grade', [$quiz, $attempt]) }}"
+                               class="text-xs font-semibold text-slate-600 hover:text-brand-600 transition-colors duration-150 whitespace-nowrap">
+                                Voir la copie
+                            </a>
+                            @else
+                            <span class="text-slate-400">—</span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {{ $attempt->infraction_count > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500' }}" style="font-variant-numeric: tabular-nums">
                             {{ $attempt->infraction_count }}

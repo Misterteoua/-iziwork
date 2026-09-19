@@ -19,6 +19,21 @@ final class QuizQuestionData
     /** Nombre maximal de propositions par question, comme la saisie manuelle. */
     public const MAX_OPTIONS = 8;
 
+    /** Longueur maximale de l'énoncé d'une question. */
+    public const MAX_LABEL_LENGTH = 2000;
+
+    /** Longueur maximale du guide de correction d'une question ouverte. */
+    public const MAX_EXPECTED_ANSWER = 2000;
+
+    /**
+     * Longueur maximale d'une réponse rédigée par un étudiant.
+     *
+     * Deux ou trois lignes demandées, cinq mille caractères possibles : la marge
+     * volontairement large évite de refuser une copie au motif d'une limite que
+     * l'étudiant n'avait pas vue. La colonne est un TEXT, la valeur est bornée ici.
+     */
+    public const MAX_STUDENT_ANSWER = 5000;
+
     /**
      * Normalise une question et renvoie les attributs prêts pour `fields()->create`.
      *
@@ -29,15 +44,7 @@ final class QuizQuestionData
      */
     public static function normalize(string $label, array $options, array $correct, float $points = 1.0, ?string $type = null): array
     {
-        $label = trim($label);
-
-        if ($label === '') {
-            throw ValidationException::withMessages(['field_label' => 'L\'énoncé de la question est obligatoire.']);
-        }
-
-        if (mb_strlen($label) > 2000) {
-            throw ValidationException::withMessages(['field_label' => 'L\'énoncé d\'une question ne peut pas dépasser 2000 caractères.']);
-        }
+        $label = self::cleanLabel($label);
 
         if (count($options) > self::MAX_OPTIONS) {
             throw ValidationException::withMessages(['options' => 'Huit propositions au maximum par question.']);
@@ -92,9 +99,7 @@ final class QuizQuestionData
             $type = count($correct) > 1 ? 'checkbox' : 'radio';
         }
 
-        if ($points < 0.5 || $points > 100) {
-            throw ValidationException::withMessages(['points' => 'Le barème doit être compris entre 0,5 et 100 points.']);
-        }
+        self::assertPoints($points);
 
         return [
             'field_label' => $label,
@@ -106,9 +111,46 @@ final class QuizQuestionData
     }
 
     /**
+     * Normalise une question ouverte (réponse rédigée).
+     *
+     * Aucune proposition, aucune bonne réponse : il n'y a rien à comparer. Seuls
+     * l'énoncé, le barème et le guide de correction saisi par l'enseignant sont
+     * conservés. Le guide n'est jamais montré à l'étudiant et n'intervient dans
+     * aucun calcul — une réponse rédigée se note à la main.
+     *
+     * @return array{field_label: string, field_type: string, options: array<int, string>, correct_answer: array<int, int>, expected_answer: ?string, points: float}
+     */
+    public static function normalizeOpen(string $label, float $points = 1.0, ?string $expected = null): array
+    {
+        $label = self::cleanLabel($label);
+        self::assertPoints($points);
+
+        $expected = $expected === null ? null : trim($expected);
+
+        if ($expected === '') {
+            $expected = null;
+        }
+
+        if ($expected !== null && mb_strlen($expected) > self::MAX_EXPECTED_ANSWER) {
+            throw ValidationException::withMessages([
+                'expected_answer' => 'La réponse attendue ne peut pas dépasser '.self::MAX_EXPECTED_ANSWER.' caractères.',
+            ]);
+        }
+
+        return [
+            'field_label' => $label,
+            'field_type' => FormField::OPEN_TYPE,
+            'options' => [],
+            'correct_answer' => [],
+            'expected_answer' => $expected,
+            'points' => round($points, 2),
+        ];
+    }
+
+    /**
      * Attributs d'un modèle à partir d'une question normalisée.
      *
-     * @param  array{field_label: string, field_type: string, options: array<int, string>, correct_answer: array<int, int>, points: float}  $question
+     * @param  array{field_label: string, field_type: string, options?: array<int, string>, correct_answer?: array<int, int>, expected_answer?: ?string, points: float}  $question
      * @return array<string, mixed>
      */
     public static function attributes(array $question, int $order): array
@@ -118,10 +160,37 @@ final class QuizQuestionData
             'field_type' => $question['field_type'],
             'required' => true,
             'order' => $order,
-            'options' => $question['options'],
-            'correct_answer' => $question['correct_answer'],
+            'options' => $question['options'] ?? [],
+            'correct_answer' => $question['correct_answer'] ?? [],
+            'expected_answer' => $question['expected_answer'] ?? null,
             'points' => $question['points'],
         ];
+    }
+
+    /**
+     * Le barème accepté, en un seul endroit pour la saisie manuelle comme pour
+     * l'import : deux règles différentes finiraient par diverger.
+     */
+    private static function assertPoints(float $points): void
+    {
+        if ($points < 0.5 || $points > 100) {
+            throw ValidationException::withMessages(['points' => 'Le barème doit être compris entre 0,5 et 100 points.']);
+        }
+    }
+
+    private static function cleanLabel(string $label): string
+    {
+        $label = trim($label);
+
+        if ($label === '') {
+            throw ValidationException::withMessages(['field_label' => 'L\'énoncé de la question est obligatoire.']);
+        }
+
+        if (mb_strlen($label) > self::MAX_LABEL_LENGTH) {
+            throw ValidationException::withMessages(['field_label' => 'L\'énoncé d\'une question ne peut pas dépasser '.self::MAX_LABEL_LENGTH.' caractères.']);
+        }
+
+        return $label;
     }
 
     /**
@@ -129,6 +198,6 @@ final class QuizQuestionData
      */
     public static function isQuestion(FormField $field): bool
     {
-        return in_array($field->field_type, FormField::QUESTION_TYPES, true);
+        return in_array($field->field_type, FormField::ANSWER_TYPES, true);
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use App\Support\Import\ImportException;
 use App\Support\Import\QuestionSheet;
@@ -41,10 +42,18 @@ class QuizController extends Controller
         'Note',
         'Barème',
         'Temps (min)',
+        'Réponses libres à corriger',
         'Infractions',
         'Commencée le',
         'Terminée le',
     ];
+
+    /** Réponses rédigées encore sans note : le filtre est le même partout. */
+    private static function pendingManualFilter($query): void
+    {
+        $query->whereNull('points_awarded')
+            ->whereHas('field', fn ($field) => $field->where('field_type', FormField::OPEN_TYPE));
+    }
 
     public function index(Request $request)
     {
@@ -52,7 +61,7 @@ class QuizController extends Controller
 
         $base = Form::where('type', Form::TYPE_QUIZ)
             ->withCount([
-                'fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::QUESTION_TYPES),
+                'fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::ANSWER_TYPES),
                 'attempts',
                 'attempts as submitted_count' => fn ($query) => $query->whereIn(
                     'status',
@@ -179,8 +188,11 @@ class QuizController extends Controller
         $field->update([
             'field_label' => $question['field_label'],
             'field_type' => $question['field_type'],
-            'options' => $question['options'],
-            'correct_answer' => $question['correct_answer'],
+            'options' => $question['options'] ?? [],
+            'correct_answer' => $question['correct_answer'] ?? [],
+            // Une question qui repasse de rédigée à QCM perd son guide : le
+            // laisser en base donnerait une colonne qui ne veut plus rien dire.
+            'expected_answer' => $question['expected_answer'] ?? null,
             'points' => $question['points'],
         ]);
 
@@ -387,7 +399,12 @@ class QuizController extends Controller
         $this->assertQuiz($quiz);
 
         $attempts = $quiz->attempts()
-            ->withCount('answers')
+            ->withCount([
+                'answers',
+                // Compté une fois pour toutes : c'est ce qui permet d'afficher
+                // « 3 copies à corriger » sans une requête par ligne.
+                'answers as pending_manual_count' => fn ($query) => self::pendingManualFilter($query),
+            ])
             ->orderByDesc('submitted_at')
             ->orderBy('reference')
             ->get();
@@ -403,7 +420,10 @@ class QuizController extends Controller
     {
         $this->assertQuiz($quiz);
 
-        $attempts = $quiz->attempts()->orderByDesc('submitted_at')->orderBy('reference');
+        $attempts = $quiz->attempts()
+            ->withCount(['answers as pending_manual_count' => fn ($query) => self::pendingManualFilter($query)])
+            ->orderByDesc('submitted_at')
+            ->orderBy('reference');
 
         $filename = 'evaluation_'.$quiz->id.'_'.now()->format('Y-m-d_Hi').'.csv';
 
@@ -428,9 +448,71 @@ class QuizController extends Controller
                         $attempt->score === null ? null : number_format((float) $attempt->score, 2, ',', ''),
                         $attempt->max_score === null ? null : number_format((float) $attempt->max_score, 2, ',', ''),
                         $attempt->started_at === null ? null : round($attempt->elapsedSeconds() / 60, 1),
+                        $attempt->pending_manual_count,
                         $attempt->infraction_count,
                         $attempt->started_at?->format('d/m/Y H:i'),
                         $attempt->submitted_at?->format('d/m/Y H:i'),
+                    ]);
+                }
+            });
+
+            fclose($handle);
+        }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Export des réponses rédigées, une ligne par réponse.
+     *
+     * Un correcteur ne lit pas cinquante copies dans un tableau : il veut les
+     * textes groupés, avec la question, le barème et ce qui lui reste à noter.
+     * Une seule requête jointe, donc pas de N+1 sur une promotion entière.
+     */
+    public function exportOpenAnswers(Form $quiz): StreamedResponse
+    {
+        $this->assertQuiz($quiz);
+
+        $answers = QuizAnswer::query()
+            ->join('quiz_attempts', 'quiz_attempts.id', '=', 'quiz_answers.quiz_attempt_id')
+            ->join('form_fields', 'form_fields.id', '=', 'quiz_answers.form_field_id')
+            ->where('quiz_attempts.form_id', $quiz->id)
+            ->where('form_fields.field_type', FormField::OPEN_TYPE)
+            // Tri total : sans la clé primaire en dernier, deux réponses du même
+            // candidat se retrouveraient à égalité et la pagination par paquets
+            // pourrait en sauter ou en compter deux fois.
+            ->orderBy('quiz_attempts.reference')
+            ->orderBy('form_fields.order')
+            ->orderBy('form_fields.id')
+            ->orderBy('quiz_answers.id')
+            ->select([
+                'quiz_attempts.reference as reference',
+                'quiz_attempts.student_name as student_name',
+                'form_fields.field_label as question',
+                'form_fields.points as max_points',
+                'quiz_answers.answer_text as answer_text',
+                'quiz_answers.points_awarded as points_awarded',
+            ]);
+
+        $anonymous = $quiz->is_anonymous;
+        $filename = 'reponses-redigees_'.$quiz->id.'_'.now()->format('Y-m-d_Hi').'.csv';
+
+        return response()->streamDownload(function () use ($answers, $anonymous): void {
+            $handle = fopen('php://output', 'w');
+
+            fwrite($handle, "\xEF\xBB\xBF");
+            $this->writeCsvRow($handle, ['Référence', 'Nom', 'Question', 'Réponse', 'Points', 'Barème', 'Correction']);
+
+            $answers->chunk(200, function ($rows) use ($handle, $anonymous): void {
+                foreach ($rows as $row) {
+                    $this->writeCsvRow($handle, [
+                        $row->reference,
+                        // Évaluation anonyme : le nom reste hors du fichier, comme
+                        // dans l'export des résultats.
+                        $anonymous ? null : $row->student_name,
+                        $row->question,
+                        $row->answer_text,
+                        $row->points_awarded,
+                        $row->max_points,
+                        $row->points_awarded === null ? 'À corriger' : 'Corrigée',
                     ]);
                 }
             });
@@ -476,8 +558,30 @@ class QuizController extends Controller
      */
     private function validatedQuestion(Request $request): array
     {
+        // Question ouverte : ni propositions, ni bonne réponse. Le branchement se
+        // fait ici et non dans la vue, qui n'est qu'un confort d'affichage — un
+        // formulaire peut toujours être renvoyé à la main.
+        if ($request->input('field_type') === FormField::OPEN_TYPE) {
+            $request->validate([
+                'field_label' => ['required', 'string', 'max:'.QuizQuestionData::MAX_LABEL_LENGTH],
+                'expected_answer' => ['nullable', 'string', 'max:'.QuizQuestionData::MAX_EXPECTED_ANSWER],
+                'points' => ['required', 'numeric', 'min:0.5', 'max:100'],
+            ], [
+                'field_label.required' => 'L\'énoncé de la question est obligatoire.',
+                'expected_answer.max' => 'La réponse attendue ne peut pas dépasser '.QuizQuestionData::MAX_EXPECTED_ANSWER.' caractères.',
+                'points.required' => 'Indiquez le barème de la question.',
+                'points.min' => 'Le barème doit être d\'au moins 0,5 point.',
+            ]);
+
+            return QuizQuestionData::normalizeOpen(
+                (string) $request->input('field_label'),
+                (float) $request->input('points'),
+                $request->input('expected_answer')
+            );
+        }
+
         $request->validate([
-            'field_label' => ['required', 'string', 'max:2000'],
+            'field_label' => ['required', 'string', 'max:'.QuizQuestionData::MAX_LABEL_LENGTH],
             'field_type' => ['required', Rule::in(FormField::QUESTION_TYPES)],
             'options' => ['required', 'array', 'min:2', 'max:8'],
             'options.*' => ['nullable', 'string', 'max:500'],

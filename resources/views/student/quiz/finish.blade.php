@@ -26,8 +26,22 @@
             </button>
         </form>
 
+        @if($quiz->quizHasOpenQuestions())
+        {{-- Une question rédigée ne peut pas être notée par une machine : mieux
+             vaut le dire avant le rendu qu'après. --}}
+        <p class="mt-4 text-xs text-amber-700">
+            Les questions à réponse rédigée seront corrigées par votre enseignant.
+            Votre note sera provisoire jusqu'à cette correction.
+        </p>
+        @endif
+
         <p class="mt-4 text-xs text-slate-500">
-            La correction est définitive. Si le temps s'écoule avant que vous ne validiez, la copie est rendue
+            @if($quiz->quizHasOpenQuestions())
+                Vos réponses sont définitives une fois la copie rendue.
+            @else
+                La correction est définitive.
+            @endif
+            Si le temps s'écoule avant que vous ne validiez, la copie est rendue
             automatiquement avec les réponses déjà enregistrées.
         </p>
     </div>

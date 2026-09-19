@@ -10,13 +10,26 @@ class FormField extends Model
     use HasFactory;
 
     /**
-     * Types de champ qui sont des questions d'évaluation.
+     * Types de questions corrigées automatiquement.
      *
-     * « radio » = une seule réponse attendue, « checkbox » = plusieurs. Les
-     * autres types (texte, fichier, liste déroulante) restent propres au
-     * dépôt de travaux.
+     * « radio » = une seule réponse attendue, « checkbox » = plusieurs. Ce sont
+     * les seuls types pour lesquels une machine peut décider seul : on compare
+     * un ensemble d'index cochés à un ensemble attendu.
      */
     public const QUESTION_TYPES = ['radio', 'checkbox'];
+
+    /** Question ouverte : la réponse est un texte, noté à la main. */
+    public const OPEN_TYPE = 'textarea';
+
+    /**
+     * Types de champ qui sont des questions d'évaluation, corrigées ou non.
+     *
+     * C'est cette liste — et non QUESTION_TYPES — qui décide quels champs sont
+     * des questions : le nombre de questions d'une évaluation, le tirage
+     * aléatoire et le barème doivent compter les questions ouvertes, sinon une
+     * épreuve entièrement rédigée afficherait « 0 question ».
+     */
+    public const ANSWER_TYPES = ['radio', 'checkbox', self::OPEN_TYPE];
 
     protected $fillable = [
         'form_id',
@@ -26,6 +39,7 @@ class FormField extends Model
         'order',
         'options',
         'correct_answer',
+        'expected_answer',
         'points',
     ];
 
@@ -49,7 +63,19 @@ class FormField extends Model
 
     public function isQuestion(): bool
     {
-        return in_array($this->field_type, self::QUESTION_TYPES, true);
+        return in_array($this->field_type, self::ANSWER_TYPES, true);
+    }
+
+    /**
+     * Question ouverte : réponse rédigée, corrigée par l'enseignant.
+     *
+     * Aucune comparaison automatique n'est possible sur un texte libre : cette
+     * question n'est donc jamais comptée comme juste ou fausse par le correcteur
+     * automatique, elle attend une note.
+     */
+    public function isOpen(): bool
+    {
+        return $this->field_type === self::OPEN_TYPE;
     }
 
     /**
@@ -68,6 +94,9 @@ class FormField extends Model
 
     /**
      * Comparaison entre le choix d'un candidat et la bonne réponse.
+     *
+     * Sans objet pour une question ouverte : l'appelant ne l'appelle que pour
+     * les questions à propositions.
      *
      * Lot 1 : la réponse est juste si l'ensemble coché correspond exactement à
      * l'ensemble attendu. Pas de demi-point pour une réponse partielle — une

@@ -156,7 +156,7 @@ class QuizAdminControllerTest extends TestCase
 
         $quiz = Form::where('type', Form::TYPE_QUIZ)
             ->withCount([
-                'fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::QUESTION_TYPES),
+                'fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::ANSWER_TYPES),
                 'attempts',
             ])
             ->firstOrFail();
@@ -328,6 +328,133 @@ class QuizAdminControllerTest extends TestCase
         ))->assertRedirect();
 
         $this->assertSame([0, 2], $this->quiz->quizQuestions()->firstOrFail()->correctIndexes());
+    }
+
+    public function test_une_question_ouverte_est_ajoutee_sans_propositions_ni_bonne_reponse(): void
+    {
+        $this->post(route('admin.quizzes.questions.store', $this->quiz), [
+            'field_label' => 'Expliquez la saponification en deux ou trois lignes.',
+            'field_type' => 'textarea',
+            'expected_answer' => 'Huile + soude, savon et glycérine en sous-produit.',
+            'points' => 4,
+        ])->assertRedirect();
+
+        $question = $this->quiz->quizQuestions()->firstOrFail();
+
+        $this->assertSame('textarea', $question->field_type);
+        $this->assertTrue($question->isOpen());
+        $this->assertTrue($question->isQuestion());
+        $this->assertSame([], $question->getOptionsList());
+        $this->assertSame([], $question->correctIndexes());
+        $this->assertSame('Huile + soude, savon et glycérine en sous-produit.', $question->expected_answer);
+
+        // Le barème de l'évaluation inclut les questions rédigées : une épreuve
+        // notée sur 4 points de rédaction ne peut pas être annoncée sur 0.
+        $this->assertSame(4.0, $this->quiz->quizMaxScore());
+        $this->assertTrue($this->quiz->quizHasOpenQuestions());
+    }
+
+    public function test_une_question_ouverte_sans_guide_de_correction_est_acceptee(): void
+    {
+        $this->post(route('admin.quizzes.questions.store', $this->quiz), [
+            'field_label' => 'Expliquez la saponification.',
+            'field_type' => 'textarea',
+            'points' => 2,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertNull($this->quiz->quizQuestions()->firstOrFail()->expected_answer);
+    }
+
+    public function test_un_guide_de_correction_trop_long_est_refuse(): void
+    {
+        $this->post(route('admin.quizzes.questions.store', $this->quiz), [
+            'field_label' => 'Expliquez la saponification.',
+            'field_type' => 'textarea',
+            'expected_answer' => str_repeat('a', \App\Support\QuizQuestionData::MAX_EXPECTED_ANSWER + 1),
+            'points' => 2,
+        ])->assertSessionHasErrors('expected_answer');
+
+        $this->assertSame(0, $this->quiz->quizQuestions()->count());
+    }
+
+    public function test_le_bareme_d_une_question_ouverte_est_borne_comme_les_autres(): void
+    {
+        $this->post(route('admin.quizzes.questions.store', $this->quiz), [
+            'field_label' => 'Expliquez la saponification.',
+            'field_type' => 'textarea',
+            'points' => 0,
+        ])->assertSessionHasErrors('points');
+
+        $this->assertSame(0, $this->quiz->quizQuestions()->count());
+    }
+
+    public function test_une_question_ouverte_compte_dans_la_liste_des_evaluations(): void
+    {
+        $this->post(route('admin.quizzes.questions.store', $this->quiz), [
+            'field_label' => 'Expliquez la saponification.',
+            'field_type' => 'textarea',
+            'points' => 4,
+        ])->assertRedirect();
+
+        $counted = Form::where('type', Form::TYPE_QUIZ)
+            ->withCount(['fields as questions_count' => fn ($query) => $query->whereIn('field_type', FormField::ANSWER_TYPES)])
+            ->firstOrFail();
+
+        $this->assertSame(1, $counted->questions_count);
+    }
+
+    public function test_une_question_ouverte_devient_un_qcm_et_inversement(): void
+    {
+        // Les champs de propositions restent présents dans le formulaire (masqués
+        // à l'écran) : converti en QCM, ils servent ; converti en question ouverte,
+        // ils sont ignorés. C'est le type qui décide, jamais la présence d'un champ.
+        $question = $this->question(['field_type' => 'textarea', 'options' => [], 'correct_answer' => [], 'points' => 2]);
+
+        $this->put(route('admin.quizzes.questions.update', [$this->quiz, $question]), $this->questionPayload(
+            ['Un', 'Deux', 'Trois', ''],
+            [1],
+            2,
+            'radio'
+        ))->assertRedirect()->assertSessionHasNoErrors();
+
+        $question->refresh();
+
+        $this->assertSame('radio', $question->field_type);
+        $this->assertSame(['Un', 'Deux', 'Trois'], $question->getOptionsList());
+        $this->assertSame([1], $question->correctIndexes());
+        $this->assertNull($question->expected_answer);
+
+        $this->put(route('admin.quizzes.questions.update', [$this->quiz, $question]), [
+            'field_label' => $question->field_label,
+            'field_type' => 'textarea',
+            'options' => ['Un', 'Deux', 'Trois', ''],
+            'correct' => [1],
+            'points' => 2,
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $question->refresh();
+
+        $this->assertSame('textarea', $question->field_type);
+        $this->assertSame([], $question->getOptionsList());
+        $this->assertSame([], $question->correctIndexes());
+    }
+
+    public function test_la_page_de_l_evaluation_montre_une_question_ouverte(): void
+    {
+        $this->question([
+            'field_label' => 'Expliquez la saponification.',
+            'field_type' => 'textarea',
+            'options' => [],
+            'correct_answer' => [],
+            'points' => 4,
+            'expected_answer' => 'Huile + soude.',
+        ]);
+
+        $this->get(route('admin.quizzes.show', $this->quiz))
+            ->assertOk()
+            ->assertSee('Expliquez la saponification.')
+            ->assertSee('Réponse rédigée')
+            ->assertSee('Huile + soude.');
     }
 
     public function test_il_faut_au_moins_deux_propositions_non_vides(): void
@@ -543,12 +670,13 @@ class QuizAdminControllerTest extends TestCase
         $csv = $response->streamedContent();
 
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
-        $this->assertStringContainsString('Référence;Nom;Email;Filière;Statut;Note;Barème;"Temps (min)";Infractions;"Commencée le";"Terminée le"', $csv);
+        $this->assertStringContainsString('Référence;Nom;Email;Filière;Statut;Note;Barème;"Temps (min)";"Réponses libres à corriger";Infractions;"Commencée le";"Terminée le"', $csv);
         $this->assertStringContainsString($attempt->reference, $csv);
         $this->assertStringContainsString('Curie Marie', $csv);
         $this->assertStringContainsString('Terminée', $csv);
-        // La ligne complète : note, barème, temps passé et infractions.
-        $this->assertStringContainsString(';MPI;Terminée;2,00;2,00;10;2;', $csv);
+        // La ligne complète : note, barème, temps passé, réponses libres à
+        // corriger (aucune ici) et infractions.
+        $this->assertStringContainsString(';MPI;Terminée;2,00;2,00;10;0;2;', $csv);
     }
 
     public function test_l_export_csv_masque_les_noms_quand_l_evaluation_est_anonyme(): void

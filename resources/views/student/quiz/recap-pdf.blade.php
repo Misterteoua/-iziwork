@@ -23,6 +23,8 @@
         .question .meta { font-size: 11px; color: #6b7280; }
         .good { color: #047857; }
         .bad { color: #b91c1c; }
+        .pending { color: #b45309; font-weight: bold; }
+        .notice { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; font-size: 11px; }
         .footer { text-align: center; color: #9ca3af; font-size: 10px; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; }
         .reference { font-family: "Courier New", monospace; font-size: 16px; letter-spacing: 2px; color: #033299; font-weight: bold; }
     </style>
@@ -37,9 +39,19 @@
 
     @if($showScore && $attempt->score !== null)
     <div class="score">
-        <div class="label">Note obtenue</div>
+        <div class="label">{{ $pending > 0 ? 'Note provisoire' : 'Note obtenue' }}</div>
         <div class="value">{{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }} / {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</div>
     </div>
+
+    {{-- Une réponse rédigée se corrige à la main : tant qu'il en reste une en
+         attente, le document doit le dire, sinon il attesterait d'une note qui
+         n'est pas encore arrêtée. --}}
+    @if($pending > 0)
+    <div class="notice">
+        Note provisoire : {{ $pending }} réponse(s) rédigée(s) restent à corriger.
+        Cette note deviendra définitive après la correction par l'enseignant.
+    </div>
+    @endif
     @endif
 
     <div class="section">
@@ -78,12 +90,28 @@
             <div class="meta">
                 @if($answer === null)
                     <span class="bad">Sans réponse</span>
+                @elseif($question->isOpen())
+                    {{-- Pas de bonne réponse à comparer : soit la note est
+                         attribuée, soit la question attend encore. --}}
+                    @if($answer->isGraded())
+                        <span class="{{ $answer->is_correct ? 'good' : 'bad' }}">
+                            {{ rtrim(rtrim(number_format((float) $answer->points_awarded, 2, ',', ' '), '0'), ',') }} / {{ $question->points }} point(s)
+                        </span>
+                    @else
+                        <span class="pending">En attente de correction</span>
+                    @endif
                 @elseif($answer->is_correct)
                     <span class="good">Juste — {{ $question->points }} point(s)</span>
                 @else
                     <span class="bad">Faux — 0 point</span>
                 @endif
             </div>
+
+            @if($question->isOpen())
+            <div class="meta">
+                Votre réponse : {{ trim((string) $answer?->answer_text) !== '' ? $answer->answer_text : '—' }}
+            </div>
+            @else
             {{-- Les réponses sont désignées par leur intitulé et non par une
                  lettre : avec un mélange des propositions, la lettre « B »
                  n'est pas la même d'un candidat à l'autre. --}}
@@ -101,6 +129,7 @@
                 Votre réponse : {{ $chosenLabels === [] ? '—' : implode(' ; ', $chosenLabels) }}
                 · Bonne réponse : {{ implode(' ; ', $correctLabels) }}
             </div>
+            @endif
         </div>
         @endforeach
     </div>

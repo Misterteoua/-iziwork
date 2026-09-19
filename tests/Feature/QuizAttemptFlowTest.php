@@ -487,6 +487,219 @@ class QuizAttemptFlowTest extends TestCase
             ->assertDontSee('Détail de la correction');
     }
 
+    // --------------------------------------------------- Questions ouvertes
+
+    private function openQuestion(
+        string $label = 'Expliquez la saponification en deux ou trois lignes.',
+        float $points = 3,
+        ?string $expected = null,
+    ): FormField {
+        return $this->quiz->fields()->create([
+            'field_label' => $label,
+            'field_type' => FormField::OPEN_TYPE,
+            'required' => true,
+            'order' => (int) $this->quiz->fields()->max('order') + 1,
+            'options' => [],
+            'correct_answer' => [],
+            'expected_answer' => $expected,
+            'points' => $points,
+        ]);
+    }
+
+    public function test_une_question_ouverte_affiche_une_zone_de_texte_sans_le_guide(): void
+    {
+        $this->openQuestion(expected: 'Huile + soude, savon et glycérine.');
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Réponse rédigée')
+            ->assertSee('name="answer_text"', false)
+            // Le guide de correction est un document de travail : il ne doit
+            // jamais traverser jusqu'au navigateur de l'étudiant.
+            ->assertDontSee('Huile + soude, savon et glycérine.');
+    }
+
+    public function test_une_reponse_redigee_est_enregistree_telle_quelle(): void
+    {
+        $open = $this->openQuestion();
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => "  La saponification transforme l'huile et la soude en savon.  ",
+        ])->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $answer = $this->quiz->attempts()->firstOrFail()->answers()->firstOrFail();
+
+        // Les espaces de bord sont retirés, le texte est conservé mot pour mot.
+        $this->assertSame("La saponification transforme l'huile et la soude en savon.", $answer->answer_text);
+        $this->assertNull($answer->choice);
+        // Tant que la correction n'a pas eu lieu, la réponse n'est ni juste ni
+        // fausse : elle est en attente.
+        $this->assertNull($answer->points_awarded);
+        $this->assertNull($answer->is_correct);
+    }
+
+    public function test_une_reponse_redigee_vide_ou_faite_d_espaces_est_refusee(): void
+    {
+        $open = $this->openQuestion();
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => '',
+        ])->assertSessionHasErrors('answer_text');
+
+        // «   » passe la règle `required` de Laravel : c'est le contrôle du
+        // contenu qui l'arrête, sans quoi une question ouverte serait « répondue »
+        // sans un mot.
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => '     ',
+        ])->assertSessionHasErrors('answer_text');
+
+        $this->assertSame(0, $this->quiz->attempts()->firstOrFail()->answers()->count());
+    }
+
+    public function test_les_reponses_redigees_ne_sont_pas_notees_automatiquement(): void
+    {
+        $choice = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+        $open = $this->openQuestion('Expliquez la saponification.', 3);
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $choice->id, 'choice' => 1]);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => 'Huile et soude donnent du savon.',
+        ]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attempt = $this->quiz->attempts()->firstOrFail();
+
+        // La note est celle des QCM ; le barème, lui, compte la rédaction.
+        $this->assertSame('2.00', $attempt->score);
+        $this->assertSame('5.00', $attempt->max_score);
+        $this->assertSame(1, $attempt->pendingManualCount());
+        $this->assertTrue($attempt->awaitsManualGrading());
+
+        // L'étudiant doit lire que sa note est provisoire.
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Note provisoire')
+            ->assertSee('1 réponse(s) rédigée(s) en attente de correction')
+            ->assertSee('Huile et soude donnent du savon.')
+            ->assertSee('En attente de correction');
+    }
+
+    public function test_un_encodage_invalide_ne_perd_pas_la_copie(): void
+    {
+        $open = $this->openQuestion();
+
+        $this->start(['student_name' => 'Jean']);
+
+        // « glycé » écrit en latin-1 : suite d'octets invalide en UTF-8. MySQL en
+        // utf8mb4 strict refuserait l'insertion, et l'étudiant perdrait sa copie
+        // sur une erreur 500. Les octets fautifs sont neutralisés.
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => "glyc\xE9rine",
+        ])->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $text = (string) $this->quiz->attempts()->firstOrFail()->answers()->firstOrFail()->answer_text;
+
+        $this->assertTrue(mb_check_encoding($text, 'UTF-8'));
+        $this->assertStringContainsString('glyc', $text);
+    }
+
+    public function test_la_page_de_confirmation_annonce_les_questions_redigees(): void
+    {
+        $choice = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+        $open = $this->openQuestion('Expliquez la saponification.', 3);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $choice->id, 'choice' => 1]);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => 'Huile et soude donnent du savon.',
+        ]);
+
+        $this->get(route('quiz.submit.page', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('seront corrigées par votre enseignant')
+            ->assertSee('note sera provisoire');
+    }
+
+    public function test_une_question_ouverte_sans_reponse_ne_laisse_pas_la_copie_en_attente(): void
+    {
+        $choice = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+        $this->openQuestion('Expliquez la saponification.', 3);
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $choice->id, 'choice' => 1]);
+
+        // Le temps s'écoule avant la question rédigée : il n'y a rien à corriger,
+        // la question vaut zéro par absence, comme un QCM non répondu.
+        $this->quiz->attempts()->firstOrFail()->update(['expires_at' => Carbon::now()->subMinute()]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attempt = $this->quiz->attempts()->firstOrFail();
+
+        $this->assertSame(QuizAttempt::STATUS_EXPIRED, $attempt->status);
+        $this->assertSame('2.00', $attempt->score);
+        $this->assertSame(0, $attempt->pendingManualCount());
+        $this->assertFalse($attempt->awaitsManualGrading());
+    }
+
+    public function test_le_recapitulatif_pdf_porte_la_mention_provisoire(): void
+    {
+        $choice = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+        $open = $this->openQuestion('Expliquez la saponification.', 3);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $choice->id, 'choice' => 1]);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $open->id,
+            'answer_text' => 'Huile et soude donnent du savon.',
+        ]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attempt = $this->quiz->attempts()->firstOrFail()->load('answers');
+
+        $response = $this->get(route('quiz.recap.pdf', [$this->quiz->token, $attempt->reference]));
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', (string) $response->getContent());
+
+        // Le rendu du document, lui, se vérifie : DomPDF ne produit pas de texte
+        // lisible dans le binaire, mais la vue est la source du PDF.
+        $pending = view('student.quiz.recap-pdf', [
+            'quiz' => $this->quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'pending' => 1,
+        ])->render();
+
+        $this->assertStringContainsString('Note provisoire', $pending);
+        $this->assertStringContainsString('En attente de correction', $pending);
+        $this->assertStringContainsString('Huile et soude donnent du savon.', $pending);
+
+        $definitive = view('student.quiz.recap-pdf', [
+            'quiz' => $this->quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'pending' => 0,
+        ])->render();
+
+        $this->assertStringContainsString('Note obtenue', $definitive);
+        $this->assertStringNotContainsString('Note provisoire', $definitive);
+    }
+
     // ------------------------------------------------------- Récapitulatif PDF
 
     public function test_le_recapitulatif_pdf_s_obtient_avec_la_reference(): void

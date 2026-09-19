@@ -8,6 +8,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use App\Support\QuizDraw;
 use App\Support\QuizGrader;
+use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -179,11 +180,26 @@ class QuizAttemptController extends Controller
                 ->with('error', 'Cette question a déjà été validée.');
         }
 
+        // Deux natures de réponse, un seul enregistrement : une question ouverte
+        // garde le texte tapé, une question à propositions garde les index cochés.
+        if ($question->isOpen()) {
+            QuizAnswer::updateOrCreate(
+                ['quiz_attempt_id' => $attempt->id, 'form_field_id' => $question->id],
+                [
+                    'answer_text' => $this->validatedOpenAnswer($request),
+                    'choice' => null,
+                    'answered_at' => Carbon::now(),
+                ]
+            );
+
+            return redirect()->route('quiz.question', $quiz->token);
+        }
+
         $chosen = $this->validatedChoice($request, $question);
 
         QuizAnswer::updateOrCreate(
             ['quiz_attempt_id' => $attempt->id, 'form_field_id' => $question->id],
-            ['choice' => $chosen, 'answered_at' => Carbon::now()]
+            ['choice' => $chosen, 'answer_text' => null, 'answered_at' => Carbon::now()]
         );
 
         return redirect()->route('quiz.question', $quiz->token);
@@ -253,6 +269,9 @@ class QuizAttemptController extends Controller
             'answers' => $attempt->answers()->with('field')->get(),
             'questions' => $attempt->questions(),
             'showScore' => $quiz->quizShowsScore(),
+            // Réponses rédigées encore à corriger : la note n'est alors qu'une
+            // note provisoire, et l'étudiant doit le lire noir sur blanc.
+            'pending' => $attempt->pendingManualCount(),
         ]);
     }
 
@@ -280,6 +299,7 @@ class QuizAttemptController extends Controller
             'quiz' => $quiz,
             'attempt' => $attempt,
             'showScore' => $quiz->quizShowsScore(),
+            'pending' => $attempt->pendingManualCount(),
         ]);
 
         return $pdf->download('evaluation_'.$attempt->reference.'.pdf');
@@ -521,6 +541,42 @@ class QuizAttemptController extends Controller
         }
 
         return false;
+    }
+
+    /**
+     * Valide une réponse rédigée.
+     *
+     * Un texte fait uniquement d'espaces est refusé : la règle `required` de
+     * Laravel accepte «   » comme une chaîne non vide, ce qui laisserait passer
+     * une question ouverte « répondue » sans un mot.
+     */
+    private function validatedOpenAnswer(Request $request): string
+    {
+        $request->validate([
+            'answer_text' => ['required', 'string', 'max:'.QuizQuestionData::MAX_STUDENT_ANSWER],
+        ], [
+            'answer_text.required' => 'Rédigez votre réponse avant de continuer.',
+            'answer_text.max' => 'Votre réponse ne peut pas dépasser '.QuizQuestionData::MAX_STUDENT_ANSWER.' caractères.',
+        ]);
+
+        $text = trim((string) $request->input('answer_text'));
+
+        if ($text === '') {
+            throw ValidationException::withMessages([
+                'answer_text' => 'Rédigez votre réponse avant de continuer.',
+            ]);
+        }
+
+        // Un navigateur envoie de l'UTF-8, mais une requête forgée peut porter une
+        // suite d'octets invalide — et MySQL en utf8mb4 strict refuse alors
+        // l'insertion : la copie serait perdue au moment du rendu, avec une erreur
+        // 500 en pleine épreuve. On remplace les octets fautifs plutôt que de
+        // laisser une réponse honnête faire échouer l'enregistrement.
+        if (! mb_check_encoding($text, 'UTF-8')) {
+            $text = mb_convert_encoding($text, 'UTF-8', 'UTF-8');
+        }
+
+        return $text;
     }
 
     /**

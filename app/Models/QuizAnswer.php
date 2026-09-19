@@ -16,6 +16,7 @@ class QuizAnswer extends Model
         'quiz_attempt_id',
         'form_field_id',
         'choice',
+        'answer_text',
         'is_correct',
         'points_awarded',
         'answered_at',
@@ -29,6 +30,27 @@ class QuizAnswer extends Model
             'points_awarded' => 'decimal:2',
             'answered_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Cette réponse a-t-elle été notée ?
+     *
+     * `null` n'est pas zéro : une question ouverte attend une note, une question
+     * à propositions est notée dès la remise de la copie. Toute la logique de
+     * « reste-t-il des copies à corriger » repose sur cette distinction.
+     */
+    public function isGraded(): bool
+    {
+        return $this->points_awarded !== null;
+    }
+
+    /**
+     * Note attribuée, lisible telle quelle. Une réponse non encore corrigée rend
+     * `null`, jamais 0 : l'affichage doit pouvoir dire « en attente ».
+     */
+    public function awardedPoints(): ?float
+    {
+        return $this->isGraded() ? (float) $this->points_awarded : null;
     }
 
     public function attempt()
