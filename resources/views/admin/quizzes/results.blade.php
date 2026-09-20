@@ -144,6 +144,15 @@
                             @else
                             <span class="text-slate-400">—</span>
                             @endif
+
+                            @if($attempt->reviewed_count > 0)
+                            {{-- Une note qui n'est plus celle du correcteur : le
+                                 lien mène à la copie, où le journal dit qui a
+                                 repris quoi, quand et pourquoi. --}}
+                            <span class="block mt-1 text-xs font-medium text-amber-700">
+                                {{ $attempt->reviewed_count }} note(s) revue(s)
+                            </span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {{ $attempt->infraction_count > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500' }}" style="font-variant-numeric: tabular-nums">
                             {{ $attempt->infraction_count }}

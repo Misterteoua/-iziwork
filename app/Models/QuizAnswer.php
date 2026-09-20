@@ -113,6 +113,47 @@ class QuizAnswer extends Model
         return null;
     }
 
+    /**
+     * Les relectures de cette note, de la plus ancienne à la plus récente.
+     *
+     * Une ligne par note remplacée — ou confirmée après examen. Rien n'est
+     * effacé : c'est ce journal qui permet de répondre à « qui avait mis quoi,
+     * et pourquoi c'est changé ».
+     */
+    public function reviews()
+    {
+        return $this->hasMany(QuizGradeReview::class, 'quiz_answer_id')->orderBy('id');
+    }
+
+    /** La dernière relecture connue, s'il y en a une. */
+    public function latestReview(): ?QuizGradeReview
+    {
+        return $this->relationLoaded('reviews')
+            ? $this->reviews->last()
+            : $this->reviews()->latest('id')->first();
+    }
+
+    /**
+     * La note a-t-elle été relue par l'administration ?
+     *
+     * La question est précise : un correcteur qui retouche sa propre note laisse
+     * lui aussi une ligne au journal, mais cela ne fait pas de lui une relecture
+     * d'administration — et surtout, cela ne doit pas lui fermer l'accès à sa
+     * propre copie.
+     */
+    public function reviewedByAdmin(): bool
+    {
+        return $this->relationLoaded('reviews')
+            ? $this->reviews->contains(fn (QuizGradeReview $review): bool => $review->reviewed_by_admin_id !== null)
+            : $this->reviews()->whereNotNull('reviewed_by_admin_id')->exists();
+    }
+
+    /** La note actuellement retenue a-t-elle été posée par un correcteur externe ? */
+    public function heldByGrader(): bool
+    {
+        return $this->graded_by_grader_id !== null;
+    }
+
     /** Le correcteur externe auteur de la note ou du commentaire. */
     public function grader()
     {

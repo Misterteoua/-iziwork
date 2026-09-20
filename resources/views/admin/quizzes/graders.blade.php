@@ -74,7 +74,8 @@
     <div class="space-y-4">
         @foreach($graders as $grader)
         @php($expired = $grader->isExpired())
-        @php($done = $progress[$grader->id] ?? 0)
+        @php($done = $progress[$grader->id]['graded'] ?? 0)
+        @php($reviewed = $progress[$grader->id]['reviewed'] ?? 0)
 
         <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6">
             <div class="flex flex-wrap items-start justify-between gap-4">
@@ -93,6 +94,9 @@
 
                         <span class="ml-2 text-slate-500">
                             {{ $done }} copie(s) portent sa trace sur cette évaluation
+                            @if($reviewed > 0)
+                            · <span class="font-medium text-amber-700">{{ $reviewed }} note(s) revue(s) par vous</span>
+                            @endif
                         </span>
 
                         @if($grader->last_seen_at)

@@ -62,10 +62,17 @@ class QuizGradingController extends Controller
                 ->with('error', 'Cette copie n\'est pas encore rendue : il n\'y a rien à corriger.');
         }
 
-        // `grader` et `gradingAdmin` sont chargés d'avance : la page affiche qui a
-        // posé chaque note, et sans cela une copie de cinquante questions
-        // déclencherait autant de requêtes.
-        $attempt->load(['answers.field', 'answers.grader', 'answers.gradingAdmin']);
+        // `grader`, `gradingAdmin` et les relectures sont chargés d'avance : la
+        // page affiche qui a posé chaque note et ce que la relecture a changé,
+        // et sans cela une copie de cinquante questions déclencherait autant de
+        // requêtes.
+        $attempt->load([
+            'answers.field',
+            'answers.grader',
+            'answers.gradingAdmin',
+            'answers.reviews.previousGrader',
+            'answers.reviews.previousAdmin',
+        ]);
 
         $series = $request->boolean('serie');
         $queue = $this->queue($quiz);

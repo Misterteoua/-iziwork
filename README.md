@@ -405,6 +405,38 @@ Le QR code de la fiche est recalculé à partir du lien à chaque affichage, jam
 enregistré : **régénérer le lien met le QR à jour tout seul**, un QR périmé est
 donc impossible.
 
+### Le second niveau : reprendre la note d'un correcteur
+
+Une note posée par un correcteur externe n'est pas un point final. Depuis la
+page de correction, l'administration peut la **reprendre** — et elle doit alors
+dire **pourquoi** : un motif est exigé dès que la note change, sans quoi la trace
+laissée ne dirait rien à celui qui la lirait plus tard.
+
+- **La note remplacée est archivée, jamais effacée.** Le journal de la copie
+  garde ce qui était enregistré (note, commentaire, auteur), qui a repris, quand
+  et sur quel motif. C'est ce journal que la page de correction affiche sous
+  chaque réponse rédigée.
+- **La reprise est définitive du point de vue du correcteur.** La réponse
+  s'affiche pour lui en **lecture seule**, avec la note retenue, le motif et son
+  commentaire d'origine : plus de champ de note. S'il rejoue le formulaire à la
+  main, l'enregistrement est refusé côté serveur — la décision de
+  l'administration tient.
+- **Confirmer est aussi une relecture.** Donner un motif sans changer la note
+  journalise l'examen : la note reste au nom du correcteur qui l'a posée, et la
+  relecture est tracée.
+- **Chaque note contestée a un auteur.** « Note posée par Awa Kouassi
+  (correcteur) », « par admin » : la page de correction et l'export CSV le disent.
+- **Où le voir.** Résultats affiche « *n* note(s) revue(s) » sur la copie
+  concernée, et la page Correcteurs compte, par correcteur, les notes que
+  l'administration a reprises sur cette évaluation.
+- **L'export du correcteur ne lui retire rien.** Sa note et son commentaire y
+  restent tels qu'il les a posés ; deux colonnes donnent ce qui compte
+  désormais (« Points retenus ») et la décision prise à sa place (« Révision »),
+  motif compris.
+
+Rien à configurer, aucune surcharge du serveur : contrôler une note coûte une
+requête, et l'échéance du correcteur se ferme toujours sans tâche planifiée.
+
 ### Tirage aléatoire et mélange des propositions
 
 Trois réglages, tous désactivés par défaut :

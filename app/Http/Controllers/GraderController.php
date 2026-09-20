@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\Grader;
 use App\Models\QuizAttempt;
+use App\Models\QuizGradeReview;
 use App\Support\Qr\QrPng;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -229,23 +230,34 @@ class GraderController extends Controller
 
     /**
      * Avancement de chaque correcteur sur cette évaluation : combien de copies
-     * portent une trace de lui, et combien attendent encore.
+     * portent une trace de lui, et combien de ses notes ont été revues.
      *
-     * Une requête par correcteur, et non par copie : une évaluation n'a qu'une
-     * poignée de correcteurs, mais peut avoir des centaines de copies.
+     * Le second chiffre est celui qui intéresse vraiment l'organisateur : un
+     * correcteur repris dix fois n'a pas le même besoin d'être accompagné qu'un
+     * correcteur repris une fois.
+     *
+     * Une paire de requêtes par correcteur, et non par copie : une évaluation
+     * n'a qu'une poignée de correcteurs, mais peut avoir des centaines de
+     * copies.
      *
      * @param  \Illuminate\Support\Collection<int, Grader>  $graders
-     * @return array<int, int>
+     * @return array<int, array{graded: int, reviewed: int}>
      */
     private function progress(Form $quiz, $graders): array
     {
         $progress = [];
 
         foreach ($graders as $grader) {
-            $progress[$grader->getKey()] = QuizAttempt::query()
-                ->where('form_id', $quiz->getKey())
-                ->whereHas('answers', fn ($answers) => $answers->where('graded_by_grader_id', $grader->getKey()))
-                ->count();
+            $progress[$grader->getKey()] = [
+                'graded' => QuizAttempt::query()
+                    ->where('form_id', $quiz->getKey())
+                    ->whereHas('answers', fn ($answers) => $answers->where('graded_by_grader_id', $grader->getKey()))
+                    ->count(),
+                'reviewed' => QuizGradeReview::query()
+                    ->where('previous_grader_id', $grader->getKey())
+                    ->whereHas('answer.attempt', fn ($attempt) => $attempt->where('form_id', $quiz->getKey()))
+                    ->count(),
+            ];
         }
 
         return $progress;

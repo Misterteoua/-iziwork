@@ -81,6 +81,84 @@ final class QuizGrader
     }
 
     /**
+     * Enregistre une décision de correction, en archivant celle qu'elle remplace.
+     *
+     * C'est le point d'entrée normal : noter, commenter ou reprendre une note
+     * passent tous par ici, et une seule règle décide de ce qui est journalisé.
+     *
+     * Trois cas, et rien d'autre :
+     *   - rien ne change et aucun motif n'est donné : on ne touche à rien, il n'y
+     *     a rien à raconter ;
+     *   - une note déjà posée change (ou l'administration la confirme après
+     *     examen, avec un motif) : l'ancienne note est **archivée avant d'être
+     *     remplacée** ;
+     *   - la réponse attendait encore sa note : rien à archiver, on écrit.
+     *
+     * `$reviewedBy` est l'administrateur qui relit ; il reste vide quand c'est un
+     * correcteur qui retouche sa propre note, ce qui distingue une relecture
+     * d'administration d'un simple changement d'avis.
+     */
+    public function record(
+        QuizAnswer $answer,
+        ?float $points,
+        ?string $comment,
+        Grader|int|null $by = null,
+        ?string $reason = null,
+        ?int $reviewedBy = null,
+    ): QuizAnswer {
+        $reason = self::normalizeComment($reason);
+        $comment = self::normalizeComment($comment);
+
+        $changesPoints = $points !== null && (float) $answer->points_awarded !== $points;
+        $changesComment = $answer->grader_comment !== $comment;
+
+        if (! $changesPoints && ! $changesComment) {
+            // Rien à réécrire. Il reste un cas : l'administration a examiné la
+            // note et la **maintient** en donnant un motif. La relecture est
+            // alors journalisée sans que l'auteur de la note change — une note
+            // confirmée reste la note du correcteur qui l'a posée.
+            if ($reason !== null) {
+                $this->archive($answer, $reason, $reviewedBy);
+            }
+
+            return $answer;
+        }
+
+        // Archiver *avant* d'écrire : au moment où cette ligne est créée, les
+        // colonnes de la réponse décrivent encore la note remplacée.
+        $this->archive($answer, $reason, $reviewedBy);
+
+        if ($points === null) {
+            return $this->comment($answer, $comment, $by);
+        }
+
+        return $this->award($answer, $points, $comment, $by);
+    }
+
+    /**
+     * Journalise une relecture : ce qui était enregistré avant qu'on y touche.
+     *
+     * Rien n'est écrit quand la réponse n'était pas encore notée : il n'y a pas
+     * de note remplacée à raconter, et une ligne vide au journal ferait croire à
+     * une reprise là où l'administration a simplement posé la première note.
+     */
+    private function archive(QuizAnswer $answer, ?string $reason, ?int $reviewedBy): void
+    {
+        if (! $answer->isGraded()) {
+            return;
+        }
+
+        $answer->reviews()->create([
+            'previous_points' => $answer->points_awarded,
+            'previous_comment' => $answer->grader_comment,
+            'previous_grader_id' => $answer->graded_by_grader_id,
+            'previous_admin_id' => $answer->graded_by_admin_id,
+            'reviewed_by_admin_id' => $reviewedBy,
+            'reason' => $reason,
+        ]);
+    }
+
+    /**
      * Attribue les points d'une réponse rédigée, et son commentaire.
      *
      * La note est bornée au barème de la question : accepter davantage donnerait
@@ -136,7 +214,14 @@ final class QuizGrader
         return $answer;
     }
 
-    private static function normalizeComment(?string $comment): ?string
+    /**
+     * Le commentaire tel qu'il est retenu : espaces retirés, vide valant rien.
+     *
+     * Public parce que ceux qui comparent une décision à l'état enregistré —
+     * pour décider s'il y a lieu de journaliser — doivent comparer la même chose
+     * que ce qui sera réellement écrit.
+     */
+    public static function normalizeComment(?string $comment): ?string
     {
         $comment = trim((string) $comment);
 

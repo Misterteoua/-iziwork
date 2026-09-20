@@ -99,6 +99,7 @@
                 'question' => $question,
                 'index' => $index,
                 'answers' => $answers,
+                'asAdmin' => true,
             ])
         @endforeach
 

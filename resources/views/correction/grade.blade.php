@@ -98,6 +98,9 @@
                 'question' => $question,
                 'index' => $index,
                 'answers' => $answers,
+                // Un correcteur voit la relecture de l'administration, mais
+                // ne peut pas reprendre une note déjà relue.
+                'asAdmin' => false,
             ])
         @endforeach
 

@@ -6,11 +6,11 @@ use App\Models\FormField;
 use App\Models\Grader;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\QuizGradeReview;
 use App\Support\QuizCopyGrading;
 use App\Support\QuizReference;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -141,10 +141,14 @@ class CorrectionController extends Controller
             ->with('form')
             ->get();
 
-        // Les copies où il a déjà posé une note ou un commentaire. C'est le
-        // périmètre exact de son export, et il doit pouvoir le vérifier avant
-        // de le télécharger.
-        $graded = $this->gradedAttempts($grader)->with('form')->get();
+        // Les copies où il a déjà posé une note ou un commentaire — y compris
+        // celles que l'administration a reprises depuis : son travail reste le
+        // sien, et le voir signalé vaut mieux que le découvrir par hasard.
+        $graded = $this->gradedAttempts($grader)
+            ->with('form')
+            ->withCount(['answers as revisions_count' => fn ($answers) => $answers
+                ->whereHas('reviews', fn ($reviews) => $reviews->where('previous_grader_id', $grader->getKey()))])
+            ->get();
 
         return view('correction.index', [
             'grader' => $grader,
@@ -172,7 +176,15 @@ class CorrectionController extends Controller
 
         $quiz = $attempt->form;
 
-        $attempt->load(['answers.field', 'answers.grader', 'answers.gradingAdmin']);
+        $attempt->load([
+            'answers.field',
+            'answers.grader',
+            'answers.gradingAdmin',
+            // Les relectures de l'administration : une note reprise s'affiche en
+            // lecture seule, avec son motif.
+            'answers.reviews.previousGrader',
+            'answers.reviews.previousAdmin',
+        ]);
 
         $series = $request->boolean('serie');
         $queue = $this->queue($grader);
@@ -228,10 +240,16 @@ class CorrectionController extends Controller
      * L'export du correcteur : **ses** notes et **ses** commentaires, et rien
      * d'autre.
      *
-     * Une ligne par réponse qu'il a lui-même corrigée ou commentée
-     * (`graded_by_grader_id`), dans ses seules évaluations affectées. Aucune
-     * copie qu'il n'a pas touchée n'y figure, et il ne peut donc pas lire le
-     * travail d'un autre correcteur par ce chemin.
+     * Une ligne par réponse qu'il a lui-même corrigée ou commentée, dans ses
+     * seules évaluations affectées. Aucune copie qu'il n'a pas touchée n'y
+     * figure, et il ne peut donc pas lire le travail d'un autre correcteur par
+     * ce chemin.
+     *
+     * Les notes reprises par l'administration **restent** dans son export :
+     * c'est son travail, et le lui retirer silencieusement serait le pire des
+     * services. La colonne « Révision » dit ce qui a été décidé à sa place, avec
+     * le motif, et « Mes points » garde la note qu'il avait lui-même posée
+     * tandis que « Points retenus » donne celle qui compte.
      *
      * Évaluation anonyme : le nom reste hors du fichier, exactement comme dans
      * les exports de l'administration.
@@ -239,62 +257,90 @@ class CorrectionController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $grader = $this->currentGrader($request);
+        $graderId = $grader->getKey();
 
         $answers = QuizAnswer::query()
-            ->join('quiz_attempts', 'quiz_attempts.id', '=', 'quiz_answers.quiz_attempt_id')
-            ->join('form_fields', 'form_fields.id', '=', 'quiz_answers.form_field_id')
-            ->join('forms', 'forms.id', '=', 'quiz_attempts.form_id')
-            ->join('grader_assignments', 'grader_assignments.form_id', '=', 'quiz_attempts.form_id')
-            ->where('grader_assignments.grader_id', $grader->getKey())
-            ->where('quiz_answers.graded_by_grader_id', $grader->getKey())
-            ->where('form_fields.field_type', FormField::OPEN_TYPE)
-            ->orderBy('forms.title')
-            ->orderBy('quiz_attempts.reference')
-            ->orderBy('form_fields.order')
-            ->orderBy('form_fields.id')
-            ->orderBy('quiz_answers.id')
-            ->select([
-                'forms.title as quiz_title',
-                'forms.is_anonymous as is_anonymous',
-                'quiz_attempts.reference as reference',
-                'quiz_attempts.student_name as student_name',
-                'quiz_attempts.submitted_at as submitted_at',
-                'form_fields.field_label as question',
-                'form_fields.points as max_points',
-                'quiz_answers.answer_text as answer_text',
-                'quiz_answers.points_awarded as points_awarded',
-                'quiz_answers.grader_comment as grader_comment',
-            ]);
+            ->whereHas('attempt', fn ($attempt) => $attempt->whereIn('form_id', $grader->forms()->pluck('forms.id')))
+            ->whereHas('field', fn ($field) => $field->where('field_type', FormField::OPEN_TYPE))
+            ->where(fn ($query) => $query
+                ->where('graded_by_grader_id', $graderId)
+                ->orWhereHas('reviews', fn ($reviews) => $reviews->where('previous_grader_id', $graderId)))
+            ->with(['attempt.form', 'field', 'reviews.previousGrader', 'reviews.previousAdmin'])
+            ->get()
+            // Tri total, fait ici et non en base : une seule note de tri, donc
+            // aucun risque qu'un paquet en saute une. Le volume d'un correcteur
+            // — ses propres réponses — se tient sans effort en mémoire.
+            ->sortBy(fn (QuizAnswer $answer): array => [
+                (string) $answer->attempt?->form?->title,
+                (string) $answer->attempt?->reference,
+                (int) $answer->field?->order,
+                (int) $answer->id,
+            ])
+            ->values();
 
         $filename = 'mes-corrections_'.now()->format('Y-m-d_Hi').'.csv';
 
-        return response()->streamDownload(function () use ($answers): void {
+        return response()->streamDownload(function () use ($answers, $graderId): void {
             $handle = fopen('php://output', 'w');
 
             // BOM UTF-8 : sans lui, Excel affiche « Ã‰valuation ».
             fwrite($handle, "\xEF\xBB\xBF");
             $this->writeCsvRow($handle, [
-                'Évaluation', 'Référence', 'Nom', 'Remise', 'Question', 'Réponse', 'Points', 'Barème', 'Mon commentaire',
+                'Évaluation', 'Référence', 'Nom', 'Remise', 'Question', 'Réponse',
+                'Mes points', 'Mon commentaire', 'Points retenus', 'Barème', 'Révision',
             ]);
 
-            $answers->chunk(200, function ($rows) use ($handle): void {
-                foreach ($rows as $row) {
-                    $this->writeCsvRow($handle, [
-                        $row->quiz_title,
-                        $row->reference,
-                        $row->is_anonymous ? null : $row->student_name,
-                        $row->submitted_at === null ? null : Carbon::parse($row->submitted_at)->format('d/m/Y H:i'),
-                        $row->question,
-                        $row->answer_text,
-                        $row->points_awarded,
-                        $row->max_points,
-                        $row->grader_comment,
-                    ]);
-                }
-            });
+            // Les réponses sont déjà en mémoire (le tri se fait en PHP) : on
+            // écrit directement, sans redécouper.
+            foreach ($answers as $answer) {
+                // La relecture qui a remplacé **sa** note : c'est celle-là qu'il
+                // doit lire, même si l'administration a retouché la sienne
+                // ensuite.
+                $review = $answer->reviews->first(
+                    fn (QuizGradeReview $candidate): bool => $candidate->previous_grader_id === $graderId
+                );
+
+                $form = $answer->attempt?->form;
+
+                $this->writeCsvRow($handle, [
+                    $form?->title,
+                    $answer->attempt?->reference,
+                    $form?->is_anonymous ? null : $answer->attempt?->student_name,
+                    $answer->attempt?->submitted_at?->format('d/m/Y H:i'),
+                    $answer->field?->field_label,
+                    $answer->answer_text,
+                    $review?->previous_points ?? $answer->points_awarded,
+                    $review ? $review->previous_comment : $answer->grader_comment,
+                    $answer->points_awarded,
+                    $answer->field?->points,
+                    $this->reviewLabel($review),
+                ]);
+            }
 
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Ce que la relecture a décidé, en une phrase lisible dans un tableur.
+     *
+     * Le motif y figure : un correcteur repris sans explication apprendrait
+     * seulement qu'on l'a contredit.
+     */
+    private function reviewLabel(?QuizGradeReview $review): ?string
+    {
+        if ($review === null) {
+            return null;
+        }
+
+        $when = $review->created_at?->format('d/m/Y H:i') ?? '';
+
+        if ($review->reviewed_by_admin_id === null) {
+            return 'Note modifiée par son auteur le '.$when;
+        }
+
+        return 'Reprise par l\'administration le '.$when
+            .($review->reason ? ' — motif : '.$review->reason : '');
     }
 
     // ---------------------------------------------------------------- Interne
@@ -378,13 +424,18 @@ class CorrectionController extends Controller
     /**
      * Les copies où ce correcteur a laissé une trace, dans l'ordre de remise.
      *
+     * Une copie dont la note a été reprise par l'administration reste dans la
+     * liste : sans cela, son travail semblerait s'être volatilisé.
+     *
      * @return \Illuminate\Database\Eloquent\Builder<QuizAttempt>
      */
     private function gradedAttempts(Grader $grader)
     {
         return QuizAttempt::query()
             ->whereIn('form_id', $grader->forms()->pluck('forms.id'))
-            ->whereHas('answers', fn ($answers) => $answers->where('graded_by_grader_id', $grader->getKey()))
+            ->whereHas('answers', fn ($answers) => $answers
+                ->where('graded_by_grader_id', $grader->getKey())
+                ->orWhereHas('reviews', fn ($reviews) => $reviews->where('previous_grader_id', $grader->getKey())))
             ->orderBy('submitted_at')
             ->orderBy('id');
     }

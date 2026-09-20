@@ -95,6 +95,14 @@
                             @if($attempt->student_name) · {{ $attempt->student_name }} @endif
                         @endunless
                     </p>
+
+                    {{-- Une note reprise : le correcteur le sait, plutôt que de le
+                         découvrir en rouvrant la copie des semaines plus tard. --}}
+                    @if($attempt->revisions_count > 0)
+                    <p class="mt-1 text-xs font-medium text-amber-700">
+                        {{ $attempt->revisions_count }} note(s) reprise(s) par l'administration
+                    </p>
+                    @endif
                 </div>
 
                 <a href="{{ route('correction.show', $attempt) }}"

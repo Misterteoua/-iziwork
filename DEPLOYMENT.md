@@ -193,6 +193,20 @@ jouées.
 > donc sans `GD`). Facultatif : `SHORT_LINK_DOMAIN` dans `.env` pour un domaine
 > dédié (`https://izi.work/l/Ab12Cd34`).
 
+> **Second niveau de relecture (mise à jour du 20/09).** **Une seule** migration,
+> purement additive : la table `quiz_grade_reviews`. Aucune colonne modifiée,
+> aucun index supprimé, aucune donnée réécrite. Elle journalise les relectures —
+> note remplacée ou note confirmée après examen — avec la note précédente, son
+> auteur, qui a relu, quand, et le motif obligatoire.
+>
+> Ce que ça apporte : l'administration peut **reprendre** une note posée par un
+> correcteur externe en motivant sa décision ; la note remplacée est archivée et
+> pas effacée ; la réponse s'affiche en lecture seule pour le correcteur, qui ne
+> peut plus l'écraser, même en rejouant le formulaire. La page de correction
+> affiche le journal de la note, Résultats signale les copies dont une note a été
+> revue, et l'export CSV du correcteur conserve sa note tout en annonçant ce qui
+> a été décidé à sa place. Rien à installer, rien à configurer.
+
 > **Correcteurs externes et commentaires (mise à jour du 20/09).** Cinq
 > migrations, toutes **additives** : deux tables nouvelles (`graders`,
 > `grader_assignments`) et trois colonnes sur `quiz_answers`

@@ -456,6 +456,10 @@ class QuizController extends Controller
                 // Compté une fois pour toutes : c'est ce qui permet d'afficher
                 // « 3 copies à corriger » sans une requête par ligne.
                 'answers as pending_manual_count' => fn ($query) => self::pendingManualFilter($query),
+                // Réponses dont la note a été revue : le rappel qu'un second
+                // niveau de relecture est passé par là, donc qu'une note peut
+                // ne plus être celle du correcteur qui l'avait posée.
+                'answers as reviewed_count' => fn ($query) => $query->whereHas('reviews'),
             ])
             ->orderByDesc('submitted_at')
             ->orderBy('reference')
