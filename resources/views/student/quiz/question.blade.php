@@ -3,82 +3,21 @@
 @section('title', $quiz->title)
 
 @section('content')
-<div class="px-4 sm:px-0 max-w-2xl mx-auto">
+<div class="px-4 sm:px-0 max-w-2xl mx-auto" id="quiz-question"
+     data-next-url="{{ route('quiz.question', $quiz->token) }}"
+     data-finish-url="{{ route('quiz.submit.page', $quiz->token) }}">
     @include('student.quiz._proctoring', ['quiz' => $quiz, 'attempt' => $attempt, 'remaining' => $remaining])
 
-    <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8">
-        <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider" style="font-variant-numeric: tabular-nums">
-            Question {{ $position }} sur {{ $total }}
-        </p>
-
-        <div class="mt-2 h-1.5 w-full rounded-full bg-slate-100" role="presentation">
-            <div class="h-1.5 rounded-full gradient-bg" style="width: {{ $total > 0 ? round($position / $total * 100) : 0 }}%"></div>
-        </div>
-
-        <h1 class="mt-6 text-lg font-semibold text-slate-900 whitespace-pre-line">{{ $question->field_label }}</h1>
-
-        <p class="mt-1 text-xs text-slate-500">
-            @if($question->isOpen())
-                Réponse rédigée
-            @else
-                {{ $question->isMultipleAnswer() ? 'Plusieurs réponses possibles' : 'Une seule réponse' }}
-            @endif
-            · {{ $question->points }} point(s)
-        </p>
-
-        <form method="POST" action="{{ route('quiz.answer', $quiz->token) }}" class="mt-6 space-y-3">
-            @csrf
-            <input type="hidden" name="question_id" value="{{ $question->id }}">
-
-            @if($question->isOpen())
-            {{-- Question ouverte : la réponse est un texte, corrigé ensuite par
-                 l'enseignant. Aucune proposition, donc aucun risque qu'une bonne
-                 réponse fuite dans le HTML. --}}
-            <div>
-                <label for="answer_text" class="block text-sm font-medium text-slate-700 mb-1.5">Votre réponse</label>
-                <textarea name="answer_text" id="answer_text" rows="7" required
-                          maxlength="{{ \App\Support\QuizQuestionData::MAX_STUDENT_ANSWER }}"
-                          placeholder="Rédigez votre réponse ici."
-                          class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('answer_text') }}</textarea>
-                <p class="mt-1.5 text-xs text-slate-500">
-                    <span id="answer-counter" style="font-variant-numeric: tabular-nums">0</span>
-                    / {{ \App\Support\QuizQuestionData::MAX_STUDENT_ANSWER }} caractères
-                </p>
-                @if($quiz->quizUsesProctoring())
-                <p class="mt-1.5 text-xs text-amber-700">
-                    La surveillance de fenêtre désactive le collage : votre réponse doit être saisie au clavier.
-                </p>
-                @endif
-            </div>
-            @else
-            @foreach($options as $position => $option)
-            <label class="flex items-start gap-3 p-4 rounded-xl border border-slate-200 hover:border-brand-300 hover:bg-brand-50/40 cursor-pointer transition-colors duration-150">
-                <input type="{{ $question->isMultipleAnswer() ? 'checkbox' : 'radio' }}"
-                       name="choice{{ $question->isMultipleAnswer() ? '[]' : '' }}"
-                       value="{{ $option['original'] }}"
-                       @checked(in_array((string) $option['original'], array_map('strval', (array) old('choice', [])), true))
-                       class="mt-0.5 h-4 w-4 border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500/40">
-                <span class="text-sm text-slate-800">
-                    {{-- La lettre est la position affichée, pas l'index d'origine :
-                         c'est ce que le candidat voit, et elle change s'il y a mélange. --}}
-                    <span class="font-semibold text-slate-500 mr-1">{{ chr(65 + $position) }}.</span> {{ $option['label'] }}
-                </span>
-            </label>
-            @endforeach
-            @endif
-
-            @error('choice')<p class="text-sm text-red-600" role="alert">{{ $message }}</p>@enderror
-            @error('answer_text')<p class="text-sm text-red-600" role="alert">{{ $message }}</p>@enderror
-
-            <button type="submit"
-                    class="w-full inline-flex items-center justify-center px-5 py-3 border border-transparent text-sm font-semibold rounded-xl text-white gradient-bg hover:opacity-95 transition-all duration-150">
-                {{ $position === $total ? 'Valider et terminer' : 'Valider et passer à la suivante' }}
-            </button>
-        </form>
-
-        <p class="mt-4 text-xs text-slate-500">
-            La réponse est définitive une fois validée : l'évaluation ne permet pas de revenir en arrière.
-        </p>
+    {{-- Cette zone est remplacée sans rechargement par la réponse JSON : c'est
+         ce qui permet au plein écran de survivre d'une question à l'autre. --}}
+    <div id="quiz-card">
+        @include('student.quiz._question_card', [
+            'quiz' => $quiz,
+            'question' => $question,
+            'options' => $options,
+            'position' => $position,
+            'total' => $total,
+        ])
     </div>
 </div>
 @endsection
@@ -86,15 +25,138 @@
 @push('scripts')
 <script>
 (function () {
-    const field = document.getElementById('answer_text');
-    const counter = document.getElementById('answer-counter');
+    const container = document.getElementById('quiz-question');
+    const card = document.getElementById('quiz-card');
 
-    if (!field || !counter) { return; }
+    if (!container || !card) { return; }
 
-    function refresh() { counter.textContent = field.value.length; }
+    // Chaque carte neuve apporte son propre champ : sans ce rattachement, le
+    // compteur de caractères resterait celui de la question précédente.
+    function bindCard() {
+        const field = document.getElementById('answer_text');
+        const counter = document.getElementById('answer-counter');
 
-    field.addEventListener('input', refresh);
-    refresh();
+        if (!field || !counter) { return; }
+
+        function refresh() { counter.textContent = field.value.length; }
+
+        field.addEventListener('input', refresh);
+        refresh();
+    }
+
+    bindCard();
+
+    let busy = false;
+
+    function showError(message) {
+        const box = card.querySelector('[data-quiz-error]');
+
+        if (box) {
+            box.textContent = message;
+            box.classList.remove('hidden');
+        }
+    }
+
+    function release(form) {
+        busy = false;
+
+        const button = form.querySelector('button[type="submit"]');
+
+        if (button) {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+        }
+    }
+
+    container.addEventListener('submit', function (event) {
+        const form = event.target;
+
+        if (!form.matches('[data-quiz-answer-form]')) { return; }
+
+        // Double clic ou double appui : une seule réponse doit partir.
+        if (busy) {
+            event.preventDefault();
+            return;
+        }
+
+        // Pas de fetch (navigateur ancien) : la voie classique reste entière.
+        if (!window.fetch || !window.FormData) { return; }
+
+        event.preventDefault();
+        busy = true;
+
+        const button = form.querySelector('button[type="submit"]');
+        if (button) {
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+        }
+
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            },
+            body: new FormData(form)
+        }).then(function (response) {
+            // Réponse invalide (aucune proposition cochée, texte vide) : la zone
+            // d'erreur est réutilisée telle quelle.
+            if (response.status === 422) {
+                return response.json().then(function (payload) {
+                    const errors = payload.errors || {};
+                    const first = Object.keys(errors)[0];
+
+                    showError(first ? errors[first][0] : 'Réponse invalide.');
+                    release(form);
+                });
+            }
+
+            const type = response.headers.get('content-type') || '';
+
+            if (!response.ok || type.indexOf('application/json') === -1) {
+                // Le serveur a renvoyé autre chose (redirection suivie, page
+                // d'accès…) : l'envoi classique achèvera le parcours, et sa
+                // propre réponse s'affichera.
+                form.submit();
+                return;
+            }
+
+            return response.json().then(function (payload) { apply(payload, form); });
+        }).catch(function () {
+            // Réseau coupé : le formulaire repart nativement plutôt que de
+            // laisser le candidat devant un bouton muet.
+            form.submit();
+        });
+    });
+
+    function apply(payload, form) {
+        // L'épreuve s'est terminée (temps écoulé, copie déjà rendue) : le
+        // serveur indique où aller, la page suit.
+        if (payload.navigate) {
+            window.location.assign(payload.navigate);
+            return;
+        }
+
+        if (payload.error) {
+            showError(payload.error);
+            release(form);
+            return;
+        }
+
+        if (!payload.html) {
+            form.submit();
+            return;
+        }
+
+        card.innerHTML = payload.html;
+        bindCard();
+        busy = false;
+
+        // Le chronomètre est recalé sur celui du serveur : c'est lui qui décide,
+        // et une suite de questions ne doit pas faire dériver l'affichage.
+        if (window.QuizGuard) { window.QuizGuard.refresh(payload.remaining); }
+    }
 })();
 </script>
 @endpush

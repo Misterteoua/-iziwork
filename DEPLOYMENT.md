@@ -209,6 +209,15 @@ jouées.
 > l'ancien indice est resserré : une référence encore non commencée suffit à
 > reconnaître une liste préparée).
 
+> **Réponse sans rechargement, surveillance recadrée : aucune migration.** La page
+d'épreuve envoie la réponse par `fetch` et remplace la carte de la question, sans
+recharger la page ; le chemin classique (POST puis redirection) reste intact et
+sert de repli si JavaScript manque ou si le réseau tombe. Côté surveillance, le
+journal ne retient plus que les sorties réellement subies, avec dédoublonnage, et
+l'avertissement de sortie de page ne se déclenche plus qu'en présence d'un texte
+rédigé non validé. **Rien à jouer en base, rien à configurer** : extraction de
+l'archive puis `/update` suffisent.
+
 > **Aucune dépendance à installer pour le module d'évaluations.** Il n'ajoute
 > ni paquet Composer ni extension PHP à activer : les migrations créent les
 tables `quiz_attempts` et `quiz_answers` et ajoutent des colonnes *avec valeur

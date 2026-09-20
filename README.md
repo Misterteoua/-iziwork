@@ -20,11 +20,11 @@ corrigés automatiquement).
 - **Tirage aléatoire** : un sous-ensemble de questions et/ou des propositions mélangées, différentes pour chaque candidat — l'ordre est figé au démarrage de l'épreuve
 - **Références alphanumériques** : 10 caractères générés pour la liste des étudiants ; la référence sert de numéro d'anonymat
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
-- **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible
+- **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible — et, quand le navigateur le permet, la question suivante **remplace la précédente sans recharger la page**
 - **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve
 - **Questions à réponse rédigée** : l'étudiant tape un texte, l'enseignant attribue les points depuis une page de correction qui **enchaîne les copies** les unes après les autres ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
 - **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
-- **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé, journal horodaté des sorties de fenêtre
+- **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé puis accordé par un geste dédié, journal horodaté des **seules** sorties réelles (onglet masqué, plein écran quitté) — valider une réponse n'est jamais compté
 - **Résultats côté admin** : liste des participations, export CSV, réinitialisation d'une participation
 
 ### Étudiant (dépôt de travaux)
@@ -248,8 +248,9 @@ une même connexion n'est jamais freinée. Pour un domaine encore plus court
 4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}` — ou son **lien
    court** (`/l/Ab12Cd34`), avec son bouton « Copier le lien court ».
 5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
-   sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
-   en cas d'incident.
+   sorties enregistrées — avec leur nature (onglet masqué, plein écran quitté),
+   parce qu'un total indistinct ne raconte pas ce qui s'est passé. Export CSV
+   possible, réinitialisation d'une participation en cas d'incident.
 
 La liste des évaluations se filtre par **titre ou consignes**, **période de
 création**, **état** (ouvertes / fermées) et se trie par date ou par titre. Les
@@ -385,8 +386,31 @@ Un site web ne peut **pas** empêcher techniquement les captures d'écran, ni
 fermer réellement les autres onglets : cela exige un navigateur d'examen dédié
 (Safe Exam Browser) ou une application native. Ce qui est en place ici est une
 dissuasion forte et un journal exploitable : copier-coller et clic droit bloqués,
-plein écran proposé, chaque perte de focus horodatée et comptée — et un chrono
+plein écran proposé, chaque sortie réelle horodatée et comptée — et un chrono
 que le candidat ne peut pas manipuler, puisqu'il est vérifié à chaque requête.
+
+### Ce que la surveillance compte, et ce qu'elle ne compte pas
+
+Le journal ne retient que ce qui est **réellement subi** : le passage à un autre
+onglet ou à une autre application (`tab_hidden`), et la sortie du plein écran
+(`fullscreen_exit`, signalée par l'événement du navigateur lui-même). Une même
+sortie signalée deux fois par le navigateur n'est écrite qu'**une seule fois**
+— le dédoublonnage de deux secondes existe des deux côtés, dans la page et dans
+le serveur.
+
+Ce qui n'est **pas** compté, volontairement : valider une réponse, les transitions
+de plein écran, les dialogues du navigateur, et la sortie du plein écran demandée
+par le bouton « Quitter le plein écran » (c'est un geste de l'application, pas une
+sortie subie). Le plein écran est **accordé par un geste dédié** — la case cochée
+au démarrage, puis le bouton de la page d'épreuve — et jamais au hasard d'un clic
+de réponse, comme c'était le cas avant.
+
+Enfin, quitter la page n'est **plus bloqué** pendant toute l'épreuve : le
+avertissement du navigateur ne subsiste que dans le seul cas où une sortie fait
+vraiment perdre quelque chose — une question rédigée contenant du texte **tapé et
+non validé**. Auparavant, ce garde-fou s'armait à chaque validation et le
+navigateur abandonnait la navigation tant que le candidat n'avait pas confirmé un
+dialogue que le plein écran rendait presque invisible.
 
 ## 🔒 Sécurité
 

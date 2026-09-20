@@ -13,6 +13,7 @@ use App\Support\QuizGrader;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -105,6 +106,12 @@ class QuizAttemptController extends Controller
             ? $this->beginWithReference($request, $quiz)
             : $this->beginFree($request, $quiz);
 
+        // Le choix du plein écran est enregistré avec l'épreuve : c'est lui qui
+        // décide du libellé du bouton sur la page de question. Rien n'est forcé
+        // pour autant — le clic reste nécessaire, et le candidat peut changer
+        // d'avis à tout moment.
+        session(['quiz_fullscreen.'.$quiz->id => $request->boolean('fullscreen')]);
+
         return $this->startTimer($quiz, $attempt);
     }
 
@@ -121,34 +128,23 @@ class QuizAttemptController extends Controller
             return $attempt;
         }
 
-        $questions = $attempt->questions();
-        $answered = $attempt->answers()->pluck('form_field_id')->all();
+        $current = $this->currentQuestion($attempt);
 
-        $position = null;
-        $current = null;
-
-        foreach ($questions as $index => $question) {
-            if (! in_array($question->id, $answered, false)) {
-                $position = $index;
-                $current = $question;
-                break;
-            }
-        }
-
-        if ($current === null) {
+        if ($current['question'] === null) {
             return redirect()->route('quiz.submit.page', $quiz->token);
         }
 
         return view('student.quiz.question', [
             'quiz' => $quiz,
             'attempt' => $attempt,
-            'question' => $current,
+            'fullscreenPreferred' => $this->fullscreenPreferred($quiz),
+            'question' => $current['question'],
             // Propositions dans l'ordre de ce candidat. Le formulaire envoie
             // l'index d'origine de la proposition, donc la correction ne dépend
             // pas du mélange reçu.
-            'options' => $attempt->displayOptions($current),
-            'position' => $position + 1,
-            'total' => $questions->count(),
+            'options' => $attempt->displayOptions($current['question']),
+            'position' => $current['position'],
+            'total' => $current['total'],
             'remaining' => $attempt->remainingSeconds(),
         ]);
     }
@@ -163,7 +159,11 @@ class QuizAttemptController extends Controller
         $attempt = $this->requireRunningAttempt($quiz);
 
         if (! $attempt instanceof QuizAttempt) {
-            return $attempt;
+            // Épreuve terminée, expirée ou session perdue : le navigateur doit
+            // aller voir la page concernée, pas recevoir du HTML à insérer.
+            return $request->wantsJson()
+                ? response()->json(['ok' => false, 'navigate' => $attempt->getTargetUrl()])
+                : $attempt;
         }
 
         $question = $attempt->questions()
@@ -177,16 +177,19 @@ class QuizAttemptController extends Controller
         // question s'il reste une question sans réponse avant elle. Masquer un
         // bouton ne suffit pas, un formulaire peut être renvoyé à la main.
         if ($this->hasUnansweredQuestionBefore($attempt, $question)) {
-            return redirect()->route('quiz.question', $quiz->token)
-                ->with('error', 'Répondez aux questions dans l\'ordre.');
+            // La question affichée est déjà la bonne : ne pas la remplacer
+            // préserve la réponse que le candidat vient de saisir.
+            return $this->answerResponse($request, $quiz, $attempt, 'Répondez aux questions dans l\'ordre.');
         }
 
         // Une question validée est définitive : sans ce refus, un renvoi manuel
         // du formulaire permettrait de revenir corriger une réponse —
         // exactement le retour en arrière que l'évaluation interdit.
         if ($attempt->answers()->where('form_field_id', $question->id)->exists()) {
-            return redirect()->route('quiz.question', $quiz->token)
-                ->with('error', 'Cette question a déjà été validée.');
+            // Ici, en revanche, la carte affichée est périmée : la remplacer
+            // évite de laisser le candidat devant une question qui ne reviendra
+            // jamais.
+            return $this->answerResponse($request, $quiz, $attempt, 'Cette question a déjà été validée.', replace: true);
         }
 
         // Deux natures de réponse, un seul enregistrement : une question ouverte
@@ -201,7 +204,7 @@ class QuizAttemptController extends Controller
                 ]
             );
 
-            return redirect()->route('quiz.question', $quiz->token);
+            return $this->answerResponse($request, $quiz, $attempt);
         }
 
         $chosen = $this->validatedChoice($request, $question);
@@ -211,7 +214,7 @@ class QuizAttemptController extends Controller
             ['choice' => $chosen, 'answer_text' => null, 'answered_at' => Carbon::now()]
         );
 
-        return redirect()->route('quiz.question', $quiz->token);
+        return $this->answerResponse($request, $quiz, $attempt);
     }
 
     /**
@@ -230,6 +233,7 @@ class QuizAttemptController extends Controller
         return view('student.quiz.finish', [
             'quiz' => $quiz,
             'attempt' => $attempt,
+            'fullscreenPreferred' => $this->fullscreenPreferred($quiz),
             'answered' => $attempt->answers()->count(),
             'total' => $attempt->questions()->count(),
             'remaining' => $attempt->remainingSeconds(),
@@ -362,16 +366,111 @@ class QuizAttemptController extends Controller
             'detail' => ['nullable', 'string', 'max:255'],
         ]);
 
-        $attempt->recordInfraction($validated['type'], $validated['detail'] ?? null);
+        $recorded = $attempt->recordInfraction($validated['type'], $validated['detail'] ?? null);
 
+        // Un doublon est acquitté sans être écrit : la page n'a pas à savoir
+        // pourquoi, mais le compteur qu'elle affiche reste celui du serveur.
         return response()->json([
-            'recorded' => true,
+            'recorded' => $recorded,
             'count' => $attempt->infraction_count,
-            'message' => 'Changement de fenêtre enregistré. Cette évaluation est surveillée.',
+            'message' => $recorded ? QuizAttempt::infractionMessage($validated['type']) : null,
         ]);
     }
 
     // ---------------------------------------------------------------- Interne
+
+    /**
+     * La question en cours et sa place : la première sans réponse.
+     *
+     * Une seule définition pour la page complète et pour la réponse JSON. Deux
+     * calculs séparés finiraient par diverger, et le candidat verrait alors deux
+     * questions différentes selon que JavaScript répond ou non.
+     *
+     * @return array{question: ?FormField, position: int, total: int}
+     */
+    /**
+     * Le candidat a-t-il demandé le plein écran en commençant l'épreuve ?
+     *
+     * La préférence est gardée en session plutôt que dans le navigateur : elle
+     * survit ainsi à un rechargement, à un changement de page, et à l'ouverture
+     * de l'épreuve dans un autre onglet — trois cas où un stockage local la
+     * laisserait tomber sans rien dire.
+     */
+    private function fullscreenPreferred(Form $quiz): bool
+    {
+        return (bool) session('quiz_fullscreen.'.$quiz->id, false);
+    }
+
+    private function currentQuestion(QuizAttempt $attempt): array
+    {
+        $questions = $attempt->questions();
+        $answered = $attempt->answers()->pluck('form_field_id')->all();
+
+        foreach ($questions as $index => $question) {
+            if (! in_array($question->id, $answered, false)) {
+                return [
+                    'question' => $question,
+                    'position' => $index + 1,
+                    'total' => $questions->count(),
+                ];
+            }
+        }
+
+        return ['question' => null, 'position' => 0, 'total' => $questions->count()];
+    }
+
+    /**
+     * Réponse à un envoi de réponse : redirection classique, ou fragment JSON.
+     *
+     * La redirection reste le chemin par défaut — c'est elle qui fonctionne sans
+     * JavaScript, et c'est elle que couvrent les tests existants. Le fragment
+     * n'est produit que lorsque le navigateur le demande : il permet de remplacer
+     * la carte de la question sans recharger la page, et donc de conserver le
+     * plein écran entre deux questions — ce qu'aucune redirection ne peut faire,
+     * le plein écran appartenant au document.
+     */
+    private function answerResponse(
+        Request $request,
+        Form $quiz,
+        QuizAttempt $attempt,
+        ?string $error = null,
+        bool $replace = false,
+    ): RedirectResponse|JsonResponse {
+        if (! $request->wantsJson()) {
+            $redirect = redirect()->route('quiz.question', $quiz->token);
+
+            return $error === null ? $redirect : $redirect->with('error', $error);
+        }
+
+        $current = $this->currentQuestion($attempt);
+
+        // Plus rien à répondre : la page de confirmation prend le relais.
+        if ($current['question'] === null) {
+            return response()->json([
+                'ok' => true,
+                'error' => $error,
+                'replace' => false,
+                'navigate' => route('quiz.submit.page', $quiz->token),
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'error' => $error,
+            'replace' => $replace,
+            'html' => view('student.quiz._question_card', [
+                'quiz' => $quiz,
+                'question' => $current['question'],
+                'options' => $attempt->displayOptions($current['question']),
+                'position' => $current['position'],
+                'total' => $current['total'],
+            ])->render(),
+            'position' => $current['position'],
+            'total' => $current['total'],
+            // Le chronomètre affiché est recalé sur le serveur à chaque réponse.
+            'remaining' => $attempt->remainingSeconds(),
+        ]);
+    }
 
     /**
      * Ouvre une participation à partir d'une référence préparée.

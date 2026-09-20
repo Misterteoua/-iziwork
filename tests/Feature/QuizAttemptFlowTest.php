@@ -929,6 +929,170 @@ class QuizAttemptFlowTest extends TestCase
         $this->assertSame(0, $attempt->refresh()->infraction_count);
     }
 
+    public function test_deux_signaux_pour_une_meme_sortie_ne_comptent_qu_une_fois(): void
+    {
+        $this->question();
+        $attempt = $this->attempt();
+        $this->start(['reference' => $attempt->reference, 'student_name' => 'Jean']);
+
+        $this->postJson(route('quiz.infraction', $this->quiz->token), ['type' => 'fullscreen_exit'])
+            ->assertOk()
+            ->assertJson(['recorded' => true, 'count' => 1]);
+
+        // Le navigateur peut signaler la même sortie deux fois : le second
+        // signal est acquitté sans être écrit, et le compteur ne bouge pas.
+        $this->postJson(route('quiz.infraction', $this->quiz->token), ['type' => 'fullscreen_exit'])
+            ->assertOk()
+            ->assertJson(['recorded' => false, 'count' => 1]);
+
+        $attempt->refresh();
+
+        $this->assertSame(1, $attempt->infraction_count);
+        $this->assertCount(1, $attempt->infractions);
+        $this->assertSame('1 plein écran quitté', $attempt->infractionSummary());
+
+        // Deux secondes plus tard, une nouvelle sortie est une vraie sortie.
+        Carbon::setTestNow(Carbon::now()->addSeconds(3));
+
+        $this->postJson(route('quiz.infraction', $this->quiz->token), ['type' => 'fullscreen_exit'])
+            ->assertOk()
+            ->assertJson(['recorded' => true, 'count' => 2]);
+
+        // Le message lu par le candidat nomme ce qui s'est passé.
+        $this->assertSame(
+            'Sortie du plein écran enregistrée.',
+            QuizAttempt::infractionMessage('fullscreen_exit')
+        );
+    }
+
+    // --------------------------------------------------------- Plein écran
+
+    public function test_le_choix_du_plein_ecran_est_memorise_pour_l_epreuve(): void
+    {
+        $this->question();
+        $this->start(['student_name' => 'Jean', 'fullscreen' => '1']);
+
+        // Le choix vit en session, pas dans le navigateur : il survit donc à un
+        // rechargement de la page de question.
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('data-fullscreen-preferred="1"', false)
+            // Le libellé lui-même vient du serveur, pas d'un script.
+            ->assertSee('>Passer en plein écran (recommandé)</span>', false);
+    }
+
+    public function test_sans_le_choix_le_bouton_n_est_pas_recommande(): void
+    {
+        $this->question();
+        $this->start(['student_name' => 'Jean']);
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('data-fullscreen-preferred="0"', false)
+            ->assertSee('>Passer en plein écran</span>', false);
+    }
+
+    public function test_le_plein_ecran_ne_se_demande_plus_au_premier_clic(): void
+    {
+        $this->question();
+        $this->start(['student_name' => 'Jean']);
+
+        // L'ancien comportement demandait le plein écran sur le premier clic de
+        // la page, quel qu'il soit — souvent le clic de réponse lui-même.
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertDontSee("document.addEventListener('click', function once()", false)
+            ->assertSee('quiz-fullscreen-toggle');
+
+        // Et la sortie de page n'est plus bloquée pendant toute l'épreuve : le
+        // garde-fou ne vise plus qu'un texte rédigé non validé.
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertDontSee('if (left > 0) {', false);
+    }
+
+    // ------------------------------------------ Réponse sans rechargement
+
+    public function test_une_reponse_peut_etre_envoyee_sans_recharger_la_page(): void
+    {
+        $first = $this->question(['Un', 'Deux'], [0]);
+        $second = $this->question(['Trois', 'Quatre'], [0]);
+        $this->start(['student_name' => 'Jean']);
+
+        $response = $this->postJson(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $first->id,
+            'choice' => 0,
+        ]);
+
+        $response->assertOk()->assertJson(['ok' => true, 'position' => 2, 'total' => 2]);
+
+        // Le fragment renvoyé est la carte de la question suivante, identique à
+        // celle qu'afficherait la page complète.
+        $this->assertStringContainsString('Question 2 sur 2', $response->json('html'));
+        $this->assertStringContainsString($second->field_label, $response->json('html'));
+
+        // Et il ne livre toujours aucune information de correction.
+        $this->assertStringNotContainsString('correct_answer', $response->json('html'));
+        $this->assertStringNotContainsString('points_awarded', $response->json('html'));
+
+        $this->assertNotNull($response->json('remaining'));
+        $this->assertSame(1, $this->quiz->attempts()->firstOrFail()->answers()->count());
+    }
+
+    public function test_la_derniere_reponse_mene_a_la_page_de_confirmation(): void
+    {
+        $only = $this->question(['Un', 'Deux'], [0]);
+        $this->start(['student_name' => 'Jean']);
+
+        $response = $this->postJson(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $only->id,
+            'choice' => 0,
+        ]);
+
+        $response->assertOk()->assertJson([
+            'ok' => true,
+            'navigate' => route('quiz.submit.page', $this->quiz->token),
+        ]);
+
+        $this->assertNull($response->json('html'));
+    }
+
+    public function test_une_question_deja_validee_rafraichit_la_carte(): void
+    {
+        $first = $this->question(['Un', 'Deux'], [0]);
+        $second = $this->question(['Trois', 'Quatre'], [0]);
+        $this->start(['student_name' => 'Jean']);
+
+        $payload = ['question_id' => $first->id, 'choice' => 0];
+
+        $this->postJson(route('quiz.answer', $this->quiz->token), $payload)->assertOk();
+
+        $response = $this->postJson(route('quiz.answer', $this->quiz->token), $payload);
+
+        $response->assertOk()->assertJson([
+            'ok' => true,
+            'replace' => true,
+            'error' => 'Cette question a déjà été validée.',
+        ]);
+
+        // La carte renvoyée est celle de la question encore à traiter, sans quoi
+        // le candidat resterait devant une question qui ne reviendra jamais.
+        $this->assertStringContainsString($second->field_label, $response->json('html'));
+        $this->assertSame(1, $this->quiz->attempts()->firstOrFail()->answers()->count());
+    }
+
+    public function test_sans_javascript_la_reponse_redirige_comme_avant(): void
+    {
+        $question = $this->question(['Un', 'Deux'], [0]);
+        $this->start(['student_name' => 'Jean']);
+
+        // Chemin classique, sans en-tête AJAX : rien ne change pour lui.
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $question->id,
+            'choice' => 0,
+        ])->assertRedirect(route('quiz.question', $this->quiz->token));
+    }
+
     // ------------------------------------------------------------ Robustesse
 
     public function test_un_formulaire_de_depot_n_est_pas_une_evaluation(): void

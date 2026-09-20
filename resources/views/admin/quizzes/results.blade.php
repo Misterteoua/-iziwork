@@ -85,7 +85,7 @@
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Note</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Temps</th>
                         <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Correction</th>
-                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Sorties de fenêtre</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Sorties enregistrées</th>
                         <th scope="col" class="px-6 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
@@ -139,6 +139,12 @@
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm {{ $attempt->infraction_count > 0 ? 'text-amber-700 font-semibold' : 'text-slate-500' }}" style="font-variant-numeric: tabular-nums">
                             {{ $attempt->infraction_count }}
+                            @if($attempt->infraction_count > 0)
+                            {{-- Le détail, parce qu'un total ne dit pas ce qui s'est
+                                 passé : trois onglets masqués et trois sorties de
+                                 plein écran ne racontent pas la même chose. --}}
+                            <span class="block text-xs font-normal text-slate-500">{{ $attempt->infractionSummary() }}</span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right">
                             <div class="flex items-center justify-end gap-2">
@@ -182,8 +188,9 @@
 
     @if($quiz->quizUsesProctoring() && $attempts->sum('infraction_count') > 0)
     <p class="mt-4 text-xs text-slate-500">
-        Les sorties de fenêtre sont journalisées, jamais sanctionnées automatiquement : à vous d'apprécier.
-        Le détail horodaté figure dans l'export CSV de chaque participation.
+        Les sorties sont journalisées, jamais sanctionnées automatiquement : à vous d'apprécier.
+        Ne sont comptées que les sorties réellement subies — un changement d'onglet ou une sortie
+        de plein écran. Le détail horodaté figure dans l'export CSV de chaque participation.
     </p>
     @endif
 </div>

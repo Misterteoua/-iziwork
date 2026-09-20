@@ -38,7 +38,8 @@
             @if($quiz->quizUsesProctoring())
             <li class="flex items-start gap-2">
                 <span class="text-amber-600" aria-hidden="true">•</span>
-                La fenêtre est surveillée : le copier-coller est bloqué et chaque sortie de la fenêtre est enregistrée.
+                La fenêtre est surveillée : le copier-coller est bloqué, et sont enregistrés le passage à un
+                autre onglet et la sortie du plein écran. Valider une réponse n'est jamais compté.
             </li>
             @endif
             @if($quiz->quizShowsScore())
@@ -116,6 +117,26 @@
             </div>
             @endunless
 
+            @if($quiz->quizUsesProctoring())
+            {{-- Le plein écran exige un geste de l'utilisateur, et il ne survit pas
+                 au chargement de la page suivante : le choix est mémorisé ici et
+                 proposé par un bouton dédié sur l'épreuve, au lieu d'être
+                 déclenché au hasard d'un clic. --}}
+            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <label for="fullscreen-choice" class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" name="fullscreen" id="fullscreen-choice" value="1" checked
+                           class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500/40">
+                    <span class="text-sm text-slate-700">
+                        <span class="font-semibold">Passer l'épreuve en plein écran</span> (recommandé)
+                        <span class="mt-0.5 block text-xs text-slate-500">
+                            Limite les distractions. Vous pourrez en sortir à tout moment, et cela
+                            n'empêche jamais de valider une réponse.
+                        </span>
+                    </span>
+                </label>
+            </div>
+            @endif
+
             @if($questionsCount === 0)
             <div class="rounded-xl bg-amber-50 border border-amber-200/70 px-4 py-3 text-sm text-amber-800" role="alert">
                 Cette évaluation ne contient encore aucune question.
@@ -132,3 +153,4 @@
     </div>
 </div>
 @endsection
+

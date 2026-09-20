@@ -175,11 +175,63 @@ class QuizAttempt extends Model
     }
 
     /**
-     * Ajoute une infraction au journal (perte de focus, sortie de plein écran).
+     * Libellé d'un type d'infraction, tel qu'il se lit dans le bulletin.
      */
-    public function recordInfraction(string $type, ?string $detail = null): void
+    public const INFRACTION_LABELS = [
+        'tab_hidden' => 'onglet masqué',
+        'window_blur' => 'fenêtre quittée',
+        'fullscreen_exit' => 'plein écran quitté',
+        'copy_attempt' => 'copie ou clic droit tenté',
+    ];
+
+    /**
+     * Message lu par le candidat au moment où la sortie est enregistrée.
+     */
+    private const INFRACTION_MESSAGES = [
+        'tab_hidden' => "Sortie d'onglet enregistrée. Restez sur la page de l'évaluation.",
+        'window_blur' => 'Fenêtre quittée : sortie enregistrée.',
+        'fullscreen_exit' => 'Sortie du plein écran enregistrée.',
+        'copy_attempt' => 'Copier-coller ou clic droit bloqué : tentative enregistrée.',
+    ];
+
+    /**
+     * Deux signaux pour une même sortie ne doivent pas peser double.
+     *
+     * Le navigateur dédoublonne déjà ; ce délai protège des cas où deux pages
+     * vivent en même temps (nouvelle carte, animation d'arrière-plan) ou d'une
+     * page rechargée à contretemps.
+     */
+    public const INFRACTION_DEDUPE_SECONDS = 2;
+
+    public static function infractionLabel(string $type): string
+    {
+        return self::INFRACTION_LABELS[$type] ?? $type;
+    }
+
+    public static function infractionMessage(string $type): string
+    {
+        return self::INFRACTION_MESSAGES[$type] ?? 'Sortie de fenêtre enregistrée.';
+    }
+
+    /**
+     * Ajoute une infraction au journal (perte de focus, sortie de plein écran).
+     *
+     * Retourne faux quand l'entrée est reconnue comme un doublon : rien n'est
+     * écrit, et le compteur ne bouge pas. Une trace en double ferait douter du
+     * journal entier au moment précis où il sert de preuve.
+     */
+    public function recordInfraction(string $type, ?string $detail = null): bool
     {
         $journal = $this->infractions ?? [];
+        $last = $journal === [] ? null : $journal[array_key_last($journal)];
+
+        if ($last !== null && ($last['type'] ?? null) === $type && isset($last['at'])) {
+            $seconds = abs(Carbon::now()->getTimestamp() - Carbon::parse($last['at'])->getTimestamp());
+
+            if ($seconds < self::INFRACTION_DEDUPE_SECONDS) {
+                return false;
+            }
+        }
 
         $journal[] = [
             'type' => $type,
@@ -198,6 +250,43 @@ class QuizAttempt extends Model
             'infractions' => $journal,
             'infraction_count' => $this->infraction_count + 1,
         ])->save();
+
+        return true;
+    }
+
+    /**
+     * Répartition des sorties enregistrées, par nature.
+     *
+     * Un total indistinct ne dit rien : « 3 » peut vouloir dire trois onglets
+     * masqués ou trois sorties de plein écran, ce qui ne raconte pas la même
+     * chose devant un conseil de discipline.
+     *
+     * @return array<string, int>
+     */
+    public function infractionBreakdown(): array
+    {
+        $counts = [];
+
+        foreach ($this->infractions ?? [] as $entry) {
+            $type = (string) ($entry['type'] ?? 'inconnu');
+            $counts[$type] = ($counts[$type] ?? 0) + 1;
+        }
+
+        return $counts;
+    }
+
+    /**
+     * Résumé lisible : « 2 onglet masqué, 1 plein écran quitté ».
+     */
+    public function infractionSummary(): string
+    {
+        $parts = [];
+
+        foreach ($this->infractionBreakdown() as $type => $count) {
+            $parts[] = $count.' '.self::infractionLabel($type);
+        }
+
+        return $parts === [] ? 'aucune sortie enregistrée' : implode(', ', $parts);
     }
 
     /**
