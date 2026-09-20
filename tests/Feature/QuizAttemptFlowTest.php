@@ -1081,6 +1081,20 @@ class QuizAttemptFlowTest extends TestCase
         $this->assertSame(1, $this->quiz->attempts()->firstOrFail()->answers()->count());
     }
 
+    public function test_une_reponse_vide_est_refusee_avec_les_erreurs_en_json(): void
+    {
+        $question = $this->question(['Un', 'Deux'], [0]);
+        $this->start(['student_name' => 'Jean']);
+
+        // C'est ce que la page lit pour afficher l'erreur sans rechargement :
+        // la clé et la phrase doivent rester celles du rendu classique.
+        $this->postJson(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['choice' => 'Sélectionnez une réponse avant de continuer.']);
+
+        $this->assertSame(0, $this->quiz->attempts()->firstOrFail()->answers()->count());
+    }
+
     public function test_sans_javascript_la_reponse_redirige_comme_avant(): void
     {
         $question = $this->question(['Un', 'Deux'], [0]);
