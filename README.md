@@ -22,7 +22,7 @@ corrigés automatiquement).
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
 - **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible
 - **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve
-- **Questions à réponse rédigée** : l'étudiant tape un texte, l'enseignant attribue les points depuis une page de correction ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
+- **Questions à réponse rédigée** : l'étudiant tape un texte, l'enseignant attribue les points depuis une page de correction qui **enchaîne les copies** les unes après les autres ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
 - **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
 - **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé, journal horodaté des sorties de fenêtre
 - **Résultats côté admin** : liste des participations, export CSV, réinitialisation d'une participation
@@ -304,6 +304,16 @@ Ce qui se passe ensuite, dans l'ordre :
    champ de points (0 au barème, **notes partielles acceptées**).
 5. Dès que plus rien n'attend, la note devient définitive — l'étudiant la voit
    en retéléchargeant son récapitulatif avec sa référence, sans se reconnecter.
+
+**Correction en série.** Le bandeau des résultats propose « **Corriger les
+copies à corriger (n)** » : vous ouvrez la première, vous enregistrez, et
+l'application vous emmène directement à la suivante — sans repasser par la
+liste. L'en-tête rappelle où vous en êtes (« copie 2 sur 7 »), un lien « Passer
+cette copie » laisse une réponse pour plus tard, et la dernière copie ramène aux
+résultats. Une copie dont une réponse est restée **en attente** (champ laissé
+vide) retourne dans la file sans jamais se reproposer d'elle-même : un
+« suivant » ne peut pas tourner en rond sur la même copie. En série, le bouton
+devient « Enregistrer et passer à la suivante ».
 
 Sur une question ouverte **sans réponse** (temps écoulé), il n'y a rien à
 corriger : la question vaut zéro par absence, comme un QCM non répondu, et la

@@ -86,6 +86,11 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
 
     // Correction manuelle des réponses rédigées : une copie rendue, un guide,
     // une note par réponse. Séparée de QuizController pour rester lisible.
+    //
+    // `grade` (sans copie) enchaîne les copies à corriger ; `grade` avec une copie
+    // affiche celle-ci, et `?serie=1` fait suivre automatiquement la suivante.
+    Route::get('quizzes/{quiz}/grade', [QuizGradingController::class, 'series'])
+        ->whereNumber('quiz')->name('admin.quizzes.grade');
     Route::get('quizzes/{quiz}/attempts/{attempt}/grade', [QuizGradingController::class, 'show'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.grade');
     Route::post('quizzes/{quiz}/attempts/{attempt}/grade', [QuizGradingController::class, 'store'])

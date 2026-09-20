@@ -33,6 +33,22 @@ class QuizAnswer extends Model
     }
 
     /**
+     * Réponses rédigées qui attendent une note.
+     *
+     * Le filtre vit ici, et non dans un contrôleur : la page des résultats, la
+     * correction d'une copie et l'enchaînement des copies à corriger doivent
+     * compter exactement la même chose, sans quoi l'une annoncerait « 3 copies à
+     * corriger » quand l'autre n'en proposerait que deux.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<QuizAnswer>  $query
+     */
+    public function scopePendingManual($query)
+    {
+        return $query->whereNull('points_awarded')
+            ->whereHas('field', fn ($field) => $field->where('field_type', FormField::OPEN_TYPE));
+    }
+
+    /**
      * Cette réponse a-t-elle été notée ?
      *
      * `null` n'est pas zéro : une question ouverte attend une note, une question

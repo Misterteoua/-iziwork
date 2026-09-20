@@ -177,6 +177,11 @@ jouées.
 > `ADD`/`MODIFY COLUMN` : aucune donnée existante n'est réécrite, et les copies
 > déjà notées gardent leur note.
 
+> **Correction en série, sans migration.** La page de correction peut enchaîner
+> les copies à corriger (`/admin/quizzes/{id}/grade`) : c'est une manière de
+> choisir la copie suivante, pas un nouveau stockage. Rien à jouer en base, rien
+> à configurer — l'archive suffit.
+
 > **Mode d'accès (liste préparée / libre), sans migration.** Il est désormais
 > enregistré dans les réglages de l'évaluation, et non déduit du nombre de
 > participations : compter les participations faisait basculer une évaluation

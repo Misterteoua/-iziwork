@@ -44,15 +44,25 @@
 
         @php($toBeGraded = $attempts->filter(fn ($attempt) => $attempt->pending_manual_count > 0)->count())
         @if($toBeGraded > 0)
-        <p class="mt-4 inline-flex items-start gap-2 text-xs text-amber-800 bg-amber-50 border border-amber-200/70 px-3 py-2 rounded-xl">
-            <svg class="h-4 w-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span>
-                {{ $toBeGraded }} copie(s) attendent une correction : les réponses rédigées ne sont pas notées automatiquement.
-                Les notes correspondantes sont provisoires pour les étudiants.
-            </span>
-        </p>
+        <div class="mt-4 rounded-xl bg-amber-50 border border-amber-200/70 px-3 py-3">
+            <p class="inline-flex items-start gap-2 text-xs text-amber-800">
+                <svg class="h-4 w-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>
+                    {{ $toBeGraded }} copie(s) attendent une correction : les réponses rédigées ne sont pas notées automatiquement.
+                    Les notes correspondantes sont provisoires pour les étudiants.
+                </span>
+            </p>
+
+            {{-- Enchaîner les copies évite de revenir à cette liste entre deux
+                 corrections ; c'est le chemin normal quand une promotion entière
+                 a rendu sa copie. --}}
+            <a href="{{ route('admin.quizzes.grade', $quiz) }}"
+               class="mt-3 inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+                Corriger les copies à corriger ({{ $toBeGraded }})
+            </a>
+        </div>
         @endif
     </div>
 

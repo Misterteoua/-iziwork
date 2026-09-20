@@ -21,6 +21,34 @@
                 @if($attempt->student_name) · {{ $attempt->student_name }} @endif
             @endunless
         </p>
+
+        @if($series)
+        {{-- Correction en série : l'enseignant enchaîne les copies sans repasser
+             par la liste des résultats. --}}
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
+            <p class="text-sm text-brand-900" style="font-variant-numeric: tabular-nums">
+                <span class="font-semibold">Correction en série</span>
+                @if($position !== null)
+                    · copie {{ $position }} sur {{ $queueSize }}
+                @else
+                    · copie déjà corrigée
+                @endif
+            </p>
+
+            <div class="flex items-center gap-3">
+                @if($next)
+                <a href="{{ route('admin.quizzes.attempts.grade', [$quiz, $next, 'serie' => 1]) }}"
+                   class="text-xs font-semibold text-brand-800 hover:text-brand-900">
+                    Passer cette copie
+                </a>
+                @endif
+                <a href="{{ route('admin.quizzes.results', $quiz) }}"
+                   class="text-xs font-medium text-slate-600 hover:text-slate-800">
+                    Quitter la série
+                </a>
+            </div>
+        </div>
+        @endif
     </div>
 
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 mb-8">
@@ -59,6 +87,9 @@
 
     <form method="POST" action="{{ route('admin.quizzes.attempts.grade.store', [$quiz, $attempt]) }}" class="space-y-4">
         @csrf
+        @if($series)
+        <input type="hidden" name="serie" value="1">
+        @endif
 
         @foreach($questions as $index => $question)
         @php($answer = $answers[$question->id] ?? null)
@@ -140,13 +171,19 @@
         <div class="flex flex-wrap items-center gap-3">
             <button type="submit"
                     class="inline-flex items-center justify-center px-5 py-3 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
-                Enregistrer la correction
+                {{ $series && $next ? 'Enregistrer et passer à la suivante' : 'Enregistrer la correction' }}
             </button>
             <a href="{{ route('admin.quizzes.results', $quiz) }}"
                class="inline-flex items-center justify-center px-5 py-3 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
-                Annuler
+                {{ $series ? 'Quitter la série' : 'Annuler' }}
             </a>
         </div>
+
+        @if($series && ! $next)
+        <p class="text-xs text-slate-500">
+            C'est la dernière copie en attente : l'enregistrement vous ramènera aux résultats.
+        </p>
+        @endif
     </form>
 </div>
 @endsection

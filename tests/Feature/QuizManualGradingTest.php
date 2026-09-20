@@ -53,7 +53,14 @@ class QuizManualGradingTest extends TestCase
             'status' => 'active',
             'type' => Form::TYPE_QUIZ,
             'is_anonymous' => false,
-            'quiz_settings' => ['duration_minutes' => 30, 'show_score' => true, 'proctoring' => true],
+            // Mode d'accès explicite, comme l'écrit l'écran d'administration :
+            // chaque candidat qui se présente obtient sa propre copie.
+            'quiz_settings' => [
+                'duration_minutes' => 30,
+                'show_score' => true,
+                'proctoring' => true,
+                'requires_reference' => false,
+            ],
             'created_by' => $this->admin->id,
         ]);
     }
@@ -101,18 +108,30 @@ class QuizManualGradingTest extends TestCase
     /**
      * Joue une copie entière par les routes réelles : c'est le seul moyen d'être
      * sûr que l'état corrigé est bien celui d'une copie rendue par un étudiant.
+     *
+     * Les questions ne sont créées qu'à la première copie : plusieurs candidats
+     * passent la même épreuve, ils ne doivent pas lui ajouter de questions en
+     * passant. Chaque copie répond à toutes les questions à propositions par la
+     * bonne réponse, et rédige `$text` aux questions ouvertes.
      */
-    private function playCopy(string $text = 'Huile et soude donnent du savon.'): QuizAttempt
+    private function playCopy(string $student = 'Curie Marie', string $text = 'Huile et soude donnent du savon.'): QuizAttempt
     {
-        $choice = $this->question();
-        $open = $this->openQuestion();
+        if (! $this->quiz->quizQuestions()->exists()) {
+            $this->question();
+            $this->openQuestion();
+        }
 
-        $this->post(route('quiz.begin', $this->quiz->token), ['student_name' => 'Curie Marie']);
-        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $choice->id, 'choice' => 1]);
-        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $open->id, 'answer_text' => $text]);
+        $this->post(route('quiz.begin', $this->quiz->token), ['student_name' => $student]);
+
+        foreach ($this->quiz->quizQuestions()->get() as $question) {
+            $this->post(route('quiz.answer', $this->quiz->token), $question->isOpen()
+                ? ['question_id' => $question->id, 'answer_text' => $text]
+                : ['question_id' => $question->id, 'choice' => 1]);
+        }
+
         $this->post(route('quiz.submit', $this->quiz->token));
 
-        return $this->quiz->attempts()->firstOrFail();
+        return $this->quiz->attempts()->orderByDesc('id')->firstOrFail();
     }
 
     private function openAnswer(QuizAttempt $attempt): QuizAnswer
@@ -120,6 +139,20 @@ class QuizManualGradingTest extends TestCase
         $attempt->load('answers.field');
 
         return $attempt->answers->first(fn (QuizAnswer $answer): bool => $answer->field?->isOpen() === true);
+    }
+
+    /**
+     * Réponses rédigées d'une copie, dans l'ordre des questions.
+     *
+     * @return \Illuminate\Support\Collection<int, QuizAnswer>
+     */
+    private function openAnswers(QuizAttempt $attempt): \Illuminate\Support\Collection
+    {
+        $attempt->load('answers.field');
+
+        return $attempt->answers
+            ->filter(fn (QuizAnswer $answer): bool => $answer->field?->isOpen() === true)
+            ->values();
     }
 
     private function gradeRoute(QuizAttempt $attempt): string
@@ -342,6 +375,105 @@ class QuizManualGradingTest extends TestCase
         $this->post(route('admin.quizzes.attempts.grade', [$other, $attempt]), ['points' => []])->assertNotFound();
     }
 
+    // --------------------------------------------------- Correction en série
+
+    public function test_les_resultats_menent_a_la_correction_en_serie(): void
+    {
+        $this->playCopy();
+
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertSee('Corriger les copies à corriger (1)')
+            ->assertSee(route('admin.quizzes.grade', $this->quiz));
+    }
+
+    public function test_la_correction_en_serie_enchaine_les_copies(): void
+    {
+        $premier = $this->playCopy('Curie Marie', 'Première copie.');
+        $second = $this->playCopy('Turing Alan', 'Deuxième copie.');
+
+        $premiere = $this->openAnswer($premier);
+        $seconde = $this->openAnswer($second);
+
+        // Entrée dans la série : la première copie rendue s'ouvre, en mode série.
+        $this->get(route('admin.quizzes.grade', $this->quiz))
+            ->assertRedirect(route('admin.quizzes.attempts.grade', [$this->quiz, $premier, 'serie' => 1]));
+
+        // L'écran dit où l'on en est, et propose de sauter une copie.
+        $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $premier, 'serie' => 1]))
+            ->assertOk()
+            ->assertSee('Correction en série')
+            ->assertSee('copie 1 sur 2')
+            ->assertSee('Enregistrer et passer à la suivante')
+            ->assertSee('Passer cette copie');
+
+        // Enregistrer enchaîne sur la suivante, sans repasser par les résultats.
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $premier]), [
+            'serie' => '1',
+            'points' => [$premiere->id => '3'],
+        ])->assertRedirect(route('admin.quizzes.attempts.grade', [$this->quiz, $second, 'serie' => 1]));
+
+        // La dernière copie ramène aux résultats.
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $second]), [
+            'serie' => '1',
+            'points' => [$seconde->id => '2'],
+        ])->assertRedirect(route('admin.quizzes.results', $this->quiz));
+
+        $this->assertSame('5.00', $premier->refresh()->score);
+        $this->assertSame('4.00', $second->refresh()->score);
+        $this->assertSame(0, $this->quiz->attempts()->awaitsManualGrading()->count());
+    }
+
+    public function test_la_correction_en_serie_signale_qu_il_n_y_a_plus_rien_a_faire(): void
+    {
+        $attempt = $this->playCopy();
+        $answer = $this->openAnswer($attempt);
+
+        $this->post($this->gradeRoute($attempt), ['points' => [$answer->id => '3']]);
+
+        $this->get(route('admin.quizzes.grade', $this->quiz))
+            ->assertRedirect(route('admin.quizzes.results', $this->quiz))
+            ->assertSessionHas('success');
+    }
+
+    public function test_la_serie_ne_renvoie_pas_sur_une_copie_encore_partiellement_corrigee(): void
+    {
+        $this->question();
+        $this->openQuestion(3);
+        $this->openQuestion(3);
+
+        $attempt = $this->playCopy();
+        $reponses = $this->openAnswers($attempt);
+
+        // Une seule des deux réponses rédigées est notée : la copie reste dans la
+        // file. L'enchaînement ne doit pas la reproposer à l'infini — il n'y a pas
+        // d'autre copie, on revient donc aux résultats.
+        $this->post($this->gradeRoute($attempt), [
+            'serie' => '1',
+            'points' => [$reponses->first()->id => '3'],
+        ])->assertRedirect(route('admin.quizzes.results', $this->quiz))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, $attempt->refresh()->pendingManualCount());
+        $this->assertSame('3.00', $reponses->first()->refresh()->points_awarded);
+        $this->assertNull($reponses->last()->refresh()->points_awarded);
+    }
+
+    public function test_la_correction_en_serie_s_arrete_a_la_derniere_copie(): void
+    {
+        $attempt = $this->playCopy();
+        $answer = $this->openAnswer($attempt);
+
+        $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt, 'serie' => 1]))
+            ->assertOk()
+            ->assertSee('dernière copie en attente');
+
+        $this->post($this->gradeRoute($attempt), [
+            'serie' => '1',
+            'points' => [$answer->id => '3'],
+        ])->assertRedirect(route('admin.quizzes.results', $this->quiz));
+    }
+
     // ------------------------------------------------------------------ Exports
 
     public function test_l_export_des_reponses_redigees_contient_les_textes(): void
@@ -378,7 +510,7 @@ class QuizManualGradingTest extends TestCase
     {
         $this->quiz->update(['is_anonymous' => true]);
 
-        $this->playCopy('Copie anonyme.');
+        $this->playCopy('Curie Marie', 'Copie anonyme.');
 
         $csv = $this->get(route('admin.quizzes.results.open-answers', $this->quiz))->streamedContent();
 

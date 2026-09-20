@@ -48,11 +48,16 @@ class QuizController extends Controller
         'Terminée le',
     ];
 
-    /** Réponses rédigées encore sans note : le filtre est le même partout. */
+    /**
+     * Réponses rédigées encore sans note.
+     *
+     * Le filtre lui-même vit sur le modèle ({@see QuizAnswer::scopePendingManual}) :
+     * la page des résultats et l'enchaînement des corrections doivent compter
+     * exactement la même chose.
+     */
     private static function pendingManualFilter($query): void
     {
-        $query->whereNull('points_awarded')
-            ->whereHas('field', fn ($field) => $field->where('field_type', FormField::OPEN_TYPE));
+        $query->pendingManual();
     }
 
     public function index(Request $request)

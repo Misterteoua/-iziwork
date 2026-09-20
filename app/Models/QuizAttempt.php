@@ -80,9 +80,26 @@ class QuizAttempt extends Model
      */
     public function pendingOpenAnswers()
     {
-        return $this->answers()
-            ->whereHas('field', fn ($query) => $query->where('field_type', FormField::OPEN_TYPE))
-            ->whereNull('points_awarded');
+        return $this->answers()->pendingManual();
+    }
+
+    /**
+     * Copies qui attendent encore une correction, dans l'ordre où l'enseignant
+     * les corrige : de la première remise à la dernière.
+     *
+     * L'identifiant départage à la seconde près : deux copies rendues dans la même
+     * seconde — un début de séance, ou une horloge figée — doivent garder l'ordre
+     * de leur remise, et non un ordre tiré d'une référence aléatoire.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<QuizAttempt>  $query
+     */
+    public function scopeAwaitsManualGrading($query)
+    {
+        return $query
+            ->whereIn('status', [self::STATUS_SUBMITTED, self::STATUS_EXPIRED])
+            ->whereHas('answers', fn ($answers) => $answers->pendingManual())
+            ->orderBy('submitted_at')
+            ->orderBy('id');
     }
 
     /** Nombre de réponses rédigées encore à corriger. */
