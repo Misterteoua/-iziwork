@@ -20,8 +20,16 @@
                     @if($quiz->is_anonymous) · évaluation anonyme @endif
                 </p>
             </div>
-            @if($attempts->isNotEmpty())
             <div class="flex flex-wrap gap-2 shrink-0">
+                {{-- Les correcteurs s'assignent avant même qu'une copie soit
+                     rendue : ce bouton n'est donc pas conditionné aux
+                     participations. --}}
+                <a href="{{ route('admin.quizzes.graders', $quiz) }}"
+                   class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    Correcteurs
+                </a>
+
+                @if($attempts->isNotEmpty())
                 <a href="{{ route('admin.quizzes.results.export', $quiz) }}"
                    class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
                     <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -38,8 +46,8 @@
                     Réponses rédigées (CSV)
                 </a>
                 @endif
+                @endif
             </div>
-            @endif
         </div>
 
         @php($toBeGraded = $attempts->filter(fn ($attempt) => $attempt->pending_manual_count > 0)->count())

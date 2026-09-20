@@ -111,6 +111,16 @@
             <div class="meta">
                 Votre réponse : {{ trim((string) $answer?->answer_text) !== '' ? $answer->answer_text : '—' }}
             </div>
+
+            {{-- L'appréciation du correcteur figure dans le document que
+                 l'étudiant garde, mais seulement quand la copie est
+                 entièrement corrigée : sur une note provisoire, elle serait
+                 lue comme définitive. --}}
+            @if($pending === 0 && $answer?->hasComment())
+            <div class="meta" style="background: #eef2ff; border-left: 3px solid #033299; padding: 6px 10px; margin-top: 4px;">
+                Appréciation : {{ $answer->grader_comment }}
+            </div>
+            @endif
             @else
             {{-- Les réponses sont désignées par leur intitulé et non par une
                  lettre : avec un mélange des propositions, la lettre « B »

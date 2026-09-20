@@ -1,16 +1,16 @@
 @extends('layouts.app')
 
-@section('title', 'Correction - ' . $quiz->title)
+@section('title', 'Corriger une copie - ' . $quiz->title)
 
 @section('content')
 <div class="px-4 sm:px-0 max-w-3xl mx-auto">
     <div class="mb-8">
-        <a href="{{ route('admin.quizzes.results', $quiz) }}"
+        <a href="{{ route('correction.index') }}"
            class="inline-flex items-center text-sm font-medium text-slate-500 hover:text-brand-600 transition-colors duration-150">
             <svg class="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
-            Retour aux résultats
+            Retour à mes copies
         </a>
 
         <h1 class="mt-3 text-2xl font-bold tracking-tight text-slate-900">Corriger la copie</h1>
@@ -23,8 +23,6 @@
         </p>
 
         @if($series)
-        {{-- Correction en série : l'enseignant enchaîne les copies sans repasser
-             par la liste des résultats. --}}
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
             <p class="text-sm text-brand-900" style="font-variant-numeric: tabular-nums">
                 <span class="font-semibold">Correction en série</span>
@@ -37,12 +35,12 @@
 
             <div class="flex items-center gap-3">
                 @if($next)
-                <a href="{{ route('admin.quizzes.attempts.grade', [$quiz, $next, 'serie' => 1]) }}"
+                <a href="{{ route('correction.show', [$next, 'serie' => 1]) }}"
                    class="text-xs font-semibold text-brand-800 hover:text-brand-900">
                     Passer cette copie
                 </a>
                 @endif
-                <a href="{{ route('admin.quizzes.results', $quiz) }}"
+                <a href="{{ route('correction.index') }}"
                    class="text-xs font-medium text-slate-600 hover:text-slate-800">
                     Quitter la série
                 </a>
@@ -85,14 +83,15 @@
         @endif
     </div>
 
-    <form method="POST" action="{{ route('admin.quizzes.attempts.grade.store', [$quiz, $attempt]) }}" class="space-y-4">
+    <form method="POST" action="{{ route('correction.store', $attempt) }}" class="space-y-4">
         @csrf
         @if($series)
         <input type="hidden" name="serie" value="1">
         @endif
 
-        {{-- La carte d'une question est partagée avec l'espace des correcteurs :
-             une seule mise en page, donc un seul comportement de notation. --}}
+        {{-- La carte d'une question est la même que dans l'espace
+             d'administration : une seule mise en page, donc une seule façon de
+             noter, quel que soit celui qui corrige. --}}
         @foreach($questions as $index => $question)
             @include('partials.grading-answer', [
                 'attempt' => $attempt,
@@ -107,7 +106,7 @@
                     class="inline-flex items-center justify-center px-5 py-3 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
                 {{ $series && $next ? 'Enregistrer et passer à la suivante' : 'Enregistrer la correction' }}
             </button>
-            <a href="{{ route('admin.quizzes.results', $quiz) }}"
+            <a href="{{ route('correction.index') }}"
                class="inline-flex items-center justify-center px-5 py-3 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
                 {{ $series ? 'Quitter la série' : 'Annuler' }}
             </a>
@@ -115,7 +114,7 @@
 
         @if($series && ! $next)
         <p class="text-xs text-slate-500">
-            C'est la dernière copie en attente : l'enregistrement vous ramènera aux résultats.
+            C'est la dernière copie en attente : l'enregistrement vous ramènera à vos copies.
         </p>
         @endif
     </form>

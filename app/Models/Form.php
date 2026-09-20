@@ -125,6 +125,19 @@ class Form extends Model
     }
 
     /**
+     * Les correcteurs externes affectés à cette évaluation.
+     *
+     * L'affectation est le seul périmètre d'un correcteur : il ne voit que les
+     * copies des évaluations listées ici, et rien d'autre.
+     */
+    public function graders()
+    {
+        return $this->belongsToMany(Grader::class, 'grader_assignments')
+            ->withPivot('created_by')
+            ->withTimestamps();
+    }
+
+    /**
      * S'agit-il d'une évaluation en ligne ?
      *
      * Le module de dépôt de travaux s'appuie sur cette question pour ignorer

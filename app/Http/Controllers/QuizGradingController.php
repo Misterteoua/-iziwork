@@ -3,11 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Form;
-use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Support\QuizCopyGrading;
 use App\Support\QuizGrader;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Correction manuelle d'une copie : les réponses rédigées.
@@ -31,7 +30,10 @@ use Illuminate\Validation\ValidationException;
  */
 class QuizGradingController extends Controller
 {
-    public function __construct(private readonly QuizGrader $grader) {}
+    public function __construct(
+        private readonly QuizGrader $grader,
+        private readonly QuizCopyGrading $copyGrading,
+    ) {}
 
     /**
      * Entrée de la correction en série : ouvre la première copie à corriger.
@@ -60,7 +62,10 @@ class QuizGradingController extends Controller
                 ->with('error', 'Cette copie n\'est pas encore rendue : il n\'y a rien à corriger.');
         }
 
-        $attempt->load('answers.field');
+        // `grader` et `gradingAdmin` sont chargés d'avance : la page affiche qui a
+        // posé chaque note, et sans cela une copie de cinquante questions
+        // déclencherait autant de requêtes.
+        $attempt->load(['answers.field', 'answers.grader', 'answers.gradingAdmin']);
 
         $series = $request->boolean('serie');
         $queue = $this->queue($quiz);
@@ -92,45 +97,14 @@ class QuizGradingController extends Controller
                 ->with('error', 'Cette copie n\'est pas encore rendue : il n\'y a rien à corriger.');
         }
 
-        $attempt->load('answers.field');
-
-        $openAnswers = $attempt->answers->filter(
-            static fn (QuizAnswer $answer): bool => $answer->field?->isOpen() === true
+        // Même enregistrement que celui du correcteur externe : une seule règle
+        // de notation, donc une note qui ne dépend pas de qui a corrigé. La
+        // trace garde en revanche l'auteur, qui est ici l'administrateur.
+        $pending = $this->copyGrading->save(
+            $request,
+            $attempt,
+            (int) $request->session()->get('admin_user.id'),
         );
-
-        $validated = $request->validate([
-            'points' => ['required', 'array'],
-            'points.*' => ['nullable', 'numeric', 'min:0'],
-        ], [
-            'points.required' => 'Le formulaire de correction est incomplet.',
-            'points.*.numeric' => 'Une note doit être un nombre.',
-            'points.*.min' => 'Une note ne peut pas être négative.',
-        ]);
-
-        foreach ($openAnswers as $answer) {
-            $raw = $validated['points'][$answer->id] ?? null;
-
-            // Champ laissé vide : la réponse reste « en attente ». C'est ce qui
-            // permet de corriger une copie en plusieurs fois sans qu'une note
-            // provisoire soit prise pour une note finale.
-            if ($raw === null || $raw === '') {
-                continue;
-            }
-
-            $max = (float) $answer->field->points;
-
-            if ((float) $raw > $max) {
-                throw ValidationException::withMessages([
-                    'points.'.$answer->id => 'La note ne peut pas dépasser le barème de la question ('.$max.' point(s)).',
-                ]);
-            }
-
-            $this->grader->award($answer, (float) $raw);
-        }
-
-        $this->grader->recompute($attempt);
-
-        $pending = $attempt->pendingManualCount();
 
         $saved = $pending === 0
             ? 'Correction enregistrée : la note de cette copie est définitive.'

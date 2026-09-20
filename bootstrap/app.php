@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\GraderAuth;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,6 +24,10 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(SecurityHeaders::class);
         $middleware->alias([
             'admin.auth' => AdminAuth::class,
+            // Les correcteurs externes ont leur propre garde : deux clés de
+            // session distinctes, donc aucune page d'administration ne peut
+            // s'ouvrir à un correcteur, même par erreur de câblage.
+            'grader.auth' => GraderAuth::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

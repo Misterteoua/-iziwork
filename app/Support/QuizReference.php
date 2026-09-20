@@ -30,9 +30,18 @@ final class QuizReference
      * Chaque caractère est tiré individuellement dans l'alphabet : projeter un
      * tirage ASCII par modulo introduirait un biais, et sortirait de l'alphabet
      * dès que la taille de celui-ci ne divise pas le modulo.
+     *
+     * `$exists` permet de vérifier l'unicité ailleurs que sur les participations
+     * (les correcteurs ont leur propre table) tout en gardant exactement le même
+     * alphabet : deux références se dictent de la même façon, quel que soit leur
+     * usage.
+     *
+     * @param  (callable(string): bool)|null  $exists
      */
-    public static function generate(): string
+    public static function generate(?callable $exists = null): string
     {
+        $exists ??= static fn (string $reference): bool => QuizAttempt::where('reference', $reference)->exists();
+
         $last = strlen(self::ALPHABET) - 1;
 
         do {
@@ -41,7 +50,7 @@ final class QuizReference
             for ($i = 0; $i < self::LENGTH; $i++) {
                 $reference .= self::ALPHABET[random_int(0, $last)];
             }
-        } while (QuizAttempt::where('reference', $reference)->exists());
+        } while ($exists($reference));
 
         return $reference;
     }

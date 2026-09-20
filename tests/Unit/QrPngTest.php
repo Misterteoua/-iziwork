@@ -108,6 +108,27 @@ class QrPngTest extends TestCase
         );
     }
 
+    /**
+     * Le lien d'un correcteur est plus long que celui d'un étudiant
+     * (« /correction/ » au lieu de « /l/ ») : sa densité doit rester compatible
+     * avec une impression, sinon la fiche de mission ne servirait à rien.
+     *
+     * Le calcul est celui qui compte sur le papier : la fiche affiche le QR sur
+     * 150 px, à 96 dpi. Chaque module doit rester nettement au-dessus du
+     * demi-millimètre exigé par le standard, marge blanche comprise.
+     */
+    public function test_un_lien_de_correction_imprime_restera_scannable(): void
+    {
+        $matrix = QrEncoder::encode('https://iziwork.efspc.inphb.ci/correction/Ab12Cd34');
+
+        // 50 caractères : une version de plus que le lien court d'un étudiant.
+        $this->assertSame(4, $matrix->version);
+
+        $moduleMm = (150 / ($matrix->size() + QrPng::QUIET_ZONE * 2)) * 25.4 / 96;
+
+        $this->assertGreaterThan(0.8, $moduleMm);
+    }
+
     /** @return array{0: int, 1: int, 2: int, 3: int} */
     private function header(string $png): array
     {

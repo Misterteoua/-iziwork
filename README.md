@@ -319,9 +319,17 @@ Ce qui se passe ensuite, dans l'ordre :
    corriger ; le récapitulatif PDF porte la même mention.
 4. Dans **Résultats**, la copie apparaît avec un bouton « **Corriger (n)** ». La
    page de correction montre l'énoncé, votre guide, le texte de l'étudiant et un
-   champ de points (0 au barème, **notes partielles acceptées**).
+   champ de points (0 au barème, **notes partielles acceptées**), suivi d'un
+   **commentaire pour l'étudiant** — une note sans phrase est vécue comme
+   arbitraire, et se défend mal devant une contestation. Chaque note enregistre
+   qui l'a posée (« corrigé par Awa (correcteur) », « par admin »), visible sur la
+   copie et dans les exports.
 5. Dès que plus rien n'attend, la note devient définitive — l'étudiant la voit
    en retéléchargeant son récapitulatif avec sa référence, sans se reconnecter.
+   Le **commentaire** apparaît à ce moment-là seulement, sur la page de résultat
+   comme dans le PDF : sur une note provisoire, il serait lu comme définitif. Un
+   champ laissé vide ne produit aucun cadre vide, et un commentaire écrit sans
+   note est conservé (la réponse, elle, reste en attente).
 
 ### L'étudiant suit son résultat
 
@@ -360,6 +368,42 @@ Deux exports complètent la page des résultats : l'export CSV des résultats
 gagne une colonne « Réponses libres à corriger », et « **Réponses rédigées
 (CSV)** » produit une ligne par réponse (question, texte, points, barème,
 état de correction) — les noms restent absents d'une évaluation anonyme.
+
+### Confier la correction à des correcteurs externes
+
+Quand une promotion entière a rendu, on ne corrige pas toujours seul.
+**Résultats → Correcteurs** permet d'assigner une évaluation à un correcteur
+qui **n'a aucun compte d'administration** : nom, email, délai (7 jours par
+défaut), et l'application engendre pour lui une **référence de dix caractères**
+(même alphabet que celle des étudiants, sans O/0 ni I/1/L) et un **lien
+personnel** (`/correction/Ab12Cd34`).
+
+- La page affiche le lien avec un bouton « Copier », son **QR code**, et une
+  **fiche de mission PDF** à imprimer — QR code en haute résolution, consignes,
+  échéance. Par défaut la fiche **ne porte pas la référence** : une fiche qui
+  contiendrait le lien *et* la clé ouvrirait l'accès à elle seule. Le bouton
+  « Fiche + référence » existe pour une remise en main propre.
+- Le correcteur ouvre son lien, saisit **son email et sa référence** : le lien
+  seul n'ouvre rien, donc le transférer ne donne aucun pouvoir de correction. Sa
+  file ne contient que les copies des évaluations qui lui sont affectées — ni
+  réglages, ni liens d'étudiant, ni remise à zéro. Il ne peut atteindre aucune
+  page `/admin`, par construction : son espace a sa propre clé de session.
+- **L'échéance se ferme toute seule**, sans tâche planifiée : elle est relue à
+  chaque requête. La copie déjà ouverte reste enregistrable une dernière fois,
+  toute nouvelle copie est refusée, l'administration voit « Échéance dépassée »
+  et peut **prolonger** d'un clic (ce qui rouvre l'accès aussitôt), **suspendre**
+  immédiatement, ou **régénérer le lien** si vous le jugez compromis.
+- Le bouton « **Mes corrections (CSV)** » exporte **ses** notes et **ses**
+  commentaires, et rien d'autre : une ligne par réponse qu'il a lui-même
+  corrigée, dans ses seules évaluations. Aucune copie touchée par un autre
+  correcteur ne s'y trouve. Évaluation anonyme : le nom de l'étudiant reste hors
+  du fichier.
+- Un correcteur n'est jamais supprimé, seulement suspendu : ses notes doivent
+  garder leur auteur, et une note contestée a alors une réponse.
+
+Le QR code de la fiche est recalculé à partir du lien à chaque affichage, jamais
+enregistré : **régénérer le lien met le QR à jour tout seul**, un QR périmé est
+donc impossible.
 
 ### Tirage aléatoire et mélange des propositions
 

@@ -99,6 +99,45 @@
     </nav>
     @endif
 
+    @if(session('grader'))
+    {{-- L'en-tête d'un correcteur externe : son espace, son export, sa sortie.
+         Volontairement sans aucun lien d'administration — il n'y a d'ailleurs
+         aucune route /admin qui l'accepterait. --}}
+    <nav class="bg-white border-b border-slate-200/80 safe-top sticky top-0 z-40 bg-white/90" role="navigation" aria-label="Espace de correction">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center min-w-0">
+                    <a href="{{ route('correction.index') }}" class="flex items-center shrink-0" aria-label="Iziwork - Mes copies à corriger">
+                        <img src="{{ asset('images/iziwork-logo.png') }}"
+                             alt="Iziwork"
+                             width="1021" height="264"
+                             class="h-8 w-auto">
+                    </a>
+                    <span class="ml-4 text-sm font-medium text-slate-600 hidden sm:inline">Espace de correction</span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <a href="{{ route('correction.export') }}"
+                       class="hidden sm:inline-flex items-center px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg transition-colors duration-150">
+                        Mes corrections (CSV)
+                    </a>
+                    <form method="POST" action="{{ route('correction.logout') }}">
+                        @csrf
+                        <button type="submit"
+                                class="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors duration-150"
+                                aria-label="Quitter l'espace de correction">
+                            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                            </svg>
+                            <span class="hidden sm:inline">Quitter</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </nav>
+    @endif
+
     <main id="main-content" class="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8" tabindex="-1">
         {{-- Flash messages with aria-live --}}
         @if(session('success'))
@@ -138,7 +177,7 @@
 
     @stack('scripts')
 
-    @if(session('admin_user'))
+    @if(session('admin_user') || session('grader'))
     <footer class="border-t border-slate-100 py-4">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <p class="text-xs text-slate-400 text-center">

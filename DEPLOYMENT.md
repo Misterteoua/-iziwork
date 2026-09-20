@@ -193,6 +193,26 @@ jouées.
 > donc sans `GD`). Facultatif : `SHORT_LINK_DOMAIN` dans `.env` pour un domaine
 > dédié (`https://izi.work/l/Ab12Cd34`).
 
+> **Correcteurs externes et commentaires (mise à jour du 20/09).** Cinq
+> migrations, toutes **additives** : deux tables nouvelles (`graders`,
+> `grader_assignments`) et trois colonnes sur `quiz_answers`
+> (`grader_comment`, `graded_by_grader_id`, `graded_by_admin_id`). Aucune
+> colonne existante n'est modifiée, aucun index n'est supprimé, aucune donnée
+> n'est réécrite — c'est volontaire : la seule opération de ce genre (retirer un
+> index unique sur `submissions`) avait fait échouer une installation entière.
+> Les trois colonnes sont ajoutées par trois migrations distinctes, nommées
+> d'après elles, ce que la réconciliation de `/update` sait constater : une
+> colonne déjà ajoutée par un déploiement interrompu est reconnue comme en
+> place au lieu de faire échouer la mise à jour sur « duplicate column ».
+>
+> Ce que ça apporte : un correcteur externe (lien personnel + référence de dix
+> caractères, échéance qui se ferme sans cron, fiche de mission PDF avec QR
+> code), un commentaire par réponse rédigée — visible par l'étudiant une fois la
+> copie **entièrement** corrigée, jamais sur une note provisoire — et un export
+> CSV limité aux copies qu'un correcteur a lui-même notées. Le correcteur n'a
+> aucun accès aux pages d'administration : son espace a sa propre clé de session.
+> Rien à installer, rien à configurer.
+
 > **Correction en série, sans migration.** La page de correction peut enchaîner
 > les copies à corriger (`/admin/quizzes/{id}/grade`) : c'est une manière de
 > choisir la copie suivante, pas un nouveau stockage. Rien à jouer en base, rien

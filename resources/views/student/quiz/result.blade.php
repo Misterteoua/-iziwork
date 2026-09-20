@@ -114,6 +114,17 @@
                         {{ trim((string) $answer?->answer_text) !== '' ? $answer->answer_text : 'Aucune réponse rendue.' }}
                     </p>
                 </div>
+
+                {{-- L'appréciation du correcteur : une note sans phrase est vécue
+                     comme arbitraire. Elle n'apparaît qu'une fois la copie
+                     entièrement corrigée, jamais sur une note provisoire. Sans
+                     nom : le correcteur n'a pas à être identifié par l'étudiant. --}}
+                @if($pending === 0 && $answer?->hasComment())
+                <div class="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3">
+                    <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Appréciation</p>
+                    <p class="mt-1 text-sm text-slate-800 whitespace-pre-line">{{ $answer->grader_comment }}</p>
+                </div>
+                @endif
                 @else
                 <ul class="mt-3 space-y-1">
                     {{-- Propositions dans l'ordre reçu par ce candidat : afficher

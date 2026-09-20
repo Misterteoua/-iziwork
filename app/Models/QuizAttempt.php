@@ -72,6 +72,15 @@ class QuizAttempt extends Model
         return $this->hasMany(QuizAnswer::class);
     }
 
+    /** Les réponses rédigées de cette copie, dans l'ordre des questions. */
+    public function openAnswers()
+    {
+        return $this->answers()->whereHas(
+            'field',
+            fn ($field) => $field->where('field_type', FormField::OPEN_TYPE)
+        );
+    }
+
     /**
      * Réponses rédigées qui attendent encore une note de l'enseignant.
      *
@@ -106,6 +115,19 @@ class QuizAttempt extends Model
     public function pendingManualCount(): int
     {
         return $this->pendingOpenAnswers()->count();
+    }
+
+    /**
+     * La copie est-elle entièrement corrigée ?
+     *
+     * C'est la condition d'affichage des commentaires à l'étudiant : un
+     * commentaire écrit pendant qu'une autre rédaction attend encore une note
+     * n'est pas forcément définitif, et le montrer ferait lire à l'étudiant une
+     * appréciation que le correcteur aurait voulu nuancer ensuite.
+     */
+    public function isFullyGraded(): bool
+    {
+        return $this->isFinished() && $this->pendingManualCount() === 0;
     }
 
     /**

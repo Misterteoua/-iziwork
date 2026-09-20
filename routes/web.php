@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CorrectionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormController;
+use App\Http\Controllers\GraderController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ShortLinkController;
 use App\Http\Controllers\QuizAttemptController;
@@ -11,6 +13,8 @@ use App\Http\Controllers\QuizGradingController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\VersionController;
 use App\Http\Middleware\AdminAuth;
+use App\Http\Middleware\GraderAuth;
+use App\Models\Grader;
 use App\Support\ShortCode;
 use Illuminate\Support\Facades\Route;
 
@@ -47,6 +51,34 @@ Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::clas
 Route::get('/l/{code}', ShortLinkController::class)
     ->where('code', ShortCode::PATTERN)
     ->name('short.follow');
+
+// Espace des correcteurs externes : un monde à part, avec sa propre clé de
+// session et sa propre garde. Aucune route /admin ne leur est accessible.
+//
+// Les segments fixes (« connexion », « export », « copies ») n'ont pas huit
+// caractères, alors qu'un code de lien personnel en fait exactement huit :
+// aucun ne peut donc être confondu avec l'adresse d'un correcteur.
+Route::prefix('correction')->name('correction.')->group(function () {
+    Route::get('connexion', [CorrectionController::class, 'entry'])->name('entry');
+    Route::post('connexion', [CorrectionController::class, 'authenticate'])
+        ->middleware('throttle:grader-login')->name('authenticate');
+    Route::post('deconnexion', [CorrectionController::class, 'logout'])->name('logout');
+
+    Route::middleware(GraderAuth::class)->group(function () {
+        Route::get('/', [CorrectionController::class, 'index'])->name('index');
+        Route::get('copies/{attempt}', [CorrectionController::class, 'show'])
+            ->whereNumber('attempt')->name('show');
+        Route::post('copies/{attempt}', [CorrectionController::class, 'store'])
+            ->whereNumber('attempt')->name('store');
+        Route::get('export', [CorrectionController::class, 'export'])->name('export');
+    });
+
+    // L'entrée par le lien personnel : le code dit où se connecter, l'email et
+    // la référence authentifient. Un lien transféré n'ouvre donc rien.
+    Route::get('{code}', [CorrectionController::class, 'login'])
+        ->where('code', Grader::LINK_PATTERN)
+        ->name('login');
+});
 
 Route::get('/s/{token}', [SubmissionController::class, 'showForm'])->name('submit.form');
 Route::post('/s/{token}', [SubmissionController::class, 'submit'])
@@ -86,6 +118,23 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
 
     Route::post('quizzes/{quiz}/references', [QuizController::class, 'generateReferences'])->whereNumber('quiz')->name('admin.quizzes.references.store');
     Route::get('quizzes/{quiz}/references/export', [QuizController::class, 'exportReferences'])->whereNumber('quiz')->name('admin.quizzes.references.export');
+    // Correcteurs externes : affectation, lien personnel (et son QR code),
+    // échéance, fiche de mission imprimable.
+    Route::get('quizzes/{quiz}/correcteurs', [GraderController::class, 'index'])
+        ->whereNumber('quiz')->name('admin.quizzes.graders');
+    Route::post('quizzes/{quiz}/correcteurs', [GraderController::class, 'store'])
+        ->whereNumber('quiz')->name('admin.quizzes.graders.store');
+    Route::post('quizzes/{quiz}/correcteurs/{grader}/lien', [GraderController::class, 'regenerateLink'])
+        ->whereNumber('quiz')->whereNumber('grader')->name('admin.quizzes.graders.link');
+    Route::patch('quizzes/{quiz}/correcteurs/{grader}/delai', [GraderController::class, 'extend'])
+        ->whereNumber('quiz')->whereNumber('grader')->name('admin.quizzes.graders.extend');
+    Route::patch('quizzes/{quiz}/correcteurs/{grader}/suspension', [GraderController::class, 'suspend'])
+        ->whereNumber('quiz')->whereNumber('grader')->name('admin.quizzes.graders.suspend');
+    Route::delete('quizzes/{quiz}/correcteurs/{grader}/affectation', [GraderController::class, 'detach'])
+        ->whereNumber('quiz')->whereNumber('grader')->name('admin.quizzes.graders.detach');
+    Route::get('quizzes/{quiz}/correcteurs/{grader}/fiche', [GraderController::class, 'mission'])
+        ->whereNumber('quiz')->whereNumber('grader')->name('admin.quizzes.graders.mission');
+
     Route::get('quizzes/{quiz}/results', [QuizController::class, 'results'])->whereNumber('quiz')->name('admin.quizzes.results');
     Route::get('quizzes/{quiz}/results/export', [QuizController::class, 'exportResults'])->whereNumber('quiz')->name('admin.quizzes.results.export');
     Route::get('quizzes/{quiz}/results/open-answers', [QuizController::class, 'exportOpenAnswers'])
