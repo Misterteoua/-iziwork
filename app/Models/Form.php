@@ -78,6 +78,12 @@ class Form extends Model
         return $this->hasMany(Submission::class);
     }
 
+    /** Les liens courts de ce formulaire : accès, et un par copie évaluée. */
+    public function shortLinks()
+    {
+        return $this->hasMany(ShortLink::class);
+    }
+
     public function creator()
     {
         return $this->belongsTo(AdminUser::class, 'created_by');

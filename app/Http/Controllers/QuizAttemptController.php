@@ -6,6 +6,8 @@ use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\ShortLink;
+use App\Support\Qr\QrPng;
 use App\Support\QuizDraw;
 use App\Support\QuizGrader;
 use App\Support\QuizQuestionData;
@@ -16,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
 
 /**
  * Passage d'une évaluation par un étudiant.
@@ -269,6 +272,24 @@ class QuizAttemptController extends Controller
             return redirect()->route('quiz.question', $quiz->token);
         }
 
+        return $this->renderResult($quiz, $attempt);
+    }
+
+    /**
+     * La page de résultat, partagée par la session du navigateur et par le lien
+     * court de l'étudiant (/l/{code}) : une seule source de vérité, donc un lien
+     * de suivi qui montre toujours exactement ce que montre la page.
+     *
+     * `$viaShortLink` masque ce qui n'a de sens que sur le poste de l'étudiant :
+     * depuis un lien, il n'y a pas de session à détacher.
+     */
+    public function renderResult(Form $quiz, QuizAttempt $attempt, bool $viaShortLink = false): View
+    {
+        // Le lien de suivi de l'étudiant : créé à la première consultation, puis
+        // toujours le même. C'est lui qu'il garde pour revenir voir sa note
+        // définitive, une fois les questions rédigées corrigées.
+        $followLink = ShortLink::forAttempt($quiz, $attempt);
+
         return view('student.quiz.result', [
             'quiz' => $quiz,
             'attempt' => $attempt,
@@ -278,6 +299,11 @@ class QuizAttemptController extends Controller
             // Réponses rédigées encore à corriger : la note n'est alors qu'une
             // note provisoire, et l'étudiant doit le lire noir sur blanc.
             'pending' => $attempt->pendingManualCount(),
+            'viaShortLink' => $viaShortLink,
+            'followLink' => $followLink,
+            // Le QR est calculé côté serveur : il s'affiche sans JavaScript et
+            // se retrouve tel quel dans le récapitulatif PDF.
+            'followQr' => QrPng::dataUri($followLink->url()),
         ]);
     }
 
@@ -301,11 +327,17 @@ class QuizAttemptController extends Controller
 
         $attempt->load('answers');
 
+        $followLink = ShortLink::forAttempt($quiz, $attempt);
+
         $pdf = Pdf::loadView('student.quiz.recap-pdf', [
             'quiz' => $quiz,
             'attempt' => $attempt,
             'showScore' => $quiz->quizShowsScore(),
             'pending' => $attempt->pendingManualCount(),
+            // Le lien de suivi figure dans le document que l'étudiant garde :
+            // c'est ce qui lui permet de revenir voir sa note définitive.
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
         ]);
 
         return $pdf->download('evaluation_'.$attempt->reference.'.pdf');

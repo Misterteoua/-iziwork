@@ -6,6 +6,7 @@ use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\ShortLink;
 use App\Support\Import\ImportException;
 use App\Support\Import\QuestionSheet;
 use App\Support\Import\QuizTemplate;
@@ -14,6 +15,7 @@ use App\Support\Import\TabularFile;
 use App\Support\QuizFilters;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -122,7 +124,12 @@ class QuizController extends Controller
         $questions = $quiz->quizQuestions()->get();
         $attempts = $quiz->attempts()->orderByDesc('created_at')->get();
 
-        return view('admin.quizzes.show', compact('quiz', 'questions', 'attempts'));
+        // Le lien court de l'évaluation : créé à la première ouverture de cette
+        // page, puis stable — un enseignant qui a noté le lien quelque part doit
+        // le retrouver identique.
+        $shortLink = ShortLink::forQuiz($quiz);
+
+        return view('admin.quizzes.show', compact('quiz', 'questions', 'attempts', 'shortLink'));
     }
 
     public function updateSettings(Request $request, Form $quiz)
@@ -382,6 +389,38 @@ class QuizController extends Controller
         }, 'references-evaluation-'.$quiz->id.'-'.now()->format('Y-m-d').'.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * Le lien de suivi d'un étudiant : créé au premier appel, retrouvé identique
+     * ensuite. La réponse est copiée par le navigateur, jamais affichée seule.
+     */
+    public function resultLink(Form $quiz, QuizAttempt $attempt): JsonResponse
+    {
+        $this->assertQuiz($quiz);
+        $this->assertAttempt($quiz, $attempt);
+
+        // Un lien de suivi n'a de sens que pour une copie rendue.
+        abort_unless($attempt->isFinished(), 404);
+
+        return response()->json(['url' => ShortLink::forAttempt($quiz, $attempt)->url()]);
+    }
+
+    /**
+     * Un nouveau code pour cette copie : l'ancien lien cesse aussitôt de
+     * fonctionner. C'est la façon d'annuler un lien qu'on juge compromis.
+     */
+    public function regenerateResultLink(Form $quiz, QuizAttempt $attempt): JsonResponse
+    {
+        $this->assertQuiz($quiz);
+        $this->assertAttempt($quiz, $attempt);
+
+        abort_unless($attempt->isFinished(), 404);
+
+        $link = ShortLink::forAttempt($quiz, $attempt);
+        $link->rotate();
+
+        return response()->json(['url' => $link->url()]);
     }
 
     public function resetAttempt(Form $quiz, QuizAttempt $attempt)

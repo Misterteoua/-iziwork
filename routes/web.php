@@ -4,12 +4,14 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FormController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ShortLinkController;
 use App\Http\Controllers\QuizAttemptController;
 use App\Http\Controllers\QuizController;
 use App\Http\Controllers\QuizGradingController;
 use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\VersionController;
 use App\Http\Middleware\AdminAuth;
+use App\Support\ShortCode;
 use Illuminate\Support\Facades\Route;
 
 // Aucune route par closure dans ce fichier : `php artisan route:cache` doit
@@ -38,6 +40,13 @@ Route::post('/q/{quiz:token}/nouveau-candidat', [QuizAttemptController::class, '
 Route::get('/q/{quiz:token}/resultat', [QuizAttemptController::class, 'result'])->name('quiz.result');
 Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::class, 'recapPdf'])
     ->name('quiz.recap.pdf');
+
+// Liens courts (/l/Ab12Cd34) : huit caractères au lieu d'un jeton de trente-deux.
+// Le code est tiré au sort, jamais séquentiel. Les liens longs ci-dessus
+// continuent de fonctionner exactement comme avant : rien n'est remplacé.
+Route::get('/l/{code}', ShortLinkController::class)
+    ->where('code', ShortCode::PATTERN)
+    ->name('short.follow');
 
 Route::get('/s/{token}', [SubmissionController::class, 'showForm'])->name('submit.form');
 Route::post('/s/{token}', [SubmissionController::class, 'submit'])
@@ -83,6 +92,13 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
         ->whereNumber('quiz')->name('admin.quizzes.results.open-answers');
     Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.reset');
+
+    // Le lien personnel d'un étudiant : un POST, parce que le premier appel
+    // écrit en base. La régénération annule l'ancien lien et en donne un autre.
+    Route::post('quizzes/{quiz}/attempts/{attempt}/result-link', [QuizController::class, 'resultLink'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.result-link');
+    Route::post('quizzes/{quiz}/attempts/{attempt}/result-link/regenerate', [QuizController::class, 'regenerateResultLink'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.result-link.regenerate');
 
     // Correction manuelle des réponses rédigées : une copie rendue, un guide,
     // une note par réponse. Séparée de QuizController pour rester lisible.

@@ -6,6 +6,7 @@ use App\Http\Requests\StoreFormRequest;
 use App\Http\Requests\UpdateFormRequest;
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\ShortLink;
 use Illuminate\Support\Str;
 
 class FormController extends Controller
@@ -52,7 +53,11 @@ class FormController extends Controller
     {
         $form->load(['fields', 'submissions.files']);
 
-        return view('admin.forms.show', compact('form'));
+        // Le lien court du formulaire : créé à la première ouverture de cette
+        // page, puis stable. Le lien long continue de fonctionner tel quel.
+        $shortLink = ShortLink::forDeposit($form);
+
+        return view('admin.forms.show', compact('form', 'shortLink'));
     }
 
     public function edit(Form $form)

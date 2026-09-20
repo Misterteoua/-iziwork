@@ -198,8 +198,24 @@ iziwork/
 ### Partager le lien
 
 1. Allez dans la page du formulaire
-2. Cliquez sur "Copier le lien"
+2. Cliquez sur "Copier le lien" — ou « Copier le lien court »
 3. Partagez le lien avec les étudiants
+
+### Liens courts
+
+Chaque formulaire et chaque évaluation disposent d'un **lien court** de huit
+caractères — `/l/Ab12Cd34` au lieu de `/s/{jeton}` ou `/q/{jeton}` :
+
+- il se recopie dans un message ou s'écrit au tableau sans faute de frappe ;
+- il mène exactement là où mène le lien long, qui continue de fonctionner ;
+- il est **stable** : le même lien à chaque consultation, et il disparaît avec le
+  formulaire qu'il désigne.
+
+Les codes sont tirés au sort (57⁸ combinaisons, alphabet sans O/0 ni I/1/L) et
+les codes inconnus sont comptés : trente essais infructueux par minute et par
+adresse suffisent à faire taire un balayage, alors qu'une salle entière derrière
+une même connexion n'est jamais freinée. Pour un domaine encore plus court
+(`https://izi.work/l/Ab12Cd34`), renseignez `SHORT_LINK_DOMAIN` dans `.env`.
 
 ### Soumettre un devoir (Étudiant)
 
@@ -229,7 +245,8 @@ iziwork/
    après que toutes les copies ont été rendues. Sans référence préparée,
    l'évaluation reste en **mode libre** : l'étudiant saisit son nom et reçoit sa
    propre référence, autant de fois que de candidats qui se présentent.
-4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}`.
+4. **Ouvrir l'évaluation** puis partager le lien `/q/{jeton}` — ou son **lien
+   court** (`/l/Ab12Cd34`), avec son bouton « Copier le lien court ».
 5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
    sorties de fenêtre. Export CSV possible, réinitialisation d'une participation
    en cas d'incident.
@@ -304,6 +321,25 @@ Ce qui se passe ensuite, dans l'ordre :
    champ de points (0 au barème, **notes partielles acceptées**).
 5. Dès que plus rien n'attend, la note devient définitive — l'étudiant la voit
    en retéléchargeant son récapitulatif avec sa référence, sans se reconnecter.
+
+### L'étudiant suit son résultat
+
+À la fin de l'épreuve, la page de résultat affiche un **lien de suivi**
+personnel (`/l/Ab12Cd34`), avec un bouton « Copier mon lien » et un **QR code** :
+scanné au téléphone, il ramène l'étudiant sur son résultat à tout moment, sans
+mot de passe et sans dépendre du navigateur utilisé. Le **récapitulatif PDF**
+porte le même QR code et la même adresse — c'est le document qu'il garde.
+
+Ce lien ne fait que rendre la copie consultable de n'importe où : il ne remplit
+jamais la session du poste, donc un lien reçu par message ne peut pas prendre la
+place d'une épreuve en cours sur un ordinateur partagé. L'enseignant peut
+retrouver (et copier) le lien de chaque étudiant depuis **Résultats**, à côté de
+sa copie, et le bouton ↻ en **régénère** un : l'ancien cesse aussitôt de
+fonctionner.
+
+Le QR code est calculé côté serveur, sans extension PHP ni bibliothèque : il
+s'affiche même si le navigateur bloque le JavaScript, et il se retrouve dans le
+PDF imprimé.
 
 **Correction en série.** Le bandeau des résultats propose « **Corriger les
 copies à corriger (n)** » : vous ouvrez la première, vous enregistrez, et

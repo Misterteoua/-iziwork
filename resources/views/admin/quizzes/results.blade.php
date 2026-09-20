@@ -141,14 +141,36 @@
                             {{ $attempt->infraction_count }}
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right">
-                            <form method="POST" action="{{ route('admin.quizzes.attempts.reset', [$quiz, $attempt]) }}"
+                            <div class="flex items-center justify-end gap-2">
+                                @if($attempt->isFinished())
+                                {{-- Le lien personnel de cet étudiant : utile pour lui
+                                     redonner sa note, ou pour lui transmettre son suivi
+                                     quand des questions rédigées restent à corriger. --}}
+                                <button type="button"
+                                        data-result-link="{{ route('admin.quizzes.attempts.result-link', [$quiz, $attempt]) }}"
+                                        onclick="copyResultLink(this)"
+                                        title="Retrouver (ou créer) le lien personnel de cet étudiant et le copier"
+                                        class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors duration-150">
+                                    <span data-copy-label>Lien du résultat</span>
+                                </button>
+                                <button type="button"
+                                        data-result-link-regenerate="{{ route('admin.quizzes.attempts.result-link.regenerate', [$quiz, $attempt]) }}"
+                                        onclick="regenerateResultLink(this)"
+                                        title="Régénérer le lien (l'ancien cessera de fonctionner)"
+                                        aria-label="Régénérer le lien du résultat"
+                                        class="inline-flex items-center px-2 py-1.5 text-xs font-semibold rounded-lg text-slate-500 bg-slate-100 hover:bg-slate-200 transition-colors duration-150">
+                                    ↻
+                                </button>
+                                @endif
+                                <form method="POST" action="{{ route('admin.quizzes.attempts.reset', [$quiz, $attempt]) }}"
                                   onsubmit="return confirm('Réinitialiser cette participation ? Les réponses seront effacées et l\'étudiant pourra repasser l\'épreuve.');">
                                 @csrf
                                 <button type="submit"
                                         class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors duration-150">
                                     Réinitialiser
                                 </button>
-                            </form>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     @endforeach
@@ -166,3 +188,48 @@
     @endif
 </div>
 @endsection
+
+@push('scripts')
+<script>
+    // Le lien personnel d'un étudiant se demande au serveur (POST : le premier
+    // appel écrit en base), puis se copie. Le bouton ↻ en donne un nouveau et
+    // annule l'ancien.
+    async function requestResultLink(button, attribute, confirmation) {
+        if (confirmation && !window.confirm(confirmation)) {
+            return;
+        }
+
+        const response = await fetch(button.dataset[attribute], {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+        });
+
+        const type = response.headers.get('content-type') || '';
+
+        if (!response.ok || !type.includes('application/json')) {
+            window.alert('Lien indisponible. Rechargez la page et réessayez.');
+
+            return;
+        }
+
+        const data = await response.json();
+
+        copyText(data.url, button);
+    }
+
+    function copyResultLink(button) {
+        requestResultLink(button, 'resultLink');
+    }
+
+    function regenerateResultLink(button) {
+        requestResultLink(
+            button,
+            'resultLinkRegenerate',
+            'Régénérer le lien de cet étudiant ? L\'ancien cessera aussitôt de fonctionner.'
+        );
+    }
+</script>
+@endpush

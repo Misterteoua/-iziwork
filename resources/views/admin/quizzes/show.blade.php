@@ -44,19 +44,34 @@
         </div>
     </div>
 
-    {{-- Lien étudiant --}}
+    {{-- Lien étudiant : le lien complet (jamais périmé) et le lien court, qui
+         se recopie au tableau ou s'écrit dans un message sans faute de frappe. --}}
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 mb-8">
         <h2 class="text-base font-semibold text-slate-900 mb-2">Lien à communiquer aux étudiants</h2>
         <div class="flex flex-col sm:flex-row gap-3">
-            <input type="text" readonly value="{{ route('quiz.start', $quiz->token) }}"
+            <input type="text" id="quiz-link" readonly value="{{ route('quiz.start', $quiz->token) }}"
                    aria-label="Lien de l'évaluation"
                    onfocus="this.select()"
                    class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-700 bg-slate-50">
+            <button type="button" data-copy-target="#quiz-link" onclick="copyField(this.dataset.copyTarget, this)"
+                    class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150 shrink-0">
+                <span data-copy-label>Copier</span>
+            </button>
             <a href="{{ route('quiz.start', $quiz->token) }}" target="_blank" rel="noopener"
                class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150 shrink-0">
                 Ouvrir
             </a>
         </div>
+
+        <div class="mt-3 flex flex-col sm:flex-row sm:items-center gap-2">
+            <p class="text-xs font-medium text-slate-500 shrink-0">Lien court</p>
+            <code class="text-xs font-mono text-slate-600 break-all">{{ $shortLink->url() }}</code>
+            <button type="button" data-copy="{{ $shortLink->url() }}" onclick="copyText(this.dataset.copy, this)"
+                    class="sm:ml-auto inline-flex items-center justify-center px-3.5 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 hover:bg-slate-50 transition-colors duration-150 shrink-0">
+                <span data-copy-label>Copier le lien court</span>
+            </button>
+        </div>
+
         @unless($quiz->status === 'active')
         <p class="mt-2 text-xs text-amber-600">L'évaluation est fermée : les étudiants verront un message d'indisponibilité tant que vous ne l'ouvrez pas.</p>
         @endunless

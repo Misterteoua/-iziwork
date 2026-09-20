@@ -135,6 +135,26 @@
     </div>
     @endif
 
+    {{-- Le lien de suivi voyage dans le document que l'étudiant garde : c'est ce
+         qui lui permet de revenir voir sa note définitive, sans rien
+         réinstaller ni se reconnecter. --}}
+    <div class="section">
+        <h2>Suivre votre résultat</h2>
+        <table>
+            <tr>
+                <td style="width: 150px; border: 0; padding: 0 12px 0 0;">
+                    <img src="{{ $followQr }}" alt="QR code du lien de suivi" style="width: 130px; height: 130px;">
+                </td>
+                <td style="border: 0; padding: 0;">
+                    Scannez ce QR code, ou recopiez le lien ci-dessous, pour retrouver ce résultat à tout moment
+                    &mdash; et la note définitive une fois les questions rédigées corrigées.
+                    <br><br>
+                    <span class="reference" style="font-size: 11px; letter-spacing: 0;">{{ $followLink->url() }}</span>
+                </td>
+            </tr>
+        </table>
+    </div>
+
     <div class="footer">
         <p>Ce document a été généré automatiquement par Iziwork</p>
         <p>{{ now()->format('d/m/Y à H:i') }}</p>

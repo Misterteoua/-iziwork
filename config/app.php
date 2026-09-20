@@ -81,6 +81,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Domaine des liens courts
+    |--------------------------------------------------------------------------
+    |
+    | Les liens courts vivent sur le domaine de l'application. Renseigner cette
+    | variable (par exemple https://izi.work) les fait basculer sur un domaine
+    | dédié, plus court encore, sans rien changer au reste du code.
+    |
+    */
+
+    'short_link_domain' => env('SHORT_LINK_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Timezone
     |--------------------------------------------------------------------------
     |

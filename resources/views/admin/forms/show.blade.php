@@ -40,14 +40,16 @@
 
             {{-- Actions --}}
             <div class="flex flex-wrap gap-2 lg:justify-end lg:shrink-0">
-                <button onclick="copyLink()"
+                <button type="button"
+                        data-copy="{{ route('submit.form', $form->token) }}"
+                        onclick="copyText(this.dataset.copy, this)"
                         class="inline-flex items-center px-3.5 py-2 border border-slate-200 text-sm font-medium rounded-xl text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150"
                         aria-label="Copier le lien de soumission">
                     <svg class="h-4 w-4 mr-1.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
                     </svg>
-                    <span class="hidden sm:inline">Copier le lien</span>
-                    <span class="sm:hidden">Lien</span>
+                    <span class="hidden sm:inline" data-copy-label>Copier le lien</span>
+                    <span class="sm:hidden" data-copy-label>Lien</span>
                 </button>
                 <form method="POST" action="{{ route('admin.forms.toggle', $form) }}" class="inline">
                     @csrf
@@ -108,6 +110,17 @@
                 <p class="text-sm sm:text-base font-semibold text-slate-900 mt-1" style="font-variant-numeric: tabular-nums">{{ $form->open_date ? $form->open_date->format('d/m/Y H:i') : 'Immédiat' }}</p>
             </div>
         </div>
+    </div>
+
+    {{-- Lien court : plus facile à dicter en classe ou à écrire au tableau. Le
+         lien complet ci-dessus continue de fonctionner, inchangé. --}}
+    <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 px-6 py-4 mb-8 flex flex-col sm:flex-row sm:items-center gap-3">
+        <p class="text-sm font-medium text-slate-700 shrink-0">Lien court</p>
+        <code class="text-sm font-mono text-slate-600 break-all">{{ $shortLink->url() }}</code>
+        <button type="button" data-copy="{{ $shortLink->url() }}" onclick="copyText(this.dataset.copy, this)"
+                class="sm:ml-auto inline-flex items-center justify-center px-3.5 py-2 border border-slate-200 text-sm font-medium rounded-xl text-slate-700 bg-white hover:bg-slate-50 hover:border-slate-300 transition-colors duration-150 shrink-0">
+            <span data-copy-label>Copier le lien court</span>
+        </button>
     </div>
 
     {{-- Submissions section --}}
@@ -206,13 +219,3 @@
 </div>
 @endsection
 
-@push('scripts')
-<script>
-    function copyLink() {
-        const link = '{{ route("submit.form", $form->token) }}';
-        navigator.clipboard.writeText(link).then(() => {
-            alert('Lien copié dans le presse-papier !\n\n' + link);
-        });
-    }
-</script>
-@endpush

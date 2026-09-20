@@ -133,6 +133,9 @@
     <script>
         const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     </script>
+
+    @include('partials.copy')
+
     @stack('scripts')
 
     @if(session('admin_user'))

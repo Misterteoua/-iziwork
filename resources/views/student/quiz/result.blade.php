@@ -138,14 +138,54 @@
     </div>
     @endif
 
+    {{-- Lien de suivi : c'est lui qui permet de revenir voir sa note définitive,
+         une fois les questions rédigées corrigées — depuis n'importe quel
+         appareil, et sans dépendre d'une session de navigateur. Le QR est là
+         pour que l'étudiant l'emporte dans son téléphone. --}}
+    <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8 mt-8">
+        <h2 class="text-base font-semibold text-slate-900">Votre lien de suivi</h2>
+        <p class="mt-1 text-sm text-slate-600">
+            @if($pending > 0)
+            Une partie de votre copie reste à corriger. Conservez ce lien : il vous montrera votre note définitive.
+            @else
+            Conservez ce lien : il vous ramène à ce résultat à tout moment, sans mot de passe.
+            @endif
+        </p>
+
+        <div class="mt-4 flex flex-col sm:flex-row gap-5 sm:items-start">
+            <img src="{{ $followQr }}" width="132" height="132"
+                 alt="QR code de votre lien de suivi"
+                 class="shrink-0 rounded-xl border border-slate-200 bg-white p-1">
+
+            <div class="min-w-0 flex-1">
+                <input type="text" id="follow-link" readonly value="{{ $followLink->url() }}"
+                       aria-label="Votre lien de suivi"
+                       onfocus="this.select()"
+                       class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-xs text-slate-700 bg-slate-50 font-mono">
+
+                <button type="button" data-copy-target="#follow-link" onclick="copyField(this.dataset.copyTarget, this)"
+                        class="mt-2 inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    <span data-copy-label>Copier mon lien</span>
+                </button>
+
+                <p class="mt-2 text-xs text-slate-500">
+                    Scannez le QR code ou copiez le lien. Votre référence continue d'identifier votre copie ;
+                    ce lien vous y ramène.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    @unless($viaShortLink)
     {{-- Salle informatique : l'étudiant suivant ne doit pas rester sur cette page.
          La route refuse d'abandonner une épreuve en cours, seul un rendu se
-         détache. --}}
+         détache. Depuis un lien de suivi, il n'y a pas de session à détacher. --}}
     <form method="POST" action="{{ route('quiz.new-candidate', $quiz->token) }}" class="mt-8 text-center">
         @csrf
         <button type="submit" class="text-xs font-medium text-slate-500 hover:text-brand-600 transition-colors duration-150">
             Ce n'est pas ma copie — laisser la place à un autre étudiant
         </button>
     </form>
+    @endunless
 </div>
 @endsection

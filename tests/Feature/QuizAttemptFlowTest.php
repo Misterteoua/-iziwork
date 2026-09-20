@@ -6,6 +6,8 @@ use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAttempt;
+use App\Models\ShortLink;
+use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -812,11 +814,15 @@ class QuizAttemptFlowTest extends TestCase
 
         // Le rendu du document, lui, se vérifie : DomPDF ne produit pas de texte
         // lisible dans le binaire, mais la vue est la source du PDF.
+        $followLink = ShortLink::forAttempt($this->quiz, $attempt);
+
         $pending = view('student.quiz.recap-pdf', [
             'quiz' => $this->quiz,
             'attempt' => $attempt,
             'showScore' => true,
             'pending' => 1,
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
         ])->render();
 
         $this->assertStringContainsString('Note provisoire', $pending);
@@ -828,6 +834,8 @@ class QuizAttemptFlowTest extends TestCase
             'attempt' => $attempt,
             'showScore' => true,
             'pending' => 0,
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
         ])->render();
 
         $this->assertStringContainsString('Note obtenue', $definitive);

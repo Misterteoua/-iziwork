@@ -177,6 +177,22 @@ jouées.
 > `ADD`/`MODIFY COLUMN` : aucune donnée existante n'est réécrite, et les copies
 > déjà notées gardent leur note.
 
+> **Liens courts et QR code de suivi (mise à jour du 21/09).** Une seule
+> migration, `2026_09_20_000013_create_short_links_table` : elle **crée** la table
+> `short_links` et ne touche à aucune table existante. Elle apporte la route
+> `/l/{code}` — huit caractères tirés au sort — qui mène aux mêmes pages que les
+> liens longs `/q/{jeton}` et `/s/{jeton}`, lesquels continuent de fonctionner
+> sans le moindre changement. Les liens sont stables (le même à chaque
+> consultation), ils disparaissent avec le formulaire qu'ils désignent, et les
+> codes inconnus sont limités à **30 essais par minute et par adresse IP** : un
+> balayage se heurte vite à un mur, alors qu'une salle entière derrière une même
+> connexion n'est jamais freinée (seuls les échecs sont comptés).
+>
+> Aucune dépendance, aucune extension à activer : le **QR code** du lien de
+> suivi d'un étudiant est calculé en PHP, image PNG comprise (écrite à la main,
+> donc sans `GD`). Facultatif : `SHORT_LINK_DOMAIN` dans `.env` pour un domaine
+> dédié (`https://izi.work/l/Ab12Cd34`).
+
 > **Correction en série, sans migration.** La page de correction peut enchaîner
 > les copies à corriger (`/admin/quizzes/{id}/grade`) : c'est une manière de
 > choisir la copie suivante, pas un nouveau stockage. Rien à jouer en base, rien
@@ -641,3 +657,6 @@ bash deploy.sh
 - [ ] HTTPS actif (AutoSSL)
 - [ ] `.env` non commité
 - [ ] Sauvegardes régulières : base MySQL + dossier `storage/`
+- [ ] Liens courts : rien à configurer (codes tirés au sort à chaque création,
+      essais infructueux limités par adresse IP). Un lien de suivi jugé
+      compromis se **régénère** depuis la page des résultats, à côté de la copie.
