@@ -143,6 +143,18 @@
                            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
                     <span class="text-sm text-slate-700">Surveillance de la fenêtre (plein écran, copier-coller bloqué, journal des sorties)</span>
                 </label>
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" name="one_attempt_per_device" value="1" @checked(old('one_attempt_per_device', $quiz->quizBlocksSameDevice()))
+                           class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
+                    <span class="text-sm text-slate-700">
+                        Une seule copie par appareil
+                        <span class="mt-0.5 block text-xs text-slate-500">
+                            Pour une épreuve à distance : un même navigateur ne peut remettre qu'une copie.
+                            À laisser décoché en salle informatique, où le candidat suivant travaille sur
+                            le même poste.
+                        </span>
+                    </span>
+                </label>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 border-t border-slate-100 pt-5">

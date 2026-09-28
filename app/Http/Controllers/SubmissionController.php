@@ -147,9 +147,13 @@ class SubmissionController extends Controller
         }
         abort_if($uploadedBytes > 100 * 1024 * 1024, 422, 'La taille totale des fichiers dépasse 100 Mo.');
 
-        $studentEmail = Str::lower(trim($validated['student_email'] ?? ''));
+        // Sans adresse, il n'y a pas de clé anti-doublon. Comparer des chaînes
+        // vides ferait refuser le deuxième dépôt d'un formulaire dont le champ
+        // Email est facultatif — avec, pour seul motif, un message incompréhensible.
+        $studentEmail = Str::lower(trim((string) ($validated['student_email'] ?? '')));
 
-        if (Submission::where('form_id', $form->id)->where('student_email', $studentEmail)->exists()) {
+        if ($studentEmail !== ''
+            && Submission::where('form_id', $form->id)->where('student_email', $studentEmail)->exists()) {
             return back()->withInput()->with('error', 'Vous avez déjà soumis pour ce formulaire avec cette adresse email.');
         }
 
@@ -157,7 +161,7 @@ class SubmissionController extends Controller
             $submission = Submission::create([
                 'form_id' => $form->id,
                 'student_name' => $validated['student_name'] ?? null,
-                'student_email' => $studentEmail,
+                'student_email' => $studentEmail === '' ? null : $studentEmail,
                 'student_phone' => $validated['student_phone'] ?? null,
                 'student_major' => $validated['student_major'] ?? null,
                 'anonymous_code' => $form->is_anonymous ? $this->generateAnonymousCode() : null,

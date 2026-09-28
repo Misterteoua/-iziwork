@@ -68,6 +68,24 @@
         Sont comptées : le passage à un autre onglet ou à une autre application,
         et la sortie du plein écran. Valider une réponse n'est jamais compté.
     </p>
+
+    {{-- Le plein écran demandé au démarrage ne survit pas toujours au chargement
+         de cette page : le navigateur ne l'accorde que sur un geste, et la
+         navigation en fait tomber un. Le repli s'arme alors, et s'exécute à la
+         toute première action du candidat. Le bandeau le dit, parce qu'un
+         changement d'affichage qui n'est pas annoncé se lit comme un bug.
+         Il n'existe que lorsque le candidat a demandé le plein écran : sans ce
+         choix, la page ne promet rien et ne demande rien. --}}
+    @if($fullscreenPreferred ?? false)
+    <div id="quiz-fullscreen-notice" hidden role="status" aria-live="polite"
+         class="mb-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm text-brand-800 flex flex-wrap items-center justify-between gap-3">
+        <span>Le plein écran s'active à votre première action sur la page. Vous pourrez en sortir à tout moment.</span>
+        <button type="button" id="quiz-fullscreen-now"
+                class="shrink-0 inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+            Activer maintenant
+        </button>
+    </div>
+    @endif
     @endif
 
     <div id="quiz-infraction-notice" hidden role="status" aria-live="polite"
@@ -206,6 +224,11 @@
 
         if (inFullscreen) {
             intentionalExit = false;
+
+            // Le plein écran est là : le repli n'a plus d'objet, et le bandeau
+            // n'a plus rien à annoncer.
+            if (disarmAutoFullscreen) { disarmAutoFullscreen(); }
+
             return;
         }
 
@@ -252,6 +275,8 @@
     // --- Plein écran (nécessite un geste de l'utilisateur) ----------------
     const toggle = document.getElementById('quiz-fullscreen-toggle');
     const toggleLabel = document.getElementById('quiz-fullscreen-label');
+    const fullscreenNotice = document.getElementById('quiz-fullscreen-notice');
+    const fullscreenNow = document.getElementById('quiz-fullscreen-now');
 
     // La préférence vient du serveur : elle survit donc à un rechargement ou à
     // un changement de page, ce qu'un stockage du navigateur ne garantit pas.
@@ -263,6 +288,67 @@
         toggleLabel.textContent = inFullscreen
             ? 'Quitter le plein écran'
             : (preferred ? 'Passer en plein écran (recommandé)' : 'Passer en plein écran');
+    }
+
+    function enterFullscreen() {
+        mute(1500);
+
+        return document.documentElement.requestFullscreen().catch(function () {
+            // Refusé par le navigateur : on continue, ce n'est pas bloquant.
+            mute(0);
+        });
+    }
+
+    // Désarmement du repli automatique, défini à l'armement : une seule fonction
+    // pour l'oublier, quel que soit le chemin (plein écran obtenu, sortie
+    // volontaire, bandeau masqué).
+    let disarmAutoFullscreen = null;
+
+    /**
+     * Le plein écran demandé au démarrage n'a pas tenu : il reprend à la
+     * première action du candidat, et une seule fois.
+     *
+     * C'est une contrainte du navigateur, pas un choix : aucune API ne permet de
+     * passer en plein écran sans interaction. Le candidat est prévenu par un
+     * bandeau, et peut aussi le déclencher immédiatement.
+     */
+    function armAutoFullscreen() {
+        let armed = true;
+
+        function disarm() {
+            armed = false;
+            disarmAutoFullscreen = null;
+
+            document.removeEventListener('pointerdown', onGesture, true);
+            document.removeEventListener('keydown', onGesture, true);
+
+            if (fullscreenNotice) { fullscreenNotice.hidden = true; }
+        }
+
+        function onGesture(event) {
+            // Les boutons de plein écran ont leur propre gestionnaire : on ne
+            // veut ni deux demandes concurrentes, ni un désarmement dans leur dos.
+            if (toggle && toggle.contains(event.target)) { return; }
+            if (fullscreenNow && fullscreenNow.contains(event.target)) { return; }
+            if (!armed) { return; }
+
+            disarm();
+            enterFullscreen();
+        }
+
+        if (fullscreenNow) {
+            fullscreenNow.addEventListener('click', function () {
+                disarm();
+                enterFullscreen();
+            });
+        }
+
+        if (fullscreenNotice) { fullscreenNotice.hidden = false; }
+
+        disarmAutoFullscreen = disarm;
+
+        document.addEventListener('pointerdown', onGesture, true);
+        document.addEventListener('keydown', onGesture, true);
     }
 
     if (toggle && document.documentElement.requestFullscreen) {
@@ -282,13 +368,14 @@
                 return;
             }
 
-            mute(1500);
-
-            document.documentElement.requestFullscreen().catch(function () {
-                // Refusé par le navigateur : on continue, ce n'est pas bloquant.
-                mute(0);
-            });
+            enterFullscreen();
         });
+
+        // Le candidat a demandé le plein écran, il ne l'a pas : on le rétablit à
+        // sa première action. S'il l'a déjà, il n'y a rien à faire.
+        if (preferred && document.fullscreenElement === null) {
+            armAutoFullscreen();
+        }
     }
 })();
 </script>

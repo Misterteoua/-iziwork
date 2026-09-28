@@ -144,6 +144,48 @@ class SubmissionControllerTest extends TestCase
         $response->assertSessionHas('error');
     }
 
+    public function test_un_depot_sans_adresse_ne_bloque_pas_le_suivant(): void
+    {
+        Storage::fake('local');
+
+        // Formulaire dont le champ Email est facultatif et reste vide : il n'y a
+        // alors aucune clé anti-doublon. Comparer deux chaînes vides refuserait le
+        // deuxième dépôt — pour un motif que personne ne pourrait comprendre.
+        $form = Form::create([
+            'title' => 'Dépôt sans adresse',
+            'status' => 'active',
+            'created_by' => $this->admin->id,
+        ]);
+
+        FormField::create([
+            'form_id' => $form->id,
+            'field_label' => 'Nom complet',
+            'field_type' => 'text',
+            'required' => true,
+            'order' => 0,
+        ]);
+
+        FormField::create([
+            'form_id' => $form->id,
+            'field_label' => 'Email',
+            'field_type' => 'email',
+            'required' => false,
+            'order' => 1,
+        ]);
+
+        foreach (['Jean', 'Awa'] as $name) {
+            $this->post("/s/{$form->token}", [
+                'student_name' => $name,
+                'student_email' => '',
+            ])->assertRedirect();
+        }
+
+        $this->assertSame(2, $form->submissions()->count());
+        // Et l'adresse absente est enregistrée comme telle, pas comme une chaîne
+        // vide qui ferait croire à une adresse renseignée.
+        $this->assertSame(0, $form->submissions()->whereNotNull('student_email')->count());
+    }
+
     public function test_student_cannot_submit_to_closed_form(): void
     {
         $this->form->update(['status' => 'inactive']);

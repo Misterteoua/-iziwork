@@ -193,6 +193,42 @@ jouées.
 > donc sans `GD`). Facultatif : `SHORT_LINK_DOMAIN` dans `.env` pour un domaine
 > dédié (`https://izi.work/l/Ab12Cd34`).
 
+> **Anti-doublon, plein écran, suppression de copie (mise à jour du 28/09).**
+> **Une seule** migration, purement additive : la colonne `device_token`
+> (nullable) sur `quiz_attempts`. Nommée d'après elle
+> (`add_device_token_to_quiz_attempts_table`), elle est reconnue par la
+> réconciliation de `/update` : une colonne déjà ajoutée par un déploiement
+> interrompu est constatée en place au lieu de faire échouer la mise à jour sur
+> « duplicate column ». Aucune colonne modifiée, aucun index supprimé, aucune
+> donnée réécrite.
+>
+> Ce que ça apporte :
+>
+> - **Une adresse email, une copie.** Dès qu'une adresse existe (saisie en mode
+>   libre, ou fournie par une liste importée), une seconde copie pour la même
+>   évaluation est refusée, avec un message clair. Le contrôle porte sur les
+>   copies engagées, donc reprendre une épreuve en cours reste possible.
+> - **Une référence, une copie** — déjà vrai, désormais verrouillé par des tests
+>   explicites, y compris sur une évaluation anonyme.
+> - **Réglage « Une seule copie par appareil »**, désactivé par défaut : un
+>   cookie chiffré (un an) identifie le poste, et une copie déjà remise depuis ce
+>   poste ferme la suivante. À laisser décoché en salle informatique, où le poste
+>   change de candidat.
+> - **L'adresse IP ne bloque rien.** Elle est enregistrée, exportée en dernière
+>   colonne du CSV des résultats, et les copies qui partagent une même adresse
+>   sont signalées dans la page « Résultats ». Un indice, pas une sanction.
+> - **Plein écran réellement appliqué** quand la case est cochée au départ : le
+>   W3C interdit de le demander sans geste de l'utilisateur, et la navigation en
+>   fait tomber un, donc la page d'épreuve le rétablit à la première action du
+>   candidat, bandeau compris. Aucun réglage, aucun stockage : c'est du HTML et
+>   du JavaScript, livrés avec l'archive.
+> - **Suppression d'une copie** depuis « Résultats », à côté de
+>   « Réinitialiser » : réponses, notes, corrections, journal de relecture et
+>   lien de suivi partent avec elle — et, en mode liste, sa référence.
+>
+> Aucune dépendance à installer, rien à configurer : extraction de l'archive puis
+> `/update` suffisent.
+
 > **Second niveau de relecture (mise à jour du 20/09).** **Une seule** migration,
 > purement additive : la table `quiz_grade_reviews`. Aucune colonne modifiée,
 > aucun index supprimé, aucune donnée réécrite. Elle journalise les relectures —

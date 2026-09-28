@@ -233,7 +233,8 @@ une même connexion n'est jamais freinée. Pour un domaine encore plus court
 ## ✍️ Organiser une évaluation en ligne
 
 1. **Créer l'évaluation** (« Évaluations » → « Nouvelle évaluation ») : titre, durée,
-   quota de participants, anonymat, affichage de la note, surveillance.
+   quota de participants, anonymat, affichage de la note, surveillance, et
+   l'anti-doublon par appareil (voir « Une seule copie par étudiant »).
 2. **Ajouter les questions** : énoncé, propositions, case à cocher pour la ou les
    bonnes réponses, barème. Une question à choix unique n'accepte qu'une bonne réponse.
 3. **Préparer les références** (facultatif) : soit en important la liste des
@@ -250,7 +251,8 @@ une même connexion n'est jamais freinée. Pour un domaine encore plus court
 5. **Suivre les résultats** (« Résultats ») : note, barème, temps passé, nombre de
    sorties enregistrées — avec leur nature (onglet masqué, plein écran quitté),
    parce qu'un total indistinct ne raconte pas ce qui s'est passé. Export CSV
-   possible, réinitialisation d'une participation en cas d'incident.
+   possible, réinitialisation d'une participation en cas d'incident, ou
+   **suppression** d'une copie (voir « Réinitialiser ou supprimer une copie »).
 
 La liste des évaluations se filtre par **titre ou consignes**, **période de
 création**, **état** (ouvertes / fermées) et se trie par date ou par titre. Les
@@ -277,9 +279,52 @@ Ce qui reste verrouillé :
   de poste ne fait pas perdre à un autre le fil de sa copie ;
 - une **référence déjà servie** reste refusée : libérer le poste n'ouvre pas une
   porte dérobée ;
-- en mode libre, où rien ne distingue deux candidats, le garde-fou est le
-  **quota de participants** (`max_submissions`) : posez-le si l'évaluation est
-  ouverte sur un parc partagé.
+- en mode libre, le candidat suivant est reconnu à son **adresse email** : une
+  adresse ne remet qu'une copie par évaluation (voir ci-dessous).
+
+### Une seule copie par étudiant
+
+Trois barrières, de la plus ferme à la plus souple — et **aucune** ne dépend du
+navigateur du candidat :
+
+1. **La référence** (évaluations en mode liste, anonymes comprises). Une
+   référence ouvre une copie, une seule : une fois la copie rendue, la ressaisir
+   mène à son résultat, jamais à une seconde copie. C'est la clé d'identité de
+   l'anonymat, et elle ne se partage pas.
+2. **L'adresse email** (dès qu'une adresse existe : saisie par l'étudiant en mode
+   libre, ou fournie par la liste importée). Une adresse = une copie, pour toute
+   l'évaluation. Le contrôle porte sur les copies **engagées** (en cours, rendues,
+   temps écoulé) : reprendre sa propre épreuve en cours reste possible, et une
+   ligne de liste non commencée n'est pas une soumission. Effet utile : une même
+   adresse présente deux fois dans une liste importée ne produit qu'une copie.
+3. **L'appareil** (réglage « Une seule copie par appareil », désactivé par
+   défaut). Un identifiant opaque, gardé dans un cookie **chiffré** d'un an, est
+   recopié sur la copie au démarrage ; s'il a déjà servi pour une copie **rendue**
+   de cette évaluation, une nouvelle copie est refusée. C'est le seul signal qui
+   reste quand l'évaluation est anonyme *et* sans liste de références.
+
+> **Salle informatique : laissez ce réglage décoché.** Les postes sont partagés :
+> l'activer reviendrait à interdire au candidat suivant de commencer. Réservez-le
+> aux épreuves passées à distance.
+
+L'**adresse IP** n'est jamais un motif de refus : une salle entière sort derrière
+une seule adresse. Elle est enregistrée sur chaque copie, exportée en dernière
+colonne du CSV des résultats, et la page « Résultats » signale discrètement les
+copies qui partagent la même adresse (« n copies depuis la même adresse IP ») —
+un indice pour l'enseignant, jamais une sanction.
+
+### Réinitialiser ou supprimer une copie
+
+Deux gestes différents, dans la colonne « Actions » de la page des résultats :
+
+- **Réinitialiser** garde la participation et rend la place : les réponses
+  partent, la référence reste, l'étudiant peut repasser. C'est le geste des
+  incidents (coupure, poste qui plante).
+- **Supprimer** efface définitivement la copie : réponses, notes, commentaires,
+  corrections des correcteurs et lien de suivi partent avec elle. En mode liste,
+  sa **référence disparaît aussi**, et le candidat ne peut plus commencer. À
+  réserver aux copies parasites ou aux essais de l'enseignant ; la confirmation
+  le dit noir sur blanc.
 
 ### Importer les questions
 
@@ -477,9 +522,17 @@ le serveur.
 Ce qui n'est **pas** compté, volontairement : valider une réponse, les transitions
 de plein écran, les dialogues du navigateur, et la sortie du plein écran demandée
 par le bouton « Quitter le plein écran » (c'est un geste de l'application, pas une
-sortie subie). Le plein écran est **accordé par un geste dédié** — la case cochée
-au démarrage, puis le bouton de la page d'épreuve — et jamais au hasard d'un clic
-de réponse, comme c'était le cas avant.
+sortie subie).
+
+**Le plein écran, concrètement.** Le W3C impose un geste de l'utilisateur pour
+`requestFullscreen()`, et la navigation en fait tomber un (« whenever the
+unloading document cleanup steps run, fully exit fullscreen ») : le plein écran ne
+peut donc pas être transporté du formulaire de départ jusqu'à l'épreuve. Quand la
+case est cochée, la page d'épreuve le rétablit donc **à la première action du
+candidat** (clic, appui, touche), en l'annonçant par un bandeau qui propose aussi
+de le déclencher tout de suite. Comme les réponses suivantes ne rechargent plus la
+page, il tient ensuite jusqu'au bout. Si le candidat en sort lui-même (Échap ou
+bouton), rien ne le lui réimpose.
 
 Enfin, quitter la page n'est **plus bloqué** pendant toute l'épreuve : le
 avertissement du navigateur ne subsiste que dans le seul cas où une sortie fait

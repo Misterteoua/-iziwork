@@ -118,10 +118,11 @@
             @endunless
 
             @if($quiz->quizUsesProctoring())
-            {{-- Le plein écran exige un geste de l'utilisateur, et il ne survit pas
-                 au chargement de la page suivante : le choix est mémorisé ici et
-                 proposé par un bouton dédié sur l'épreuve, au lieu d'être
-                 déclenché au hasard d'un clic. --}}
+            {{-- Le plein écran exige un geste de l'utilisateur, et la navigation en
+                 fait tomber un : le clic ci-dessous ne peut donc pas le transporter
+                 jusqu'à l'épreuve. Le choix est mémorisé côté serveur, et c'est la
+                 page de question qui le rétablit à la première action du candidat
+                 (voir _proctoring). --}}
             <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <label for="fullscreen-choice" class="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" name="fullscreen" id="fullscreen-choice" value="1" checked
@@ -129,8 +130,10 @@
                     <span class="text-sm text-slate-700">
                         <span class="font-semibold">Passer l'épreuve en plein écran</span> (recommandé)
                         <span class="mt-0.5 block text-xs text-slate-500">
-                            Limite les distractions. Vous pourrez en sortir à tout moment, et cela
-                            n'empêche jamais de valider une réponse.
+                            Le navigateur n'accorde le plein écran qu'à la première action de
+                            l'étudiant : l'épreuve s'ouvrira donc en plein écran dès votre premier
+                            clic. Vous pourrez en sortir à tout moment, et cela n'empêche jamais de
+                            valider une réponse.
                         </span>
                     </span>
                 </label>

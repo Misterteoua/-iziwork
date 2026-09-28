@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\QuizGradeReview;
+use App\Models\ShortLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -252,6 +255,23 @@ class QuizAdminControllerTest extends TestCase
         $this->assertSame(25, (int) $this->quiz->max_submissions);
         // Les cases non cochées retombent à false : c'est ce que voit l'admin.
         $this->assertTrue($this->quiz->is_anonymous);
+    }
+
+    public function test_l_anti_doublon_par_appareil_est_un_reglage_desactive_par_defaut(): void
+    {
+        // Par défaut : rien de tout cela, une salle informatique partage ses postes.
+        $this->assertFalse($this->quiz->quizBlocksSameDevice());
+
+        $this->put(route('admin.quizzes.update', $this->quiz), $this->settingsPayload([
+            'one_attempt_per_device' => '1',
+        ]))->assertRedirect();
+
+        $this->assertTrue($this->quiz->refresh()->quizBlocksSameDevice());
+
+        // Et il se décoche comme il se coche.
+        $this->put(route('admin.quizzes.update', $this->quiz), $this->settingsPayload());
+
+        $this->assertFalse($this->quiz->refresh()->quizBlocksSameDevice());
     }
 
     public function test_une_evaluation_s_ouvre_et_se_ferme(): void
@@ -705,6 +725,122 @@ class QuizAdminControllerTest extends TestCase
         $this->assertSame(QuizAttempt::STATUS_PENDING, $attempt->refresh()->status);
     }
 
+    // ------------------------------------------------- Suppression d'une copie
+
+    public function test_la_suppression_emporte_la_copie_et_tout_ce_qui_s_y_attache(): void
+    {
+        $question = $this->question();
+
+        $attempt = $this->attempt([
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'student_email' => 'jean@test.com',
+            'started_at' => Carbon::now()->subMinutes(10),
+            'submitted_at' => Carbon::now(),
+            'score' => 1,
+            'max_score' => 1,
+        ]);
+
+        $answer = $attempt->answers()->create([
+            'form_field_id' => $question->id,
+            'choice' => [1],
+            'is_correct' => true,
+            'points_awarded' => 1,
+            'answered_at' => Carbon::now(),
+        ]);
+
+        QuizGradeReview::create([
+            'quiz_answer_id' => $answer->id,
+            'previous_points' => 0.5,
+            'reason' => 'Note reprise après relecture.',
+        ]);
+
+        $link = ShortLink::forAttempt($this->quiz, $attempt);
+
+        $this->delete(route('admin.quizzes.attempts.destroy', [$this->quiz, $attempt]))->assertRedirect();
+
+        // Rien ne survit : ni la copie, ni ses réponses, ni le journal de
+        // relecture, ni le lien de suivi qui mènerait à une page vide.
+        $this->assertNull($attempt->fresh());
+        $this->assertSame(0, QuizAnswer::where('quiz_attempt_id', $attempt->id)->count());
+        $this->assertSame(0, QuizGradeReview::where('quiz_answer_id', $answer->id)->count());
+        $this->assertNull($link->fresh());
+    }
+
+    public function test_la_suppression_emporte_la_reference_de_la_liste(): void
+    {
+        $question = $this->question();
+        $attempt = $this->attempt([
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'submitted_at' => Carbon::now(),
+            'score' => 0,
+            'max_score' => 1,
+        ]);
+
+        $this->delete(route('admin.quizzes.attempts.destroy', [$this->quiz, $attempt]))->assertRedirect();
+
+        // La référence servait de clé d'accès : elle disparaît avec la copie. La
+        // confirmation de la page des résultats le dit noir sur blanc, sinon la
+        // conséquence se découvrirait devant l'étudiant.
+        $this->assertSame(0, $this->quiz->attempts()->count());
+
+        $this->get(route('quiz.start', $this->quiz->token))->assertOk();
+    }
+
+    public function test_la_suppression_refuse_une_participation_d_un_autre_formulaire(): void
+    {
+        $autre = $this->makeQuiz(['title' => 'Examen Physique']);
+        $attempt = $autre->attempts()->create(['reference' => $this->reference()]);
+
+        $this->delete(route('admin.quizzes.attempts.destroy', [$this->quiz, $attempt]))->assertNotFound();
+
+        $this->assertNotNull($attempt->fresh());
+    }
+
+    public function test_la_suppression_refuse_un_depot_de_travaux(): void
+    {
+        $deposit = $this->makeDeposit();
+
+        $this->delete(route('admin.quizzes.attempts.destroy', [$deposit, 1]))->assertNotFound();
+    }
+
+    public function test_la_page_des_resultats_propose_la_suppression_et_le_signalement_des_adresses(): void
+    {
+        $question = $this->question();
+        $attempts = [];
+
+        foreach (['ABCDEFGHJK', 'ABCDEFGHJM'] as $reference) {
+            $attempt = $this->attempt([
+                'reference' => $reference,
+                'status' => QuizAttempt::STATUS_SUBMITTED,
+                'submitted_at' => Carbon::now(),
+                'score' => 0,
+                'max_score' => 1,
+                'ip_address' => '10.0.0.4',
+            ]);
+
+            $attempt->answers()->create([
+                'form_field_id' => $question->id,
+                'choice' => [0],
+                'answered_at' => Carbon::now(),
+            ]);
+
+            $attempts[] = $attempt;
+        }
+
+        $response = $this->get(route('admin.quizzes.results', $this->quiz));
+
+        $response->assertOk();
+
+        // Le bouton, avec sa route de suppression.
+        $response->assertSee(route('admin.quizzes.attempts.destroy', [$this->quiz, $attempts[0]]), false);
+        $response->assertSee('Supprimer');
+
+        // Deux copies derrière la même adresse : un indice pour l'enseignant,
+        // jamais un refus automatique — une salle informatique fait exactement ça.
+        $response->assertSee('copies depuis la même adresse IP');
+        $response->assertSee('10.0.0.4');
+    }
+
     public function test_l_export_csv_contient_l_en_tete_et_les_participations(): void
     {
         $question = $this->question(['points' => 2]);
@@ -733,7 +869,7 @@ class QuizAdminControllerTest extends TestCase
         $csv = $response->streamedContent();
 
         $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
-        $this->assertStringContainsString('Référence;Nom;Email;Filière;Statut;Note;Barème;"Temps (min)";"Réponses libres à corriger";Infractions;"Commencée le";"Terminée le"', $csv);
+        $this->assertStringContainsString('Référence;Nom;Email;Filière;Statut;Note;Barème;"Temps (min)";"Réponses libres à corriger";Infractions;"Commencée le";"Terminée le";"Adresse IP"', $csv);
         $this->assertStringContainsString($attempt->reference, $csv);
         $this->assertStringContainsString('Curie Marie', $csv);
         $this->assertStringContainsString('Terminée', $csv);

@@ -31,6 +31,11 @@ class Form extends Model
         // jamais tout seul, ce qui compte : c'est ce qui garantit qu'un candidat
         // suivant, sur le même poste, n'est pas mis dehors après la première copie.
         'requires_reference' => false,
+        // Anti-doublon par appareil : désactivé par défaut, et volontairement.
+        // Une salle informatique partage les postes : l'activer là-bas
+        // bloquerait le candidat suivant, ce qui est exactement ce que le
+        // parcours « étudiant suivant » existe pour éviter.
+        'one_attempt_per_device' => false,
     ];
 
     protected $fillable = [
@@ -200,6 +205,18 @@ class Form extends Model
     public function quizShufflesOptions(): bool
     {
         return (bool) $this->quizSettings()['shuffle_options'];
+    }
+
+    /**
+     * Une même empreinte d'appareil n'a droit qu'à une seule copie.
+     *
+     * Réglage d'évaluation, désactivé par défaut : c'est un verrou pour une
+     * épreuve passée à distance, jamais pour une salle de machines où le poste
+     * change de candidat d'une heure à l'autre.
+     */
+    public function quizBlocksSameDevice(): bool
+    {
+        return (bool) $this->quizSettings()['one_attempt_per_device'];
     }
 
     /**

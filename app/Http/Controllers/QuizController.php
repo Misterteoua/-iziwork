@@ -6,6 +6,7 @@ use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\QuizGradeReview;
 use App\Models\ShortLink;
 use App\Support\Import\ImportException;
 use App\Support\Import\QuestionSheet;
@@ -48,6 +49,9 @@ class QuizController extends Controller
         'Infractions',
         'Commencée le',
         'Terminée le',
+        // Ajoutée en fin de ligne : les colonnes existantes ne bougent pas, un
+        // tableur qui suit l'ordre ancien continue de lire ce qu'il lisait.
+        'Adresse IP',
     ];
 
     /**
@@ -428,6 +432,12 @@ class QuizController extends Controller
         $this->assertQuiz($quiz);
         $this->assertAttempt($quiz, $attempt);
 
+        // Le journal de relecture d'une réponse disparaît avec elle : une revue
+        // sans réponse à examiner ne dit plus rien. La suppression est explicite
+        // plutôt que confiée à la cascade, parce que la même règle doit tenir sur
+        // SQLite comme sur MySQL.
+        QuizGradeReview::whereIn('quiz_answer_id', $attempt->answers()->pluck('id'))->delete();
+
         $attempt->answers()->delete();
 
         $attempt->update([
@@ -442,6 +452,41 @@ class QuizController extends Controller
         ]);
 
         return back()->with('success', 'Participation réinitialisée : l\'étudiant peut repasser l\'évaluation.');
+    }
+
+    /**
+     * Supprime une copie et tout ce qui s'y rattache.
+     *
+     * À distinguer de la réinitialisation, qui garde la participation et laisse
+     * l'étudiant repasser : ici, la ligne disparaît. En mode « liste préparée »,
+     * la référence disparaît avec elle — et le candidat ne peut donc plus
+     * commencer. C'est dit dans la confirmation, parce que la conséquence est
+     * invisible après coup.
+     *
+     * Partent avec la copie : ses réponses, le journal des notes revues, et le
+     * lien de suivi de l'étudiant, qui mènerait sinon à une page vide.
+     */
+    public function destroyAttempt(Form $quiz, QuizAttempt $attempt)
+    {
+        $this->assertQuiz($quiz);
+        $this->assertAttempt($quiz, $attempt);
+
+        $reference = $attempt->reference;
+
+        DB::transaction(function () use ($attempt): void {
+            $answerIds = $attempt->answers()->pluck('id');
+
+            QuizGradeReview::whereIn('quiz_answer_id', $answerIds)->delete();
+            $attempt->answers()->delete();
+
+            // Le lien de suivi d'une copie supprimée mènerait à une page vide :
+            // il s'en va avec elle.
+            ShortLink::where('quiz_attempt_id', $attempt->id)->delete();
+
+            $attempt->delete();
+        });
+
+        return back()->with('success', 'Copie '.$reference.' supprimée.');
     }
 
     // --------------------------------------------------------------- Résultats
@@ -465,7 +510,17 @@ class QuizController extends Controller
             ->orderBy('reference')
             ->get();
 
-        return view('admin.quizzes.results', compact('quiz', 'attempts'));
+        // Copies partagées depuis une même adresse IP : un indice, jamais une
+        // preuve — une salle informatique entière sort derrière une seule
+        // adresse. Le calcul se fait sur la collection déjà chargée, donc sans
+        // une requête de plus, et il n'interdit rien : il montre.
+        $sharedIps = $attempts
+            ->filter(fn (QuizAttempt $attempt) => $attempt->ip_address !== null)
+            ->groupBy('ip_address')
+            ->filter(fn ($group) => $group->count() > 1)
+            ->map(fn ($group) => $group->count());
+
+        return view('admin.quizzes.results', compact('quiz', 'attempts', 'sharedIps'));
     }
 
     /**
@@ -508,6 +563,7 @@ class QuizController extends Controller
                         $attempt->infraction_count,
                         $attempt->started_at?->format('d/m/Y H:i'),
                         $attempt->submitted_at?->format('d/m/Y H:i'),
+                        $attempt->ip_address,
                     ]);
                 }
             });
@@ -690,6 +746,8 @@ class QuizController extends Controller
             'shuffle_questions' => $request->boolean('shuffle_questions'),
             'shuffle_options' => $request->boolean('shuffle_options'),
             'requires_reference' => $existing !== null && $existing->quizHasPreparedReferences(),
+            // Anti-doublon par appareil : un réglage, jamais un défaut imposé.
+            'one_attempt_per_device' => $request->boolean('one_attempt_per_device'),
         ];
     }
 

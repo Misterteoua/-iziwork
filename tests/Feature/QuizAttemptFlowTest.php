@@ -96,6 +96,15 @@ class QuizAttemptFlowTest extends TestCase
         return $this->post(route('quiz.begin', $this->quiz->token), $payload);
     }
 
+    /**
+     * Une empreinte d'appareil de test : quarante caractères alphanumériques,
+     * exactement la forme que le serveur pose lui-même dans le cookie.
+     */
+    private function device(string $seed = 'a'): string
+    {
+        return str_repeat($seed, 40);
+    }
+
     // -------------------------------------------------------------- Références
 
     public function test_une_reference_inconnue_est_refusee(): void
@@ -326,6 +335,186 @@ class QuizAttemptFlowTest extends TestCase
         // La libération du poste n'ouvre pas une porte dérobée : la référence
         // d'un autre candidat, déjà servie, reste refusée.
         $this->start(['reference' => $autre->reference])->assertSessionHasErrors('reference');
+
+        $this->assertSame(2, $this->quiz->attempts()->count());
+    }
+
+    // --------------------------------------------------------- Anti-doublon
+
+    public function test_une_meme_adresse_email_ne_remet_pas_deux_copies(): void
+    {
+        $question = $this->question();
+
+        $this->start(['student_name' => 'Jean', 'student_email' => 'jean@test.com']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // Le poste est libre — salle informatique — mais l'adresse, elle, a servi.
+        // Sans référence préparée, c'est la seule clé qui identifie un candidat.
+        // La casse et les espaces ne font pas une adresse différente.
+        $this->start(['student_name' => 'Jean', 'student_email' => ' JEAN@test.com '])
+            ->assertSessionHasErrors('student_email');
+
+        $this->assertSame(1, $this->quiz->attempts()->count());
+    }
+
+    public function test_deux_adresses_differentes_ouvrent_bien_deux_copies(): void
+    {
+        $question = $this->question();
+
+        $this->start(['student_name' => 'Jean', 'student_email' => 'jean@test.com']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // La règle ne doit pas se retourner contre la salle informatique : le
+        // candidat suivant, avec sa propre adresse, commence normalement.
+        $this->start(['student_name' => 'Awa', 'student_email' => 'awa@test.com'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(2, $this->quiz->attempts()->count());
+    }
+
+    public function test_une_epreuve_en_cours_se_reprend_avec_la_meme_adresse(): void
+    {
+        $this->question();
+
+        $this->start(['student_name' => 'Jean', 'student_email' => 'jean@test.com']);
+
+        // Rechargement, coupure, retour en arrière : la même adresse ne doit
+        // jamais se voir refuser sa propre copie en cours.
+        $this->start(['student_name' => 'Jean', 'student_email' => 'jean@test.com'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(1, $this->quiz->attempts()->count());
+    }
+
+    public function test_une_adresse_de_liste_ne_sert_qu_une_fois(): void
+    {
+        $question = $this->question();
+
+        $premier = $this->attempt([
+            'reference' => 'ABCDEFGHJK',
+            'student_name' => 'Jean',
+            'student_email' => 'jean@test.com',
+        ]);
+
+        // Deux lignes de la même liste portent la même adresse — import en double.
+        $second = $this->attempt([
+            'reference' => 'ABCDEFGHJM',
+            'student_name' => 'Jean',
+            'student_email' => 'jean@test.com',
+        ]);
+
+        $this->start(['reference' => $premier->reference]);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // La seconde référence reste fermée : sans ce contrôle, une liste importée
+        // deux fois produirait exactement les copies multiples à éviter.
+        $this->start(['reference' => $second->reference])->assertSessionHasErrors('student_email');
+
+        $this->assertSame(QuizAttempt::STATUS_PENDING, $second->refresh()->status);
+    }
+
+    public function test_une_reference_anonyme_ne_sert_qu_une_fois(): void
+    {
+        $question = $this->question();
+        $this->quiz->update(['is_anonymous' => true]);
+
+        $attempt = $this->attempt(['reference' => 'ABCDEFGHJK']);
+
+        $this->start(['reference' => $attempt->reference]);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // Évaluation anonyme : ni nom ni adresse. La référence est la seule clé,
+        // et elle ne vaut que pour une copie — y compris depuis un autre poste,
+        // où la session de la première n'existe pas.
+        $this->flushSession();
+
+        $this->start(['reference' => $attempt->reference])->assertSessionHasErrors('reference');
+
+        $this->assertSame(1, $this->quiz->attempts()->count());
+    }
+
+    public function test_une_reference_de_liste_non_commencee_ouvre_bien_l_epreuve(): void
+    {
+        $this->question();
+
+        // Une liste préparée mais aucune copie commencée : rien de tout cela ne
+        // doit se confondre avec un doublon.
+        $pending = $this->attempt(['reference' => 'ABCDEFGHJK']);
+
+        $this->start(['reference' => 'abcdefghjk', 'student_name' => 'Jean'])
+            ->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $pending->refresh()->status);
+    }
+
+    // ------------------------------------------- Anti-doublon : appareil
+
+    public function test_une_empreinte_d_appareil_est_posee_et_conservee(): void
+    {
+        $this->question();
+        $device = $this->device();
+
+        $this->withCookie('iziwork_device', $device);
+
+        // La page d'accès pose l'empreinte : elle existe donc avant le premier
+        // envoi de formulaire, ce qui permet de refuser un doublon sans jamais
+        // créer de copie fantôme.
+        $this->get(route('quiz.start', $this->quiz->token))->assertOk();
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->assertSame($device, $this->quiz->attempts()->firstOrFail()->device_token);
+    }
+
+    public function test_une_seule_copie_par_appareil_quand_le_reglage_est_actif(): void
+    {
+        $this->quiz->update([
+            'is_anonymous' => true,
+            'quiz_settings' => array_merge($this->quiz->quizSettings(), ['one_attempt_per_device' => true]),
+        ]);
+
+        $question = $this->question();
+
+        $this->withCookie('iziwork_device', $this->device());
+
+        $this->start();
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // Évaluation anonyme, sans référence et sans adresse : l'empreinte de
+        // l'appareil est le dernier signal qui reste, et c'est celui-là qui ferme.
+        $this->start()->assertSessionHas('error');
+
+        $this->assertSame(1, $this->quiz->attempts()->count());
+
+        // Un autre appareil, en revanche, n'est pas concerné : le verrou est une
+        // empreinte, pas un blocage général.
+        $this->withCookie('iziwork_device', $this->device('b'));
+
+        $this->start()->assertRedirect(route('quiz.question', $this->quiz->token));
+
+        $this->assertSame(2, $this->quiz->attempts()->count());
+    }
+
+    public function test_par_defaut_un_meme_appareil_sert_a_plusieurs_candidats(): void
+    {
+        $this->quiz->update(['is_anonymous' => true]);
+
+        $question = $this->question();
+
+        $this->withCookie('iziwork_device', $this->device());
+
+        $this->start();
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // Salle informatique : le réglage est désactivé par défaut, donc le
+        // candidat suivant travaille sur le même poste, sans rien avoir à faire.
+        $this->start()->assertRedirect(route('quiz.question', $this->quiz->token));
 
         $this->assertSame(2, $this->quiz->attempts()->count());
     }
@@ -990,6 +1179,45 @@ class QuizAttemptFlowTest extends TestCase
             ->assertOk()
             ->assertSee('data-fullscreen-preferred="0"', false)
             ->assertSee('>Passer en plein écran</span>', false);
+    }
+
+    public function test_le_plein_ecran_demande_a_l_acces_se_retablit_sur_l_epreuve(): void
+    {
+        $this->question();
+        $this->start(['student_name' => 'Jean', 'fullscreen' => '1']);
+
+        // Le navigateur n'accorde le plein écran que sur un geste, et la
+        // navigation en fait tomber un. La page d'épreuve annonce donc le repli
+        // et l'arme : il s'exécutera à la première action du candidat.
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee("Le plein écran s'active à votre première action", false)
+            ->assertSee('quiz-fullscreen-now', false)
+            ->assertSee('armAutoFullscreen', false);
+    }
+
+    public function test_sans_le_choix_l_epreuve_ne_promet_aucun_plein_ecran(): void
+    {
+        $this->question();
+        $this->start(['student_name' => 'Jean']);
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertDontSee("Le plein écran s'active à votre première action", false);
+    }
+
+    public function test_l_acces_annonce_quand_le_plein_ecran_s_activera(): void
+    {
+        $this->question();
+
+        // Le clic de départ ne peut pas transporter le plein écran : la navigation
+        // en fait tomber un, c'est la règle du W3C (« whenever the unloading
+        // document cleanup steps run, fully exit fullscreen »). La page d'accès le
+        // dit donc franchement, au lieu de laisser croire que le clic suffira.
+        $this->get(route('quiz.start', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('fullscreen-choice', false)
+            ->assertSee("l'épreuve s'ouvrira donc en plein écran dès votre premier", false);
     }
 
     public function test_le_plein_ecran_ne_se_demande_plus_au_premier_clic(): void

@@ -141,6 +141,11 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
         ->whereNumber('quiz')->name('admin.quizzes.results.open-answers');
     Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.reset');
+    // Supprimer une copie n'est pas la réinitialiser : la seconde laisse
+    // l'étudiant repasser, la première efface la participation — et, en mode
+    // liste, la référence avec elle.
+    Route::delete('quizzes/{quiz}/attempts/{attempt}', [QuizController::class, 'destroyAttempt'])
+        ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.destroy');
 
     // Le lien personnel d'un étudiant : un POST, parce que le premier appel
     // écrit en base. La régénération annule l'ancien lien et en donne un autre.

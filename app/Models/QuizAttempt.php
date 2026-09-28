@@ -45,6 +45,7 @@ class QuizAttempt extends Model
         'infractions',
         'infraction_count',
         'ip_address',
+        'device_token',
     ];
 
     protected function casts(): array

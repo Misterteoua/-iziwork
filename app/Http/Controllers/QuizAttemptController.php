@@ -17,6 +17,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -34,6 +36,31 @@ use Illuminate\View\View;
  */
 class QuizAttemptController extends Controller
 {
+    /**
+     * Le nom du cookie qui identifie l'appareil, et non la personne.
+     *
+     * Il est chiffré par le framework (aucun contenu lisible côté navigateur) et
+     * ne sert qu'à une chose : savoir qu'une copie a déjà été remise depuis ce
+     * poste, quand l'évaluation est anonyme et que ni le nom ni l'adresse email
+     * ne peuvent le dire.
+     */
+    private const DEVICE_COOKIE = 'iziwork_device';
+
+    /** Durée de vie de l'empreinte : un an, soit une année universitaire large. */
+    private const DEVICE_COOKIE_MINUTES = 60 * 24 * 365;
+
+    /**
+     * Les seuls statuts qui pèsent dans l'anti-doublon : une copie engagée.
+     *
+     * Une ligne « non commencée » n'est pas une soumission — c'est une référence
+     * réservée par la liste importée, ou une place restée libre.
+     */
+    private const ENGAGED_STATUSES = [
+        QuizAttempt::STATUS_IN_PROGRESS,
+        QuizAttempt::STATUS_SUBMITTED,
+        QuizAttempt::STATUS_EXPIRED,
+    ];
+
     public function __construct(private readonly QuizGrader $grader) {}
 
     /**
@@ -43,6 +70,11 @@ class QuizAttemptController extends Controller
     public function start(Form $quiz)
     {
         $this->assertQuiz($quiz);
+
+        // L'empreinte de l'appareil est posée dès la page d'accès, et non au
+        // démarrage : elle existe donc avant le premier envoi de formulaire, ce
+        // qui permet de contrôler un doublon sans jamais créer de copie fantôme.
+        $this->deviceToken();
 
         // Une épreuve déjà commencée sur ce navigateur reprend directement.
         $attempt = $this->sessionAttempt($quiz);
@@ -94,6 +126,20 @@ class QuizAttemptController extends Controller
             return redirect()->route('quiz.result', $quiz->token);
         }
 
+        // Anti-doublon par appareil : contrôlé ici, avant toute création, pour ne
+        // jamais laisser derrière soi une copie fantôme. Le réglage est propre à
+        // l'évaluation et désactivé par défaut — une salle informatique partage
+        // ses postes, et le candidat suivant doit pouvoir commencer.
+        //
+        // Seules les copies **remises** comptent : une épreuve en cours n'est pas
+        // un doublon, et son auteur doit pouvoir la reprendre même si sa session
+        // de navigateur s'est perdue entre-temps.
+        $device = $this->deviceToken();
+
+        if ($this->deviceAlreadySubmitted($quiz, $device)) {
+            return back()->with('error', 'Une copie a déjà été remise depuis cet appareil pour cette évaluation : une seule copie par appareil est acceptée.');
+        }
+
         // Mode « liste » dès qu'une référence est soumise : une référence
         // inconnue ou mal formée doit être refusée même sur une évaluation dont
         // l'administration n'a pas encore chargé de liste. Sans cette condition,
@@ -112,7 +158,7 @@ class QuizAttemptController extends Controller
         // d'avis à tout moment.
         session(['quiz_fullscreen.'.$quiz->id => $request->boolean('fullscreen')]);
 
-        return $this->startTimer($quiz, $attempt);
+        return $this->startTimer($quiz, $attempt, $device);
     }
 
     /**
@@ -513,8 +559,12 @@ class QuizAttemptController extends Controller
         if (! $quiz->is_anonymous) {
             // Nom déjà fourni par la liste importée : on ne le redemande pas et
             // on ne l'écrase pas, sinon la liste de distribution ne correspondrait
-            // plus à ce qui est enregistré.
+            // plus à ce qui est enregistré. Son adresse, en revanche, doit
+            // respecter la même règle que celle saisie à la main : une adresse,
+            // une copie.
             if ($attempt->student_name !== null) {
+                $this->assertEmailUnused($quiz, $attempt->student_email, $attempt->id);
+
                 return $attempt;
             }
 
@@ -527,11 +577,13 @@ class QuizAttemptController extends Controller
                 'student_email.email' => 'L\'adresse email saisie n\'est pas valide.',
             ]);
 
+            $email = $this->normalizedEmail($request);
+
+            $this->assertEmailUnused($quiz, $email, $attempt->id);
+
             $attempt->update([
                 'student_name' => trim((string) $request->input('student_name')),
-                'student_email' => $request->filled('student_email')
-                    ? mb_strtolower(trim((string) $request->input('student_email')))
-                    : null,
+                'student_email' => $email,
                 'student_major' => $request->filled('student_major')
                     ? trim((string) $request->input('student_major'))
                     : null,
@@ -546,6 +598,8 @@ class QuizAttemptController extends Controller
      */
     private function beginFree(Request $request, Form $quiz): QuizAttempt
     {
+        $email = null;
+
         if (! $quiz->is_anonymous) {
             $request->validate([
                 'student_name' => ['required', 'string', 'max:255'],
@@ -555,6 +609,13 @@ class QuizAttemptController extends Controller
                 'student_name.required' => 'Indiquez votre nom complet.',
                 'student_email.email' => 'L\'adresse email saisie n\'est pas valide.',
             ]);
+
+            $email = $this->normalizedEmail($request);
+
+            // Sans référence préparée, rien d'autre n'identifie le candidat :
+            // c'est ici que l'adresse email fait office de clé — sans elle, la
+            // même personne pourrait recommencer indéfiniment.
+            $this->assertEmailUnused($quiz, $email);
         }
 
         return $quiz->attempts()->create([
@@ -562,9 +623,7 @@ class QuizAttemptController extends Controller
             // Évaluation anonyme : aucun nom n'est stocké, même si l'étudiant en
             // propose un. L'anonymat doit tenir côté base, pas côté affichage.
             'student_name' => $quiz->is_anonymous ? null : trim((string) $request->input('student_name')),
-            'student_email' => $quiz->is_anonymous || ! $request->filled('student_email')
-                ? null
-                : mb_strtolower(trim((string) $request->input('student_email'))),
+            'student_email' => $email,
             'student_major' => $quiz->is_anonymous || ! $request->filled('student_major')
                 ? null
                 : trim((string) $request->input('student_major')),
@@ -572,9 +631,96 @@ class QuizAttemptController extends Controller
     }
 
     /**
+     * L'adresse email telle qu'elle sera enregistrée, ou null.
+     */
+    private function normalizedEmail(Request $request): ?string
+    {
+        return $request->filled('student_email')
+            ? mb_strtolower(trim((string) $request->input('student_email')))
+            : null;
+    }
+
+    /**
+     * Une adresse email ne remet qu'une seule copie par évaluation.
+     *
+     * Le contrôle ne porte que sur les copies **engagées** (en cours, remises,
+     * temps écoulé) : une ligne de liste importée n'est pas une soumission, et
+     * une copie que son auteur a commencée mais pas rendue doit pouvoir être
+     * reprise avec la même adresse.
+     *
+     * C'est une règle de contrôleur et non un index unique, exactement comme
+     * pour les dépôts de travaux : la base contient déjà des histoires, et un
+     * index unique échouerait à la migration là où une règle explique son refus.
+     */
+    private function assertEmailUnused(Form $quiz, ?string $email, ?int $ignoreAttemptId = null): void
+    {
+        if ($email === null || $email === '') {
+            return;
+        }
+
+        $taken = $quiz->attempts()
+            ->where('student_email', $email)
+            ->whereIn('status', self::ENGAGED_STATUSES)
+            ->when($ignoreAttemptId !== null, fn ($query) => $query->whereKeyNot($ignoreAttemptId))
+            ->exists();
+
+        if (! $taken) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'student_email' => 'Une copie a déjà été remise pour cette évaluation avec cette adresse email. Une seule copie par étudiant est acceptée : adressez-vous à votre enseignant si vous pensez qu\'il s\'agit d\'une erreur.',
+        ]);
+    }
+
+    /**
+     * L'empreinte de l'appareil : lue si elle existe, posée sinon.
+     *
+     * La valeur est un identifiant opaque ; elle ne dit rien de la machine, et
+     * un navigateur qui l'efface (navigation privée, poste public) repart de
+     * zéro. C'est assumé : cette empreinte complète la référence et l'adresse
+     * email, elle ne les remplace pas.
+     */
+    private function deviceToken(): string
+    {
+        // Cookie chiffré par le framework : ce que reçoit le serveur a déjà été
+        // déchiffré par le middleware, donc aucune vérification supplémentaire
+        // n'est nécessaire — seulement un contrôle de forme, pour ne pas écrire
+        // n'importe quoi dans la colonne depuis un cookie forgé à la main.
+        $existing = request()->cookie(self::DEVICE_COOKIE);
+
+        if (is_string($existing) && preg_match('/^[A-Za-z0-9]{20,64}$/', $existing) === 1) {
+            return $existing;
+        }
+
+        $token = Str::random(40);
+
+        Cookie::queue(self::DEVICE_COOKIE, $token, self::DEVICE_COOKIE_MINUTES);
+
+        return $token;
+    }
+
+    /**
+     * Cet appareil a-t-il déjà remis une copie de cette évaluation ?
+     *
+     * Uniquement si l'évaluation l'a demandé ({@see Form::quizBlocksSameDevice()}).
+     */
+    private function deviceAlreadySubmitted(Form $quiz, string $device): bool
+    {
+        if (! $quiz->quizBlocksSameDevice()) {
+            return false;
+        }
+
+        return $quiz->attempts()
+            ->where('device_token', $device)
+            ->whereIn('status', [QuizAttempt::STATUS_SUBMITTED, QuizAttempt::STATUS_EXPIRED])
+            ->exists();
+    }
+
+    /**
      * Fixe le chrono et ouvre la session du navigateur.
      */
-    private function startTimer(Form $quiz, QuizAttempt $attempt)
+    private function startTimer(Form $quiz, QuizAttempt $attempt, ?string $device = null)
     {
         if ($attempt->started_at === null) {
             // Le tirage est calculé ici, une fois pour toutes : quelles questions,
@@ -587,6 +733,7 @@ class QuizAttemptController extends Controller
                 'started_at' => Carbon::now(),
                 'expires_at' => Carbon::now()->addMinutes($quiz->quizDurationMinutes()),
                 'ip_address' => request()->ip(),
+                'device_token' => $device,
                 'question_order' => $plan['question_order'] === [] ? null : $plan['question_order'],
                 'option_order' => $plan['option_order'] === [] ? null : $plan['option_order'],
                 'max_score' => $plan['max_score'],

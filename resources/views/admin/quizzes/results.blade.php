@@ -162,6 +162,16 @@
                                  plein écran ne racontent pas la même chose. --}}
                             <span class="block text-xs font-normal text-slate-500">{{ $attempt->infractionSummary() }}</span>
                             @endif
+                            @if($attempt->ip_address && ($sharedIps[$attempt->ip_address] ?? 1) > 1)
+                            {{-- Plusieurs copies derrière une même adresse : un indice,
+                                 pas une preuve. Une salle informatique entière sort
+                                 derrière une seule adresse, c'est même le cas normal.
+                                 L'adresse elle-même est dans l'infobulle et dans
+                                 l'export CSV. --}}
+                            <span class="block text-xs font-normal text-amber-700" title="{{ $attempt->ip_address }}">
+                                {{ $sharedIps[$attempt->ip_address] }} copies depuis la même adresse IP
+                            </span>
+                            @endif
                         </td>
                         <td class="px-6 py-4 whitespace-nowrap text-right">
                             <div class="flex items-center justify-end gap-2">
@@ -191,6 +201,21 @@
                                 <button type="submit"
                                         class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors duration-150">
                                     Réinitialiser
+                                </button>
+                                </form>
+                                {{-- Supprimer, et non réinitialiser : la ligne disparaît,
+                                     avec ses réponses, ses notes reprises, son lien de
+                                     suivi et — en mode liste — sa référence. La
+                                     confirmation dit exactement cela, sinon la
+                                     conséquence se découvre après coup. --}}
+                                <form method="POST" action="{{ route('admin.quizzes.attempts.destroy', [$quiz, $attempt]) }}"
+                                  onsubmit="return confirm('Supprimer définitivement la copie {{ $attempt->reference }} ? @unless($attempt->isFinished()) Cette épreuve est en cours : l\'étudiant sera renvoyé à la page d\'accès. @endunless Réponses, notes, corrections et lien de suivi de l\'étudiant seront effacés. En mode liste, sa référence disparaîtra aussi : le candidat ne pourra plus commencer. Pour lui permettre de repasser, préférez « Réinitialiser ».');">
+                                @csrf
+                                @method('DELETE')
+                                <button type="submit"
+                                        title="Supprimer définitivement cette copie"
+                                        class="inline-flex items-center px-3 py-1.5 text-xs font-semibold rounded-lg text-red-700 bg-red-50 hover:bg-red-100 transition-colors duration-150">
+                                    Supprimer
                                 </button>
                                 </form>
                             </div>
