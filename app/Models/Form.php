@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class Form extends Model
@@ -36,6 +37,11 @@ class Form extends Model
         // bloquerait le candidat suivant, ce qui est exactement ce que le
         // parcours « étudiant suivant » existe pour éviter.
         'one_attempt_per_device' => false,
+        // Publication des corrections : aucune date choisie par défaut, donc la
+        // fermeture de l'évaluation (ou sa désactivation) décide. Une date
+        // explicite sert aux épreuves qui restent ouvertes plusieurs jours alors
+        // que tous les candidats ont déjà composé : on publie sans attendre.
+        'reveal_answers_at' => null,
     ];
 
     protected $fillable = [
@@ -274,6 +280,81 @@ class Form extends Model
         }
 
         return true;
+    }
+
+    /**
+     * L'évaluation a-t-elle le droit de publier ses corrections ?
+     *
+     * Une évaluation ne publie ses réponses que lorsqu'elle ne peut plus
+     * accueillir personne : la date de fermeture est dépassée, ou elle a été
+     * désactivée. C'est une règle de sécurité, pas un confort d'affichage —
+     * publier le détail d'une copie pendant que d'autres candidats composent
+     * encore (même salle, épreuve étalée sur la journée) revient à leur donner
+     * les réponses. L'auto-correction n'y change rien : elle sait la note bien
+     * avant que l'épreuve ne soit finie pour tout le monde.
+     *
+     * Trois leviers, tous trois entre les mains de l'enseignant : une **date de
+     * publication** choisie (utile quand tout le monde a composé alors que
+     * l'épreuve reste ouverte plusieurs jours), la **date de fermeture**, et le
+     * bouton « Fermer l'évaluation ». La première échéance atteinte publie. Aucune
+     * donnée n'est supprimée : le détail est masqué, puis reparaît de lui-même,
+     * sans intervention, à la première consultation qui suit la publication.
+     */
+    public function quizRevealsCorrection(): bool
+    {
+        $chosen = $this->quizPublicationDate();
+
+        if ($chosen !== null && now()->greaterThanOrEqualTo($chosen)) {
+            return true;
+        }
+
+        if ($this->close_date && now()->gt($this->close_date)) {
+            return true;
+        }
+
+        return $this->status !== 'active';
+    }
+
+    /**
+     * La date de publication choisie pour cette évaluation, ou null.
+     *
+     * Elle vit dans `quiz_settings`, comme les autres réglages : une évaluation
+     * qui n'en a pas reste régie par sa fermeture. Une valeur illisible est
+     * ignorée plutôt que de faire échouer une page de résultat — la règle de
+     * fermeture reprend alors la main.
+     */
+    public function quizPublicationDate(): ?Carbon
+    {
+        $chosen = $this->quizSettings()['reveal_answers_at'] ?? null;
+
+        if (! is_string($chosen) || trim($chosen) === '') {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($chosen);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Le prochain moment où les corrections deviendront publiques.
+     *
+     * C'est la plus proche des deux échéances connues — la date de publication
+     * choisie, la date de fermeture — pour l'annoncer à l'étudiant sans lui
+     * promettre une date déjà passée. Retourne null quand aucune n'est fixée :
+     * seul un changement d'état publiera alors les corrections.
+     */
+    public function quizRevealMoment(): ?Carbon
+    {
+        $moments = array_filter([$this->quizPublicationDate(), $this->close_date]);
+
+        $future = array_filter($moments, fn (Carbon $moment): bool => $moment->isFuture());
+
+        usort($future, fn (Carbon $a, Carbon $b): int => $a->getTimestamp() <=> $b->getTimestamp());
+
+        return $future[0] ?? null;
     }
 
     /**

@@ -125,6 +125,23 @@
                            value="{{ old('close_date', $quiz->close_date?->format('Y-m-d\TH:i')) }}"
                            class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">
                 </div>
+
+                <div class="sm:col-span-2">
+                    <label for="reveal_answers_at" class="block text-sm font-medium text-slate-700 mb-1.5">
+                        Publication des corrections
+                        <span class="text-slate-400 font-normal">— facultatif</span>
+                    </label>
+                    <input type="datetime-local" name="reveal_answers_at" id="reveal_answers_at"
+                           value="{{ old('reveal_answers_at', $quiz->quizPublicationDate()?->format('Y-m-d\TH:i')) }}"
+                           class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">
+                    <p class="mt-1.5 text-xs text-slate-500">
+                        Date à partir de laquelle les étudiants voient les réponses. Utile quand tous
+                        les candidats ont composé alors que l'évaluation reste ouverte plusieurs jours.
+                        Laissez vide pour que la fermeture décide. La <strong>première</strong> échéance
+                        atteinte publie — cette date ou la fermeture — et désactiver l'évaluation publie
+                        toujours immédiatement.
+                    </p>
+                </div>
             </div>
 
             <div class="space-y-3">
@@ -138,6 +155,31 @@
                            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
                     <span class="text-sm text-slate-700">Afficher la note à la fin</span>
                 </label>
+
+                {{-- La règle de publication est rappelée là où l'enseignant règle
+                     l'évaluation : elle surprend toujours la première fois, et
+                     elle se pilote entièrement d'ici. --}}
+                <div class="ml-7 space-y-2">
+                    @php($revealAt = $quiz->quizRevealMoment())
+                    <p class="text-xs text-slate-500">
+                        La correction détaillée (bonnes réponses, barème par question, appréciations)
+                        n'est jamais montrée aux étudiants pendant l'épreuve : ils la voient une fois
+                        l'évaluation publiée — à la première échéance atteinte, la date de publication
+                        ou la fermeture, ou après sa désactivation.
+                        @if($revealAt)
+                        Ici, ce sera le <strong>{{ $revealAt->format('d/m/Y à H:i') }}</strong>.
+                        @endif
+                        Tant que d'autres candidats peuvent composer, les réponses restent donc cachées,
+                        même si l'évaluation a déjà été corrigée automatiquement.
+                    </p>
+                    @unless($quiz->close_date || $quiz->quizPublicationDate())
+                    <p class="text-xs text-amber-800 bg-amber-50 border border-amber-200/70 rounded-xl px-3 py-2">
+                        Aucune date de fermeture ni de publication n'est fixée : les étudiants ne verront
+                        la correction qu'après avoir désactivé l'évaluation. Fixez l'une des deux dates
+                        pour qu'elle se publie toute seule.
+                    </p>
+                    @endunless
+                </div>
                 <label class="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" name="proctoring" value="1" @checked(old('proctoring', $quiz->quizUsesProctoring()))
                            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">

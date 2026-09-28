@@ -66,10 +66,13 @@
         <p class="mt-2 text-xs text-slate-500 text-center">
             Conservez votre référence : elle permet de retélécharger ce document à tout moment,
             avec la note définitive une fois la correction faite.
+            @unless($revealsCorrection)
+            Le détail de la correction y apparaîtra dès sa publication.
+            @endunless
         </p>
     </div>
 
-    @if($showScore)
+    @if($showScore && $revealsCorrection)
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 overflow-hidden mt-8">
         <div class="px-6 py-5 border-b border-slate-100">
             <h2 class="text-base font-semibold text-slate-900">Détail de la correction</h2>
@@ -147,6 +150,39 @@
             @endforeach
         </ul>
     </div>
+    @elseif($showScore)
+    {{-- L'évaluation n'est pas encore fermée pour tout le monde. Publier ici
+         les bonnes réponses donnerait à ceux qui composent encore la copie de
+         leur voisin — l'auto-correction, elle, les connaît déjà depuis
+         longtemps. Rien n'est perdu : le détail reparaît de lui-même à la
+         première consultation qui suit la clôture. --}}
+    <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8 mt-8">
+        <div class="flex items-start gap-3">
+            <span class="shrink-0 mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500" aria-hidden="true">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            </span>
+            <div class="min-w-0">
+                <h2 class="text-base font-semibold text-slate-900">Détail de la correction</h2>
+                <p class="mt-1 text-sm text-slate-600">
+                    Les bonnes réponses seront publiées
+                    @if($revealMoment)
+                    <strong>le {{ $revealMoment->format('d/m/Y à H:i') }}</strong>.
+                    @else
+                    <strong>après la clôture de l'évaluation</strong>.
+                    @endif
+                    Tant que d'autres candidats peuvent encore composer, les afficher maintenant
+                    reviendrait à leur donner les réponses.
+                </p>
+                <p class="mt-2 text-sm text-slate-600">
+                    Votre note, elle, reste affichée. Conservez votre lien de suivi : c'est lui qui
+                    vous montrera le détail une fois l'évaluation fermée — inutile de repasser par
+                    ce poste.
+                </p>
+            </div>
+        </div>
+    </div>
     @endif
 
     {{-- Lien de suivi : c'est lui qui permet de revenir voir sa note définitive,
@@ -161,6 +197,14 @@
             @else
             Conservez ce lien : il vous ramène à ce résultat à tout moment, sans mot de passe.
             @endif
+            @unless($revealsCorrection)
+            Le détail de la correction, lui, sera publié plus tard.
+            @if($revealMoment)
+            Comptez le {{ $revealMoment->format('d/m/Y à H:i') }} : ce lien vous y ramènera.
+            @else
+            Ce lien vous y ramènera.
+            @endif
+            @endunless
         </p>
 
         <div class="mt-4 flex flex-col sm:flex-row gap-5 sm:items-start">

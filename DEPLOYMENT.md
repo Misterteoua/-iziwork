@@ -229,6 +229,34 @@ jouées.
 > Aucune dépendance à installer, rien à configurer : extraction de l'archive puis
 > `/update` suffisent.
 
+> **Corrections publiées seulement à la publication (mise à jour du 28/09).**
+> **Aucune migration** : la règle s'appuie sur deux colonnes qui existent déjà,
+> `forms.close_date` et `forms.status`, et sur un réglage rangé dans le JSON
+> `quiz_settings` (`reveal_answers_at`) — pas de colonne à créer. Rien à jouer
+> côté base, rien à configurer : extraction de l'archive puis `/update`
+> suffisent, et les évaluations existantes gardent exactement leur
+> comportement d'avant tant qu'aucune date n'est fixée.
+>
+> Ce que ça change : le détail d'une copie (bonnes réponses, barème par question,
+> réponse rédigée, appréciations) n'est plus montré à l'étudiant tant que
+> l'évaluation peut encore accueillir des candidats. Trois leviers le publient,
+> et la première échéance atteinte gagne : la **date de publication** choisie
+> dans les réglages (« Publication des corrections », facultative — utile quand
+> tout le monde a composé alors que l'épreuve reste ouverte plusieurs jours), la
+> **date de fermeture**, et la **désactivation** de l'évaluation. L'auto-correction
+> continue de tourner normalement : la note reste affichée, seules les réponses
+> attendent. Sans cette règle, le premier candidat qui rend sa copie lit les
+> bonnes réponses pendant que les autres composent encore.
+>
+> Le **récapitulatif PDF** et le **lien de suivi** appliquent exactement la même
+> règle, échéance annoncée comprise : l'étudiant lit la date exacte de
+> publication sur la page de résultat comme dans le document qu'il garde. Rien
+> n'est supprimé ni recalculé : le détail reparaît de lui-même à la première
+> consultation qui suit la publication. Les réglages de l'évaluation rappellent
+> la règle et préviennent lorsqu'aucune date n'est fixée ; la page « Résultats »
+> indique à l'enseignant quand les corrections ne sont pas encore publiées, et à
+> quelle date elles le seront.
+
 > **Second niveau de relecture (mise à jour du 20/09).** **Une seule** migration,
 > purement additive : la table `quiz_grade_reviews`. Aucune colonne modifiée,
 > aucun index supprimé, aucune donnée réécrite. Elle journalise les relectures —

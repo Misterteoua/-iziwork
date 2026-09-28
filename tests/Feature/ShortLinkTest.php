@@ -295,6 +295,8 @@ class ShortLinkTest extends TestCase
             'quiz' => $quiz,
             'attempt' => $attempt,
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $quiz->quizRevealMoment(),
             'pending' => 0,
             'followLink' => $link,
             'followQr' => QrPng::dataUri($link->url()),
@@ -302,6 +304,29 @@ class ShortLinkTest extends TestCase
 
         $this->assertStringContainsString($link->url(), $rendered);
         $this->assertStringContainsString('data:image/png;base64,', $rendered);
+    }
+
+    // ------------------------------------- Publication des corrections
+
+    public function test_le_lien_de_suivi_ne_publie_pas_les_reponses_avant_la_fermeture(): void
+    {
+        // Le lien court et la page de résultat partagent la même vue : on vérifie
+        // ici que le chemin aussi. Le contenu lui-même est couvert par le
+        // parcours étudiant.
+        $quiz = $this->quiz();
+        $attempt = $this->finished($quiz);
+
+        $url = ShortLink::forAttempt($quiz, $attempt)->url();
+
+        $this->get($url)
+            ->assertOk()
+            ->assertSee('Les bonnes réponses seront publiées');
+
+        $quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $this->get($url)
+            ->assertOk()
+            ->assertDontSee('Les bonnes réponses seront publiées');
     }
 
     // -------------------------------------------------------------- Suppression

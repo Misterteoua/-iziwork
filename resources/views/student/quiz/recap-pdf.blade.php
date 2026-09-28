@@ -78,7 +78,7 @@
         </table>
     </div>
 
-    @if($showScore)
+    @if($showScore && $revealsCorrection)
     <div class="section">
         <h2>Correction détaillée</h2>
 
@@ -143,6 +143,21 @@
         </div>
         @endforeach
     </div>
+    @elseif($showScore)
+    {{-- Le PDF se retélécharge à volonté avec la seule référence : c'est la
+         porte de derrière du détail de la correction. La même règle que la
+         page de résultat s'y applique donc, sans exception. --}}
+    <div class="notice">
+        Le détail de la correction (bonnes réponses et appréciations) sera publié
+        @if($revealMoment)
+        le {{ $revealMoment->format('d/m/Y à H:i') }}.
+        @else
+        après la clôture de l'évaluation.
+        @endif
+        Tant que d'autres candidats peuvent encore composer, l'annoncer ici reviendrait à leur
+        donner les réponses. Votre note, elle, figure ci-dessus ; conservez le lien de suivi
+        ci-dessous pour revenir lire la correction à cette date.
+    </div>
     @endif
 
     {{-- Le lien de suivi voyage dans le document que l'étudiant garde : c'est ce
@@ -158,6 +173,9 @@
                 <td style="border: 0; padding: 0;">
                     Scannez ce QR code, ou recopiez le lien ci-dessous, pour retrouver ce résultat à tout moment
                     &mdash; et la note définitive une fois les questions rédigées corrigées.
+                    @unless($revealsCorrection)
+                    Le détail de la correction y apparaîtra dès sa publication.
+                    @endunless
                     <br><br>
                     <span class="reference" style="font-size: 11px; letter-spacing: 0;">{{ $followLink->url() }}</span>
                 </td>

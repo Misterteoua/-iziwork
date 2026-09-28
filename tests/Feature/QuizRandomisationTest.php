@@ -311,6 +311,10 @@ class QuizRandomisationTest extends TestCase
 
         $attempt->refresh();
 
+        // L'évaluation est fermée : sans cela, les propositions ne seraient pas
+        // publiées, et ce test vérifierait le contraire de ce qu'il annonce.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
         $this->get(route('quiz.result', $this->quiz->token))
             ->assertOk()
             ->assertSee('Delta')

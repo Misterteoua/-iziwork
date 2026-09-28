@@ -346,6 +346,13 @@ class QuizAttemptController extends Controller
             'answers' => $attempt->answers()->with('field')->get(),
             'questions' => $attempt->questions(),
             'showScore' => $quiz->quizShowsScore(),
+            // Le détail de la correction n'est publié qu'une fois l'évaluation
+            // fermée : tant qu'un autre candidat peut composer, les bonnes
+            // réponses ne sortent pas de l'application.
+            'revealsCorrection' => $quiz->quizRevealsCorrection(),
+            // Prochaine échéance de publication, pour la promettre en clair
+            // plutôt que de laisser l'étudiant revenir tous les jours.
+            'revealMoment' => $quiz->quizRevealMoment(),
             // Réponses rédigées encore à corriger : la note n'est alors qu'une
             // note provisoire, et l'étudiant doit le lire noir sur blanc.
             'pending' => $attempt->pendingManualCount(),
@@ -383,6 +390,11 @@ class QuizAttemptController extends Controller
             'quiz' => $quiz,
             'attempt' => $attempt,
             'showScore' => $quiz->quizShowsScore(),
+            // Le PDF est retéléchargeable à volonté avec la seule référence : il
+            // obéit donc exactement à la même règle que la page de résultat —
+            // échéance annoncée comprise.
+            'revealsCorrection' => $quiz->quizRevealsCorrection(),
+            'revealMoment' => $quiz->quizRevealMoment(),
             'pending' => $attempt->pendingManualCount(),
             // Le lien de suivi figure dans le document que l'étudiant garde :
             // c'est ce qui lui permet de revenir voir sa note définitive.

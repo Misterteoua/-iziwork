@@ -10,6 +10,7 @@ use App\Models\ShortLink;
 use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\View;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -65,6 +66,18 @@ class QuizAttemptFlowTest extends TestCase
             ], $settings),
             'created_by' => $this->admin->id,
         ], $attributes));
+    }
+
+    /**
+     * Ferme l'évaluation, sans la désactiver.
+     *
+     * Une évaluation encore ouverte ne publie pas le détail de sa correction :
+     * les tests qui portent sur ce détail doivent donc la fermer d'abord, sinon
+     * ils vérifieraient l'absence de ce qu'ils cherchent.
+     */
+    private function closeQuiz(): void
+    {
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
     }
 
     /**
@@ -789,6 +802,8 @@ class QuizAttemptFlowTest extends TestCase
 
         $attempt = $this->quiz->attempts()->firstOrFail();
 
+        $this->closeQuiz();
+
         $this->get(route('quiz.result', $this->quiz->token))
             ->assertOk()
             ->assertSee('2')
@@ -912,6 +927,8 @@ class QuizAttemptFlowTest extends TestCase
         $this->assertSame(1, $attempt->pendingManualCount());
         $this->assertTrue($attempt->awaitsManualGrading());
 
+        $this->closeQuiz();
+
         // L'étudiant doit lire que sa note est provisoire.
         $this->get(route('quiz.result', $this->quiz->token))
             ->assertOk()
@@ -1009,6 +1026,8 @@ class QuizAttemptFlowTest extends TestCase
             'quiz' => $this->quiz,
             'attempt' => $attempt,
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
             'pending' => 1,
             'followLink' => $followLink,
             'followQr' => QrPng::dataUri($followLink->url()),
@@ -1022,6 +1041,8 @@ class QuizAttemptFlowTest extends TestCase
             'quiz' => $this->quiz,
             'attempt' => $attempt,
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
             'pending' => 0,
             'followLink' => $followLink,
             'followQr' => QrPng::dataUri($followLink->url()),
@@ -1029,6 +1050,175 @@ class QuizAttemptFlowTest extends TestCase
 
         $this->assertStringContainsString('Note obtenue', $definitive);
         $this->assertStringNotContainsString('Note provisoire', $definitive);
+    }
+
+    // ------------------------------------ Publication différée des corrections
+
+    public function test_les_reponses_ne_sont_pas_publiees_tant_que_l_evaluation_reste_ouverte(): void
+    {
+        // Évaluation autocorrigée, mais toujours ouverte, et sans date de
+        // fermeture : la note est affichée, le détail doit attendre la clôture.
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Votre note')
+            ->assertSee('Les bonnes réponses seront publiées')
+            // Texte du gabarit, donc non échappé : l'apostrophe est littérale.
+            ->assertSee("après la clôture de l'évaluation", false)
+            // Rien du détail : ni l'énoncé, ni le barème, ni les propositions
+            // — une seule de ces informations suffirait à trancher une autre
+            // copie encore en cours.
+            ->assertDontSee($question->field_label)
+            ->assertDontSee('(votre réponse)')
+            ->assertDontSee('Bonne réponse')
+            ->assertDontSee('+2 pt');
+    }
+
+    public function test_l_attente_annonce_la_date_de_fermeture(): void
+    {
+        $this->quiz->update(['close_date' => Carbon::now()->addHours(2)]);
+
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('20/09/2026 à 11:00')
+            ->assertDontSee($question->field_label);
+    }
+
+    public function test_les_reponses_sont_publiees_une_fois_la_fermeture_depassee(): void
+    {
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->closeQuiz();
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee($question->field_label)
+            ->assertSee('Bonne réponse')
+            ->assertSee('(votre réponse)')
+            ->assertDontSee('Les bonnes réponses seront publiées');
+    }
+
+    public function test_desactiver_l_evaluation_publie_les_reponses(): void
+    {
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        // « Fermer l'évaluation » : le second levier, sans date de fermeture.
+        $this->quiz->update(['status' => 'inactive']);
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee($question->field_label)
+            ->assertDontSee('Les bonnes réponses seront publiées');
+    }
+
+    public function test_une_date_de_publication_choisie_publie_sans_fermer_l_evaluation(): void
+    {
+        // Épreuve ouverte plusieurs jours, tous les candidats ont déjà composé :
+        // l'enseignant publie à l'heure qu'il a choisie, sans attendre la
+        // fermeture — la date choisie est la première échéance.
+        $this->quiz->update([
+            'close_date' => Carbon::now()->addDays(5),
+            'quiz_settings' => array_merge($this->quiz->quizSettings(), [
+                'reveal_answers_at' => Carbon::now()->subMinute()->format('Y-m-d H:i:s'),
+            ]),
+        ]);
+
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee($question->field_label)
+            ->assertSee('Bonne réponse')
+            ->assertDontSee('Les bonnes réponses seront publiées');
+    }
+
+    public function test_l_attente_annonce_la_date_de_publication_choisie(): void
+    {
+        $publication = Carbon::now()->addHours(2);
+
+        $this->quiz->update([
+            'quiz_settings' => array_merge($this->quiz->quizSettings(), [
+                'reveal_answers_at' => $publication->format('Y-m-d H:i:s'),
+            ]),
+        ]);
+
+        $question = $this->question(['Bonne réponse', 'Mauvaise réponse'], [0], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 0]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Les bonnes réponses seront publiées')
+            ->assertSee('20/09/2026 à 11:00')
+            ->assertDontSee($question->field_label);
+    }
+
+    public function test_le_recapitulatif_pdf_suit_la_meme_regle_de_publication(): void
+    {
+        $this->question(['Un', 'Deux'], [1]);
+        $this->start(['student_name' => 'Jean']);
+
+        $question = $this->quiz->quizQuestions()->first();
+        $this->post(route('quiz.answer', $this->quiz->token), ['question_id' => $question->id, 'choice' => 1]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attempt = $this->quiz->attempts()->firstOrFail();
+
+        // Le PDF se retélécharge avec la seule référence : il doit obéir à la
+        // même règle que la page. Le drapeau reçu par la vue est vérifié ici,
+        // puisque DomPDF ne laisse pas de texte lisible dans son binaire.
+        $this->assertFalse($this->pdfRevealsCorrection($attempt));
+
+        $this->closeQuiz();
+
+        $this->assertTrue($this->pdfRevealsCorrection($attempt));
+    }
+
+    /**
+     * Le `revealsCorrection` réellement transmis à la vue du récapitulatif.
+     */
+    private function pdfRevealsCorrection(QuizAttempt $attempt): bool
+    {
+        $captured = [];
+
+        View::composer('student.quiz.recap-pdf', function ($view) use (&$captured): void {
+            $captured = $view->getData();
+        });
+
+        $response = $this->get(route('quiz.recap.pdf', [$this->quiz->token, $attempt->reference]));
+
+        $response->assertOk();
+        $response->assertHeader('content-type', 'application/pdf');
+        $this->assertStringStartsWith('%PDF', (string) $response->getContent());
+
+        $this->assertArrayHasKey('revealsCorrection', $captured);
+
+        return (bool) $captured['revealsCorrection'];
     }
 
     // ------------------------------------------------------- Récapitulatif PDF

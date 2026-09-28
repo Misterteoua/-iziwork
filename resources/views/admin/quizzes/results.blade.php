@@ -19,6 +19,28 @@
                     {{ $quiz->title }} · {{ $attempts->count() }} participation(s)
                     @if($quiz->is_anonymous) · évaluation anonyme @endif
                 </p>
+
+                @unless($quiz->quizRevealsCorrection())
+                {{-- L'évaluation est encore ouverte : l'enseignant doit le savoir,
+                     sinon il prendra pour une panne ce qui est une règle — et il
+                     saura du même coup comment publier les corrections. --}}
+                <p class="mt-2 inline-flex items-start gap-2 text-xs text-slate-500">
+                    <svg class="h-3.5 w-3.5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 11V7a4 4 0 00-8 0v4M5 11h14v10H5V11z" />
+                    </svg>
+                    @php($revealAt = $quiz->quizRevealMoment())
+                    <span>
+                        Corrections non publiées : l'évaluation est encore ouverte, les étudiants ne
+                        voient donc pas le détail de leur copie.
+                        @if($revealAt)
+                        Elles seront publiées le {{ $revealAt->format('d/m/Y à H:i') }}, ou plus tôt si
+                        l'évaluation est désactivée.
+                        @else
+                        Elles seront publiées dès que l'évaluation sera fermée, ou désactivée.
+                        @endif
+                    </span>
+                </p>
+                @endunless
             </div>
             <div class="flex flex-wrap gap-2 shrink-0">
                 {{-- Les correcteurs s'assignent avant même qu'une copie soit

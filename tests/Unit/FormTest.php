@@ -201,4 +201,137 @@ class FormTest extends TestCase
 
         $this->assertEquals(2, $form->getSubmissionCount());
     }
+
+    // ------------------------------------ Publication des corrections
+
+    public function test_un_quiz_encore_ouvert_ne_publie_pas_ses_corrections(): void
+    {
+        $form = Form::create([
+            'title' => 'Examen en cours',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'open_date' => now()->subDay(),
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertFalse($form->quizRevealsCorrection());
+    }
+
+    public function test_un_quiz_sans_date_de_fermeture_ne_publie_pas_ses_corrections(): void
+    {
+        // Cas courant : une évaluation ouverte sans échéance. Tant qu'elle reste
+        // active, les réponses ne sortent pas — c'est précisément la situation où
+        // les candidats se succèdent pendant des heures.
+        $form = Form::create([
+            'title' => 'Examen sans échéance',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertFalse($form->quizRevealsCorrection());
+    }
+
+    public function test_un_quiz_publie_ses_corrections_apres_la_date_de_fermeture(): void
+    {
+        $form = Form::create([
+            'title' => 'Examen passé',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'close_date' => now()->subMinute(),
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertTrue($form->quizRevealsCorrection());
+    }
+
+    public function test_un_quiz_publie_ses_corrections_quand_il_est_desactive(): void
+    {
+        // Le bouton « Fermer l'évaluation » : le troisième levier, qui fonctionne
+        // même sans aucune date.
+        $form = Form::create([
+            'title' => 'Examen désactivé',
+            'status' => 'inactive',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertTrue($form->quizRevealsCorrection());
+    }
+
+    public function test_une_date_de_publication_choisie_publie_sans_fermer_l_evaluation(): void
+    {
+        // Tous les candidats ont composé, mais l'épreuve reste ouverte une
+        // semaine : l'enseignant publie quand il veut.
+        $form = $this->quizWithPublication(now()->subMinute(), closeDate: now()->addWeek());
+
+        $this->assertTrue($form->quizRevealsCorrection());
+    }
+
+    public function test_une_date_de_publication_a_venir_laisse_les_corrections_cachees(): void
+    {
+        $publication = now()->addDay();
+
+        $form = $this->quizWithPublication($publication);
+
+        $this->assertFalse($form->quizRevealsCorrection());
+        $this->assertSame($publication->format('Y-m-d H:i'), $form->quizPublicationDate()?->format('Y-m-d H:i'));
+        // C'est elle qu'on annonce à l'étudiant, faute d'échéance plus proche.
+        $this->assertSame($publication->format('Y-m-d H:i'), $form->quizRevealMoment()?->format('Y-m-d H:i'));
+    }
+
+    public function test_l_echeance_annoncee_est_la_plus_proche_des_deux(): void
+    {
+        $form = $this->quizWithPublication(now()->addDays(3), closeDate: now()->addHours(2));
+
+        $this->assertSame(
+            now()->addHours(2)->format('Y-m-d H:i'),
+            $form->quizRevealMoment()?->format('Y-m-d H:i')
+        );
+    }
+
+    public function test_aucune_echeance_annoncee_quand_rien_n_est_fixe(): void
+    {
+        $form = Form::create([
+            'title' => 'Examen sans échéance',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertNull($form->quizPublicationDate());
+        $this->assertNull($form->quizRevealMoment());
+    }
+
+    public function test_une_date_de_publication_illisible_est_ignoree(): void
+    {
+        // Une valeur abimée en base ne doit pas casser une page de résultat :
+        // elle est ignorée, et la fermeture reprend la main.
+        $form = Form::create([
+            'title' => 'Examen abimé',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'quiz_settings' => ['reveal_answers_at' => 'pas-une-date'],
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertNull($form->quizPublicationDate());
+        $this->assertFalse($form->quizRevealsCorrection());
+    }
+
+    private function quizWithPublication(\DateTimeInterface $publication, ?\DateTimeInterface $closeDate = null): Form
+    {
+        return Form::create([
+            'title' => 'Examen avec publication',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'close_date' => $closeDate,
+            'quiz_settings' => [
+                'duration_minutes' => 30,
+                'show_score' => true,
+                'reveal_answers_at' => $publication->format('Y-m-d H:i:s'),
+            ],
+            'created_by' => $this->admin->id,
+        ]);
+    }
 }

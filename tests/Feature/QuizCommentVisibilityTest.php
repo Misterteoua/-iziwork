@@ -138,6 +138,12 @@ class QuizCommentVisibilityTest extends TestCase
      */
     private function studentResult(QuizAttempt $attempt): string
     {
+        // Ces tests portent sur la visibilité des appréciations, pas sur la date
+        // de publication des corrections : l'évaluation est donc fermée avant de
+        // lire le résultat, sinon la correction ne serait pas publiée du tout et
+        // les assertions ne vérifieraient plus ce qu'elles annoncent.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
         return route('short.follow', ShortLink::forAttempt($this->quiz, $attempt)->code);
     }
 
@@ -215,6 +221,8 @@ class QuizCommentVisibilityTest extends TestCase
             'quiz' => $this->quiz,
             'attempt' => $attempt,
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
             'pending' => 1,
             'followLink' => $link,
             'followQr' => QrPng::dataUri($link->url()),
@@ -226,6 +234,8 @@ class QuizCommentVisibilityTest extends TestCase
             'quiz' => $this->quiz,
             'attempt' => $attempt->refresh(),
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
             'pending' => 1,
             'followLink' => $link,
             'followQr' => QrPng::dataUri($link->url()),
@@ -239,6 +249,8 @@ class QuizCommentVisibilityTest extends TestCase
             'quiz' => $this->quiz,
             'attempt' => $attempt->refresh(),
             'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
             'pending' => 0,
             'followLink' => $link,
             'followQr' => QrPng::dataUri($link->url()),

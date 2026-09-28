@@ -198,6 +198,86 @@ class QuizAdminControllerTest extends TestCase
             ->assertSee('Exporter en CSV');
     }
 
+    public function test_l_enseignant_est_prevenu_que_les_corrections_ne_sont_pas_encore_publiees(): void
+    {
+        // Évaluation ouverte et sans date de fermeture : les étudiants ne voient
+        // pas encore le détail de leur copie, et l'enseignant doit le savoir
+        // avant qu'un candidat ne lui téléphone pour demander ses réponses.
+        $quiz = $this->makeQuiz(['status' => 'active']);
+
+        $this->get(route('admin.quizzes.results', $quiz))
+            ->assertOk()
+            ->assertSee('Corrections non publiées');
+
+        // Les réglages rappellent la règle, et réclament une date de fermeture
+        // puisque c'est elle qui publie les corrections toute seule.
+        $this->get(route('admin.quizzes.show', $quiz))
+            ->assertOk()
+            ->assertSee('jamais montrée aux étudiants')
+            ->assertSee('Aucune date de fermeture');
+
+        // L'évaluation se ferme : l'avertissement disparaît, des deux côtés.
+        $quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $this->get(route('admin.quizzes.results', $quiz))
+            ->assertOk()
+            ->assertDontSee('Corrections non publiées');
+
+        $this->get(route('admin.quizzes.show', $quiz))
+            ->assertOk()
+            ->assertDontSee('Aucune date de fermeture');
+    }
+
+    public function test_la_date_de_publication_des_corrections_est_un_reglage(): void
+    {
+        $quiz = $this->makeQuiz(['status' => 'active']);
+
+        // Sans aucune date : l'avertissement invite à en fixer une.
+        $this->get(route('admin.quizzes.show', $quiz))->assertOk()->assertSee('Aucune date de fermeture');
+
+        $this->put(route('admin.quizzes.update', $quiz), $this->settingsPayload([
+            'reveal_answers_at' => '2026-09-18T08:30',
+        ]))->assertRedirect(route('admin.quizzes.show', $quiz));
+
+        $quiz->refresh();
+
+        $this->assertSame('2026-09-18 08:30', $quiz->quizPublicationDate()?->format('Y-m-d H:i'));
+        // La date est passée : les corrections sont publiées, et l'avertissement
+        // doit disparaître des deux pages.
+        $this->assertTrue($quiz->quizRevealsCorrection());
+
+        $this->get(route('admin.quizzes.show', $quiz))
+            ->assertOk()
+            ->assertDontSee('Aucune date de fermeture')
+            // Le champ est pré-rempli : la date reste modifiable telle quelle.
+            ->assertSee('value="2026-09-18T08:30"', false);
+
+        $this->get(route('admin.quizzes.results', $quiz))
+            ->assertOk()
+            ->assertDontSee('Corrections non publiées');
+    }
+
+    public function test_une_date_de_publication_se_retire(): void
+    {
+        $quiz = $this->makeQuiz([
+            'status' => 'active',
+            'quiz_settings' => [
+                'duration_minutes' => 30,
+                'show_score' => true,
+                'reveal_answers_at' => Carbon::now()->addDay()->format('Y-m-d H:i:s'),
+            ],
+        ]);
+
+        $this->assertFalse($quiz->quizRevealsCorrection());
+
+        // Le champ vidé vaut « pas de date » : la fermeture reprend la main.
+        $this->put(route('admin.quizzes.update', $quiz), $this->settingsPayload([
+            'reveal_answers_at' => '',
+        ]))->assertRedirect();
+
+        $this->assertNull($quiz->refresh()->quizPublicationDate());
+    }
+
     // -------------------------------------------------------------- Réglages
 
     public function test_une_evaluation_est_creee_fermee_avec_ses_reglages(): void

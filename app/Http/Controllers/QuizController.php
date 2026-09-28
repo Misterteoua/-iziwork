@@ -18,6 +18,7 @@ use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -648,6 +649,10 @@ class QuizController extends Controller
             'max_submissions' => ['nullable', 'integer', 'min:1', 'max:100000'],
             'open_date' => ['nullable', 'date'],
             'close_date' => ['nullable', 'date', 'after_or_equal:open_date'],
+            // Date de publication choisie : facultative, et indépendante des
+            // bornes d'ouverture — publier les corrections le lendemain d'une
+            // épreuve reste possible même si elle reste ouverte une semaine.
+            'reveal_answers_at' => ['nullable', 'date'],
         ], [
             'title.required' => 'Le titre de l\'évaluation est obligatoire.',
             'duration_minutes.required' => 'La durée de l\'épreuve est obligatoire.',
@@ -748,7 +753,31 @@ class QuizController extends Controller
             'requires_reference' => $existing !== null && $existing->quizHasPreparedReferences(),
             // Anti-doublon par appareil : un réglage, jamais un défaut imposé.
             'one_attempt_per_device' => $request->boolean('one_attempt_per_device'),
+            // Date de publication des corrections : null tant que l'enseignant
+            // n'en fixe pas, ce qui laisse la fermeture décider.
+            'reveal_answers_at' => $this->publicationMoment($validated),
         ];
+    }
+
+    /**
+     * La date de publication des corrections, normalisée pour `quiz_settings`.
+     *
+     * Le formulaire envoie une date locale (`datetime-local`, sans secondes) ;
+     * on la range sous une forme unique, relisible telle quelle par le modèle.
+     * Une valeur vide — ou effacée par l'enseignant — vaut « pas de date » :
+     * c'est ce retour en arrière qui rend le réglage réversible.
+     *
+     * @param  array<string, mixed>  $validated
+     */
+    private function publicationMoment(array $validated): ?string
+    {
+        $moment = $validated['reveal_answers_at'] ?? null;
+
+        if (! is_string($moment) || trim($moment) === '') {
+            return null;
+        }
+
+        return Carbon::parse($moment)->format('Y-m-d H:i:s');
     }
 
     private function writeCsvRow($handle, array $values): void

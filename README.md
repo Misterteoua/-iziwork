@@ -262,7 +262,9 @@ se partage tel quel.
 Côté étudiant : saisie de la référence, une question à la fois, temps affiché et
 rappelé par le serveur, remise de la copie ou rendu automatique à l'expiration.
 La note, la référence et le temps apparaissent immédiatement, avec un
-récapitulatif PDF retéléchargeable à tout moment avec la référence seule.
+récapitulatif PDF retéléchargeable à tout moment avec la référence seule. Le
+**détail de la correction**, lui, attend sa publication (voir « Quand les
+corrections sont publiées »).
 
 ### Salle informatique : plusieurs candidats sur le même poste
 
@@ -413,6 +415,38 @@ Deux exports complètent la page des résultats : l'export CSV des résultats
 gagne une colonne « Réponses libres à corriger », et « **Réponses rédigées
 (CSV)** » produit une ligne par réponse (question, texte, points, barème,
 état de correction) — les noms restent absents d'une évaluation anonyme.
+
+### Quand les corrections sont publiées
+
+Le détail d'une copie — bonnes réponses, barème par question, réponse rédigée du
+candidat, appréciations des correcteurs — n'est **jamais montré tant que d'autres
+candidats peuvent encore composer**. Trois leviers le publient, et **la première
+échéance atteinte gagne** :
+
+1. la **date de publication** choisie pour l'évaluation (« Publication des
+   corrections », facultative). On publie à l'heure dite, sans attendre la
+   fermeture : c'est le cas des épreuves qui restent ouvertes plusieurs jours
+   alors que tout le monde a déjà composé ;
+2. la **date de fermeture** de l'évaluation ;
+3. la **désactivation** de l'évaluation (« Fermer l'évaluation »), qui publie
+   immédiatement, sans aucune date.
+
+L'auto-correction n'y change rien : la note est calculée dès la remise, mais les
+réponses attendent. Sans cette règle, le premier étudiant qui rend sa copie lit
+les bonnes réponses pendant que la salle compose encore — ou les transmet par
+message à ceux qui passent l'épreuve plus tard dans la journée.
+
+Ce que l'étudiant voit en attendant : **sa note** (si « Afficher la note à la
+fin » est cochée) et un encadré qui annonce la prochaine échéance en clair
+(« le 30/09/2026 à 08:00 »). Le **récapitulatif PDF** et le **lien de suivi**
+obéissent exactement à la même règle : le PDF se retéléchargeant avec la seule
+référence, l'en exempter aurait suffi à tout divulguer.
+
+Rien n'est supprimé ni recalculé : le détail reparaît de lui-même, sans aucune
+action, à la première consultation qui suit la publication. La page « Résultats »
+signale en tête quand les corrections ne sont pas encore publiées, avec la date
+prévue ; les réglages rappellent la règle et préviennent lorsqu'**aucune date**
+n'est fixée — dans ce cas, seule la désactivation de l'évaluation les publie.
 
 ### Confier la correction à des correcteurs externes
 
