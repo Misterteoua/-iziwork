@@ -50,6 +50,19 @@
         -webkit-font-smoothing: antialiased;
     }
 
+    /* Mise en forme des énoncés (App\Support\QuestionText). Le préflight de
+       Tailwind supprime puces et numéros : les listes d'un énoncé doivent donc
+       les déclarer elles-mêmes. Ces règles valent aussi pour le PDF, où
+       Tailwind n'existe pas — l'énoncé y garde la même allure. */
+    .qt-p { margin: 0 0 0.5em; }
+    .qt-list { margin: 0 0 0.5em; padding-left: 1.4em; }
+    .qt-list > li { margin-top: 0.15em; }
+    .qt-bullets { list-style-type: disc; }
+    .qt-numbered { list-style-type: decimal; }
+    .qt-alpha { list-style-type: lower-alpha; }
+    /* Le numéro de la question est un repère de lecture, pas l'énoncé. */
+    .qt-index { color: #94a3b8; font-weight: inherit; }
+
     /* Logo gradient (deep → primary blue). */
     .gradient-bg {
         background: linear-gradient(135deg, #033299 0%, #0347f5 55%, #0367f9 100%);

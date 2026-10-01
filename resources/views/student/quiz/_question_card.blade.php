@@ -17,7 +17,12 @@
         <div class="h-1.5 rounded-full gradient-bg" style="width: {{ $total > 0 ? round($position / $total * 100) : 0 }}%"></div>
     </div>
 
-    <h1 class="mt-6 text-lg font-semibold text-slate-900 whitespace-pre-line">{{ $question->field_label }}</h1>
+    {{-- L'énoncé est mis en forme : paragraphes et énumérations deviennent des
+         listes, pour que le candidat lise la question au lieu de la déchiffrer. --}}
+    @include('partials.question-text', [
+        'text' => $question->field_label,
+        'class' => 'mt-6 text-lg font-semibold text-slate-900',
+    ])
 
     <p class="mt-1 text-xs text-slate-500">
         @if($question->isOpen())

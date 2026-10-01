@@ -85,10 +85,13 @@
             @php($awarded = $answer?->awardedPoints())
             <li class="p-6">
                 <div class="flex items-start justify-between gap-4">
-                    <p class="text-sm font-medium text-slate-900 whitespace-pre-line">
-                        <span class="text-slate-400" style="font-variant-numeric: tabular-nums">{{ $index + 1 }}.</span>
-                        {{ $question->field_label }}
-                    </p>
+                    <div class="min-w-0">
+                        @include('partials.question-text', [
+                            'text' => $question->field_label,
+                            'prefix' => ($index + 1).'.',
+                            'class' => 'text-sm font-medium text-slate-900',
+                        ])
+                    </div>
                     <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
                         @if($answer === null) bg-slate-100 text-slate-600
                         @elseif($question->isOpen() && $awarded === null) bg-amber-50 text-amber-700

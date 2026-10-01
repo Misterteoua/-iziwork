@@ -180,7 +180,10 @@ final class QuizQuestionData
 
     private static function cleanLabel(string $label): string
     {
-        $label = trim($label);
+        // Les retours à la ligne sont conservés : ils portent la structure de
+        // l'énoncé (l'affichage la met en forme, cf. QuestionText). Seule la fin
+        // de ligne est unifiée, pour ne pas dépendre du navigateur.
+        $label = trim(str_replace(["\r\n", "\r"], "\n", $label));
 
         if ($label === '') {
             throw ValidationException::withMessages(['field_label' => 'L\'énoncé de la question est obligatoire.']);

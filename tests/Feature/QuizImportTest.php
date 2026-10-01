@@ -360,6 +360,40 @@ class QuizImportTest extends TestCase
         $this->assertSame(mb_strlen($label), mb_strlen($question->field_label));
     }
 
+    public function test_un_enonce_multiligne_de_la_feuille_garde_ses_retours_a_la_ligne(): void
+    {
+        // Cellule Excel écrite avec Alt+Entrée, ou paragraphe Word : la structure
+        // de l'énoncé vient de l'enseignant. L'import la conservait mal — le
+        // texte arrivait en une seule ligne, à l'affichage de le deviner.
+        $label = "Cas pratique :\nRévisez le système documentaire.\n\n1. Les documents\n2. Les procédures";
+
+        $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'Type', 'Points'],
+                [$label, 'Ouvert', '2'],
+            ]),
+        ])->assertRedirect();
+
+        $question = $this->quiz->quizQuestions()->firstOrFail();
+
+        $this->assertSame($label, $question->field_label);
+        $this->assertStringContainsString("1. Les documents\n2. Les procédures", $question->field_label);
+    }
+
+    public function test_les_espaces_multiples_d_un_enonce_sont_toujours_normalises(): void
+    {
+        // Conserver les retours à la ligne ne veut pas dire garder les espaces
+        // de mise en page du tableur : l'énoncé doit rester propre.
+        $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'Type', 'Points'],
+                ['Une   question    aérée', 'Ouvert', '1'],
+            ]),
+        ])->assertRedirect();
+
+        $this->assertSame('Une question aérée', $this->quiz->quizQuestions()->firstOrFail()->field_label);
+    }
+
     public function test_la_colonne_des_enonces_accepte_un_texte_long(): void
     {
         $column = collect(Schema::getColumns('form_fields'))->firstWhere('name', 'field_label');

@@ -20,6 +20,13 @@
         td:first-child { font-weight: bold; color: #6b7280; width: 38%; }
         .question { margin-bottom: 14px; }
         .question .prompt { font-weight: bold; color: #374151; }
+        /* Énoncé mis en forme (App\Support\QuestionText) : paragraphes et listes.
+           dompdf ne connaît pas Tailwind, ces règles sont donc écrites ici. */
+        .qt-p { margin: 0 0 6px; }
+        .qt-list { margin: 0 0 6px; padding-left: 18px; }
+        .qt-bullets { list-style-type: disc; }
+        .qt-numbered { list-style-type: decimal; }
+        .qt-alpha { list-style-type: lower-alpha; }
         .question .meta { font-size: 11px; color: #6b7280; }
         .good { color: #047857; }
         .bad { color: #b91c1c; }
@@ -86,7 +93,9 @@
         @php($answer = $attempt->answers->firstWhere('form_field_id', $question->id))
         @php($chosen = $answer?->chosenIndexes() ?? [])
         <div class="question">
-            <div class="prompt">{{ $index + 1 }}. {{ $question->field_label }}</div>
+            <div class="prompt">
+                @include('partials.question-text', ['text' => $question->field_label, 'prefix' => ($index + 1).'.'])
+            </div>
             <div class="meta">
                 @if($answer === null)
                     <span class="bad">Sans réponse</span>

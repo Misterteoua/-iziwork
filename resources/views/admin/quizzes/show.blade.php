@@ -248,10 +248,11 @@
             <li class="p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div class="min-w-0">
-                        <p class="text-sm font-medium text-slate-900">
-                            <span class="text-slate-400" style="font-variant-numeric: tabular-nums">{{ $index + 1 }}.</span>
-                            {{ $question->field_label }}
-                        </p>
+                        @include('partials.question-text', [
+                            'text' => $question->field_label,
+                            'prefix' => ($index + 1).'.',
+                            'class' => 'text-sm font-medium text-slate-900',
+                        ])
                         <p class="mt-1 text-xs text-slate-500">
                             @if($question->isOpen())
                                 Réponse rédigée · corrigée à la main

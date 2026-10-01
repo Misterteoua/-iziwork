@@ -179,7 +179,7 @@ final class QuestionSheet
      */
     private static function questionFromRow(array $row, array $columns, int $line, ImportOutcome $outcome): ?array
     {
-        $label = self::clean($row[$columns['question']] ?? '');
+        $label = self::cleanLabel($row[$columns['question']] ?? '');
 
         if ($label === '') {
             // Ligne sans énoncé : très souvent une ligne vide au milieu du
@@ -422,5 +422,33 @@ final class QuestionSheet
         $value = str_replace(["\u{00A0}", "\u{202F}"], ' ', (string) $value);
 
         return trim(preg_replace('/\s+/u', ' ', $value) ?? $value);
+    }
+
+    /**
+     * Énoncé : les espaces sont normalisés, mais les retours à la ligne restent.
+     *
+     * Une cellule Excel écrite avec Alt+Entrée, ou un paragraphe Word, arrive
+     * structuré. Les écraser obligeait l'affichage à deviner la structure de
+     * l'énoncé — et c'est bien l'enseignant qui sait où sont ses paragraphes.
+     */
+    private static function cleanLabel(?string $value): string
+    {
+        $value = str_replace(["\r\n", "\r"], "\n", (string) $value);
+        $value = str_replace(["\u{00A0}", "\u{202F}", "\u{2007}", "\u{2009}"], ' ', $value);
+
+        $lines = [];
+
+        foreach (explode("\n", $value) as $line) {
+            $line = rtrim((string) preg_replace('/[ \t]+/u', ' ', $line));
+
+            // Deux lignes vides séparent déjà : une troisième n'ajoute rien.
+            if ($line === '' && ($lines === [] || end($lines) === '')) {
+                continue;
+            }
+
+            $lines[] = $line;
+        }
+
+        return trim(implode("\n", $lines));
     }
 }

@@ -15,10 +15,13 @@
 
 <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6">
     <div class="flex items-start justify-between gap-4">
-        <p class="text-sm font-medium text-slate-900 whitespace-pre-line">
-            <span class="text-slate-400" style="font-variant-numeric: tabular-nums">{{ $index + 1 }}.</span>
-            {{ $question->field_label }}
-        </p>
+        <div class="min-w-0">
+            @include('partials.question-text', [
+                'text' => $question->field_label,
+                'prefix' => ($index + 1).'.',
+                'class' => 'text-sm font-medium text-slate-900',
+            ])
+        </div>
         <span class="shrink-0 text-xs text-slate-500">{{ $question->points }} point(s)</span>
     </div>
 

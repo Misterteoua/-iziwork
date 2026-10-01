@@ -346,6 +346,31 @@ puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
 - Un **énoncé long** est accepté : jusqu'à **2 000 caractères**, ce qu'un cas
   pratique atteint couramment (1 200 à 1 500 dans une épreuve réelle). Au-delà,
   la ligne est refusée avec son numéro, comme les autres.
+- Les **retours à la ligne** d'une cellule (Excel `Alt+Entrée`, paragraphe Word)
+  sont conservés : un énoncé écrit en plusieurs paragraphes arrive en plusieurs
+  paragraphes. Seuls les espaces de mise en page sont normalisés.
+
+### Mise en forme des énoncés
+
+Un énoncé n'est jamais affiché tel qu'il a été stocké : il est **mis en forme à
+l'affichage**, partout où il apparaît — page des questions, carte du candidat,
+écran de correction, bulletin PDF. Les paragraphes se séparent, les retours à la
+ligne se voient, et les énumérations deviennent de vraies listes, même lorsque
+l'import les avait collées sur une seule ligne :
+
+- `a) … b) … c) …` → liste `a. b. c.` (une énumération qui commence à `c) `
+  reste `c. d.` : l'énoncé peut y renvoyer) ;
+- `1. … 2. …` → liste numérotée ;
+- `- … ; - …` (tiret, `•`, `*`) → liste à puces.
+
+Les repères restent volontairement prudents, parce qu'une liste inventée déforme
+un énoncé : il faut **au moins deux éléments qui se suivent**, et `2.5 %`, `N°1`,
+`(QSE)` ou `etc.` ne sont pas des marqueurs. Un énoncé sans énumération s'affiche
+exactement comme avant.
+
+Le texte enregistré n'est **jamais modifié** : la mise en forme se contente
+d'échapper et d'assembler, elle ne réécrit rien. Une présentation maladroite reste
+donc cosmétique, et corriger l'énoncé reste la seule façon de changer son texte.
 - Word est accepté sous les deux formes habituelles : un tableau (une ligne par
   question) ou un paragraphe par question, propositions séparées par `|`.
 - Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi

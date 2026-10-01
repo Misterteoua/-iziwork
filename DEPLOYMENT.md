@@ -257,6 +257,29 @@ jouées.
 > indique à l'enseignant quand les corrections ne sont pas encore publiées, et à
 > quelle date elles le seront.
 
+> **Énoncés mis en forme automatiquement (mise à jour du 01/10).** **Aucune
+> migration** : rien ne change dans la base, aucune donnée n'est réécrite. Cette
+> version met en forme l'énoncé au moment de l'affichage — la liste des questions,
+> la carte du candidat, l'écran de correction et le bulletin PDF la partagent.
+>
+> Ce que ça change à l'écran : les paragraphes se séparent, les retours à la ligne
+> se voient, et les énumérations collées en un seul bloc par l'import
+> (`a) … b) … c) …`, `1. 2. 3.`, `- … ; - …`) deviennent de vraies listes. Une
+> énumération qui commence à `c)` reste `c. d.` : elle n'est jamais renumérotée.
+>
+> Ce que ça ne change pas : **le texte enregistré reste identique au caractère
+> près**. La mise en forme échappe et assemble, elle n'écrit rien — une
+> présentation maladroite reste donc cosmétique. Aucun texte n'est réinterprété
+> comme du HTML : un énoncé qui contient des balises les affiche, échappées.
+>
+> À partir de cette version, l'import **conserve aussi les retours à la ligne**
+> d'une cellule (Excel `Alt+Entrée`, paragraphe Word) au lieu de les écraser ;
+> les énoncés déjà enregistrés sur une ligne restent inchangés et sont mis en
+> forme par la détection d'énumérations.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent. Les
+> questions déjà présentes sont mises en forme **sans réimport**.
+
 > **Énoncés de questions longs (mise à jour du 01/10).** **Une seule** migration,
 > `2026_10_01_000001_widen_field_label_on_form_fields_table` : la colonne
 > `form_fields.field_label` passe de `VARCHAR(255)` à `TEXT`. Sur MySQL c'est un
