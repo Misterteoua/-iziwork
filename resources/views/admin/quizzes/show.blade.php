@@ -299,6 +299,7 @@
                             'method' => 'PUT',
                             'question' => $question,
                             'slots' => max(4, count($question->getOptionsList())),
+                            'quiz' => $quiz,
                         ])
                     </div>
                 </details>
@@ -319,6 +320,7 @@
                 'method' => 'POST',
                 'question' => null,
                 'slots' => 4,
+                'quiz' => $quiz,
             ])
         </div>
     </section>

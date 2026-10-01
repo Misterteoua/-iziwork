@@ -270,6 +270,13 @@ jouées.
 > Le guide de correction et la copie d'un étudiant suivent exactement la même
 > règle : un correcteur lit un cas pratique structuré, pas un pavé.
 >
+> S'y ajoute un **aperçu sous le champ d'énoncé** : pendant la saisie d'une
+> question, l'enseignant voit la mise en forme telle qu'elle apparaîtra au
+> candidat. L'aperçu interroge le serveur (`POST
+> /admin/quizzes/{id}/questions/preview`), qui répond du JSON : aucune règle
+> n'est dupliquée dans le navigateur, et sans JavaScript le formulaire reste
+> exactement celui d'avant.
+>
 > Ce que ça ne change pas : **le texte enregistré reste identique au caractère
 > près**. La mise en forme échappe et assemble, elle n'écrit rien — une
 > présentation maladroite reste donc cosmétique. Aucun texte n'est réinterprété

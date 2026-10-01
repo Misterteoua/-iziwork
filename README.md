@@ -382,6 +382,13 @@ Le texte enregistré n'est **jamais modifié** : la mise en forme se contente
 d'échapper et d'assembler, elle ne réécrit rien. Une présentation maladroite reste
 donc cosmétique, et corriger l'énoncé reste la seule façon de changer son texte.
 
+Dans le formulaire d'une question, un **aperçu** apparaît sous le champ d'énoncé
+pendant la saisie : il montre la mise en forme telle que la verront le candidat et
+le correcteur. L'aperçu ne réimplémente pas les règles dans le navigateur — il
+demande au serveur le rendu de ce qui est en train d'être tapé, le seul endroit où
+la mise en forme existe. Il ne juge rien non plus : un énoncé à moitié écrit
+s'affiche, et le refus reste au moment de l'enregistrement.
+
 Ceci vaut aussi pour la copie d'un candidat, qui reste du texte : ce qu'il a écrit
 décide de sa mise en forme, mais rien de ce qu'il écrit ne peut injecter de balise
 dans la page — ni dans celle du correcteur, ni dans son bulletin.

@@ -109,6 +109,12 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::delete('quizzes/{quiz}/questions/{field}', [QuizController::class, 'destroyQuestion'])
         ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.destroy');
 
+    // Aperçu de l'énoncé pendant la saisie. La mise en forme n'est pas
+    // réimplémentée dans le navigateur : il demande au serveur le rendu de ce
+    // qui est en train d'être tapé, et les deux ne peuvent donc pas diverger.
+    Route::post('quizzes/{quiz}/questions/preview', [QuizController::class, 'previewQuestion'])
+        ->whereNumber('quiz')->name('admin.quizzes.questions.preview');
+
     // Import par fichier : le modèle téléchargeable évite à l'enseignant de
     // deviner le format, et l'import se fait au moment où il choisit le type.
     Route::get('quizzes/questions/template', [QuizController::class, 'questionTemplate'])->name('admin.quizzes.questions.template');

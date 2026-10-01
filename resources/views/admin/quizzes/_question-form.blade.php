@@ -6,6 +6,7 @@
       $method    POST ou PUT
       $question  FormField existante, ou null pour une nouvelle question
       $slots     nombre d'emplacements de propositions affichés
+      $quiz      évaluation en cours, pour l'aperçu de l'énoncé
 
     Trois types de questions :
 
@@ -41,6 +42,19 @@
                   maxlength="{{ \App\Support\QuizQuestionData::MAX_LABEL_LENGTH }}"
                   placeholder="Ex : Quelle est la complexité de la recherche dichotomique ?"
                   class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('field_label', $question?->field_label) }}</textarea>
+
+        {{-- Aperçu : il n'apparaît que si JavaScript est là, et seulement
+             pendant la saisie. Un texte de question se juge mieux mis en forme
+             qu'en pavé — c'est ce que verront le candidat et le correcteur. --}}
+        <div data-question-preview hidden
+             data-preview-url="{{ route('admin.quizzes.questions.preview', $quiz) }}"
+             class="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3">
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Aperçu de l'énoncé</p>
+            <div class="mt-1 text-sm text-slate-900" data-preview-target></div>
+            <p class="mt-1 text-xs text-slate-500">
+                Paragraphes et énumérations mis en forme, comme sur la carte du candidat.
+            </p>
+        </div>
     </div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -111,6 +125,7 @@
 </form>
 </div>
 
+@once
 @push('scripts')
 <script>
 (function () {
@@ -137,5 +152,80 @@
         refresh();
     });
 })();
+
+(function () {
+    // Aperçu de l'énoncé : la mise en forme ne vit qu'au serveur
+    // (App\Support\QuestionText). Ici, on demande simplement le rendu de ce qui
+    // est en train d'être tapé — deux formateurs finiraient par diverger, et un
+    // aperçu qui mentirait serait pire que pas d'aperçu du tout.
+    const DELAY = 400;
+
+    document.querySelectorAll('[data-question-preview]').forEach(function (block) {
+        const form = block.closest('form');
+        const field = form ? form.querySelector('[name="field_label"]') : null;
+        const target = block.querySelector('[data-preview-target]');
+        const token = form ? form.querySelector('[name="_token"]') : null;
+        const url = block.getAttribute('data-preview-url');
+
+        if (!field || !target || !url) { return; }
+
+        let timer = null;
+        let pending = null;
+
+        function show(html) {
+            if (html === '') {
+                block.setAttribute('hidden', 'hidden');
+
+                return;
+            }
+
+            // Le HTML vient de l'application, qui l'a échappé fragment par
+            // fragment : l'insérer tel quel est le seul moyen de montrer la
+            // mise en forme.
+            target.innerHTML = html;
+            block.removeAttribute('hidden');
+        }
+
+        function ask() {
+            // Une frappe chasse l'autre : sans annulation, une réponse lente
+            // pourrait écraser un aperçu plus récent.
+            if (pending) { pending.abort(); }
+            pending = new AbortController();
+
+            const body = new URLSearchParams();
+            body.set('field_label', field.value);
+            if (token) { body.set('_token', token.value); }
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: body,
+                signal: pending.signal
+            }).then(function (response) {
+                if (!response.ok) { throw new Error('apercu'); }
+
+                return response.json();
+            }).then(function (payload) {
+                show(typeof payload.html === 'string' ? payload.html : '');
+            }).catch(function (error) {
+                // L'aperçu est un confort : s'il échoue, il disparaît plutôt que
+                // d'afficher une erreur au milieu de la saisie.
+                if (error && error.name === 'AbortError') { return; }
+
+                block.setAttribute('hidden', 'hidden');
+            });
+        }
+
+        field.addEventListener('input', function () {
+            if (timer) { window.clearTimeout(timer); }
+
+            timer = window.setTimeout(ask, DELAY);
+        });
+    });
+})();
 </script>
 @endpush
+@endonce

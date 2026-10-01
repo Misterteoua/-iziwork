@@ -13,6 +13,7 @@ use App\Support\Import\QuestionSheet;
 use App\Support\Import\QuizTemplate;
 use App\Support\Import\StudentRoster;
 use App\Support\Import\TabularFile;
+use App\Support\QuestionText;
 use App\Support\QuizFilters;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
@@ -237,6 +238,25 @@ class QuizController extends Controller
         $field->delete();
 
         return back()->with('success', 'Question supprimée.');
+    }
+
+    /**
+     * Rend la mise en forme de l'énoncé en cours de saisie.
+     *
+     * L'aperçu ne réécrit rien et ne crée rien : il montre. C'est pourquoi il
+     * répond même sur un énoncé invalide (trop court, en cours d'écriture) — le
+     * refus, lui, reste au moment de l'enregistrement.
+     */
+    public function previewQuestion(Request $request, Form $quiz): JsonResponse
+    {
+        $this->assertQuiz($quiz);
+
+        // Une requête forgée peut envoyer un texte sans limite : on le plafonne
+        // à ce qu'un énoncé peut faire, plutôt que de mettre le serveur au
+        // travail sur ce qui ne pourrait jamais être enregistré.
+        $label = mb_substr((string) $request->input('field_label', ''), 0, QuizQuestionData::MAX_LABEL_LENGTH);
+
+        return response()->json(['html' => (string) QuestionText::html($label)]);
     }
 
     // ------------------------------------------------------------ Références
