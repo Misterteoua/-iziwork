@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\QuizAttempt;
 use App\Models\ShortLink;
 use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,7 +77,7 @@ class QuestionFormattingTest extends TestCase
             .'nouvelle méthode.';
     }
 
-    private function question(string $label, string $type = FormField::OPEN_TYPE): FormField
+    private function question(string $label, string $type = FormField::OPEN_TYPE, ?string $expected = null): FormField
     {
         return $this->quiz->fields()->create([
             'field_label' => $label,
@@ -85,8 +86,22 @@ class QuestionFormattingTest extends TestCase
             'order' => (int) $this->quiz->fields()->max('order') + 1,
             'options' => $type === FormField::OPEN_TYPE ? [] : ['Un', 'Deux'],
             'correct_answer' => $type === FormField::OPEN_TYPE ? [] : [0],
+            'expected_answer' => $expected,
             'points' => 2,
         ]);
+    }
+
+    /** Une copie rendue : le candidat commence, répond, remet. */
+    private function answer(FormField $question, string $text): QuizAttempt
+    {
+        $this->post(route('quiz.begin', $this->quiz->token), ['student_name' => 'Jean']);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $question->id,
+            'answer_text' => $text,
+        ]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        return $this->quiz->attempts()->firstOrFail();
     }
 
     // ---------------------------------------------------- Page des questions
@@ -156,6 +171,111 @@ class QuestionFormattingTest extends TestCase
         $response->assertOk();
         $response->assertSee('<ol type="a" class="qt-list qt-alpha">', false);
         $response->assertSee('<li>La politique intégrée</li>', false);
+    }
+
+    // ------------------------------------ Guide de correction et copies rendues
+
+    public function test_le_guide_de_correction_est_mis_en_forme_a_la_correction(): void
+    {
+        // Le guide s'écrit comme l'énoncé : des points à ne pas oublier. Le
+        // correcteur doit les lire aussi facilement que la question.
+        $question = $this->question(
+            'Expliquez la démarche documentaire.',
+            expected: 'Le candidat cite : a)la revue des documents ; b)la codification ; c)l\'approbation'
+        );
+
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        $response = $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]));
+
+        $response->assertOk();
+        $response->assertSee('Réponse attendue (guide)');
+        $response->assertSee('<ol type="a" class="qt-list qt-alpha">', false);
+        $response->assertSee('<li>la codification</li>', false);
+    }
+
+    public function test_la_copie_de_l_etudiant_est_mise_en_forme_a_la_correction(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+
+        $attempt = $this->answer(
+            $question,
+            "Voici les étapes que je retiens :\n\n1. La revue des documents\n2. La codification"
+        );
+
+        $response = $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]));
+
+        $response->assertOk();
+        // Comparaison brute : le libellé du gabarit n'est pas échappé par Blade.
+        $response->assertSee("Réponse de l'étudiant", false);
+        $response->assertSee(
+            '<ol class="qt-list qt-numbered"><li>La revue des documents</li><li>La codification</li></ol>',
+            false
+        );
+    }
+
+    public function test_une_copie_piege_n_injecte_pas_de_html(): void
+    {
+        // Un candidat peut écrire n'importe quoi : sa copie reste du texte.
+        $question = $this->question('Expliquez la démarche documentaire.');
+
+        $attempt = $this->answer($question, "<script>alert(1)</script> puis deux points :\n1. un\n2. deux");
+
+        $response = $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]));
+
+        $response->assertOk();
+        $response->assertDontSee('<script>alert(1)</script>', false);
+        $response->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false);
+        $response->assertSee('<li>un</li>', false);
+    }
+
+    public function test_le_bulletin_de_l_etudiant_met_sa_copie_en_forme(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+
+        $this->answer($question, "Les documents à revoir :\n\na) La revue des documents\nb) La codification");
+
+        // La correction ne se publie qu'une fois l'épreuve fermée.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $response = $this->get(route('quiz.result', $this->quiz->token));
+
+        $response->assertOk();
+        $response->assertSee(
+            '<ol type="a" class="qt-list qt-alpha"><li>La revue des documents</li><li>La codification</li></ol>',
+            false
+        );
+    }
+
+    public function test_le_recapitulatif_pdf_met_la_copie_en_forme(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+
+        $attempt = $this->answer(
+            $question,
+            "Les étapes :\n\n1. La revue des documents\n2. La codification"
+        )->load('answers');
+
+        $followLink = ShortLink::forAttempt($this->quiz, $attempt);
+
+        $html = view('student.quiz.recap-pdf', [
+            'quiz' => $this->quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
+            'pending' => 0,
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
+        ])->render();
+
+        $this->assertStringContainsString(
+            '<ol class="qt-list qt-numbered"><li>La revue des documents</li><li>La codification</li></ol>',
+            $html
+        );
+
+        // Le guide de correction, lui, ne traverse jamais jusqu'à l'étudiant.
+        $this->assertStringNotContainsString('(guide)', $html);
     }
 
     // -------------------------------------------------------- Récapitulatif
@@ -231,8 +351,13 @@ class QuestionFormattingTest extends TestCase
         ] as $view) {
             $source = (string) file_get_contents(resource_path('views/'.$view));
 
-            $this->assertStringContainsString('partials.question-text', $source, $view.' doit passer par le fragment d\'énoncé.');
-            $this->assertStringNotContainsString('{{ $question->field_label }}', $source, $view.' affiche encore l\'énoncé brut.');
+            $this->assertStringContainsString('partials.question-text', $source, $view.' doit passer par le fragment de texte.');
+
+            // Ni l'énoncé, ni le guide, ni la copie ne s'affichent en brut :
+            // c'est le même formateur qui les met en forme, et il échappe.
+            foreach (['{{ $question->field_label }}', '{{ $question->expected_answer }}', '{{ $answer->answer_text }}'] as $brut) {
+                $this->assertStringNotContainsString($brut, $source, $view.' affiche encore du texte brut.');
+            }
         }
     }
 }

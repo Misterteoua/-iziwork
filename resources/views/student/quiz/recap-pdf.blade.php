@@ -118,7 +118,12 @@
 
             @if($question->isOpen())
             <div class="meta">
-                Votre réponse : {{ trim((string) $answer?->answer_text) !== '' ? $answer->answer_text : '—' }}
+                Votre réponse
+                @if(trim((string) $answer?->answer_text) === '')
+                    : —
+                @else
+                    @include('partials.question-text', ['text' => $answer->answer_text])
+                @endif
             </div>
 
             {{-- L'appréciation du correcteur figure dans le document que

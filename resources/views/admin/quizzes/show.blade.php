@@ -264,10 +264,10 @@
                         </p>
                         @if($question->isOpen())
                             @if($question->expected_answer)
-                            <p class="mt-2 text-xs text-slate-500">
+                            <div class="mt-2 text-xs text-slate-500">
                                 <span class="font-medium text-slate-600">Réponse attendue :</span>
-                                {{ $question->expected_answer }}
-                            </p>
+                                @include('partials.question-text', ['text' => $question->expected_answer])
+                            </div>
                             @endif
                         @else
                         <ul class="mt-2 space-y-0.5">

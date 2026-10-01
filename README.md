@@ -350,13 +350,23 @@ puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
   sont conservés : un énoncé écrit en plusieurs paragraphes arrive en plusieurs
   paragraphes. Seuls les espaces de mise en page sont normalisés.
 
-### Mise en forme des énoncés
+### Mise en forme des textes longs
 
-Un énoncé n'est jamais affiché tel qu'il a été stocké : il est **mis en forme à
+Un texte n'est jamais affiché tel qu'il a été stocké : il est **mis en forme à
 l'affichage**, partout où il apparaît — page des questions, carte du candidat,
-écran de correction, bulletin PDF. Les paragraphes se séparent, les retours à la
-ligne se voient, et les énumérations deviennent de vraies listes, même lorsque
-l'import les avait collées sur une seule ligne :
+écran de correction, bulletin PDF. Cela vaut pour les trois textes longs d'une
+évaluation :
+
+- l'**énoncé** de la question,
+- le **guide de correction** (la « réponse attendue » : c'est le correcteur qui
+  le lit, jamais l'étudiant), à l'écran de correction et sur la page des
+  questions,
+- la **copie rendue** par l'étudiant, à la correction, sur son bulletin et dans
+  le récapitulatif PDF.
+
+Partout, les paragraphes se séparent, les retours à la ligne se voient, et les
+énumérations deviennent de vraies listes, même lorsque l'import les avait collées
+sur une seule ligne :
 
 - `a) … b) … c) …` → liste `a. b. c.` (une énumération qui commence à `c) `
   reste `c. d.` : l'énoncé peut y renvoyer) ;
@@ -371,6 +381,12 @@ exactement comme avant.
 Le texte enregistré n'est **jamais modifié** : la mise en forme se contente
 d'échapper et d'assembler, elle ne réécrit rien. Une présentation maladroite reste
 donc cosmétique, et corriger l'énoncé reste la seule façon de changer son texte.
+
+Ceci vaut aussi pour la copie d'un candidat, qui reste du texte : ce qu'il a écrit
+décide de sa mise en forme, mais rien de ce qu'il écrit ne peut injecter de balise
+dans la page — ni dans celle du correcteur, ni dans son bulletin.
+
+L'**appréciation** du correcteur reste affichée telle qu'elle a été saisie.
 - Word est accepté sous les deux formes habituelles : un tableau (une ligne par
   question) ou un paragraphe par question, propositions séparées par `|`.
 - Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi

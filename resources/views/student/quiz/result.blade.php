@@ -116,9 +116,11 @@
                      bonne réponse à comparer. --}}
                 <div class="mt-3 rounded-xl bg-slate-50 px-4 py-3">
                     <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Votre réponse</p>
-                    <p class="mt-1 text-sm text-slate-800 whitespace-pre-line">
-                        {{ trim((string) $answer?->answer_text) !== '' ? $answer->answer_text : 'Aucune réponse rendue.' }}
-                    </p>
+                    @if(trim((string) $answer?->answer_text) === '')
+                    <p class="mt-1 text-sm text-slate-800">Aucune réponse rendue.</p>
+                    @else
+                    @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
+                    @endif
                 </div>
 
                 {{-- L'appréciation du correcteur : une note sans phrase est vécue

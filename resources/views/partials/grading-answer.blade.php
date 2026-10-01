@@ -29,7 +29,7 @@
         @if($question->expected_answer)
         <div class="mt-4 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
             <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Réponse attendue (guide)</p>
-            <p class="mt-1 text-xs text-slate-700 whitespace-pre-line">{{ $question->expected_answer }}</p>
+            @include('partials.question-text', ['text' => $question->expected_answer, 'class' => 'mt-1 text-xs text-slate-700'])
         </div>
         @endif
 
@@ -38,7 +38,7 @@
             @if($answer === null || trim((string) $answer->answer_text) === '')
                 <p class="mt-1 text-sm text-slate-500">Aucune réponse rendue : rien à corriger, la question vaut zéro.</p>
             @else
-                <p class="mt-1 text-sm text-slate-800 whitespace-pre-line">{{ $answer->answer_text }}</p>
+                @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
             @endif
         </div>
 
