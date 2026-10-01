@@ -11,6 +11,7 @@ use App\Support\Import\XlsxReader;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 /**
@@ -332,6 +333,113 @@ class QuizImportTest extends TestCase
         $this->assertSame(QuizAttempt::STATUS_IN_PROGRESS, $attempt->status);
         $this->assertSame('Curie Marie', $attempt->student_name);
         $this->assertSame('marie@test.com', $attempt->student_email);
+    }
+
+    // ------------------------------------------------------- Énoncés très longs
+
+    public function test_un_enonce_de_cas_pratique_de_plus_de_mille_caracteres_est_importe_entier(): void
+    {
+        // Un cas pratique dépasse couramment les 255 caractères d'un VARCHAR :
+        // une évaluation réelle en contient de 1168 à 1513. SQLite les acceptait,
+        // MySQL les refusait — l'import entier échouait sur une page blanche.
+        $label = rtrim(str_repeat('Cas pratique sur la démarche qualité : ', 40));
+
+        $this->assertGreaterThan(1000, mb_strlen($label));
+
+        $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'A', 'B', 'Bonnes réponses', 'Points'],
+                [$label, 'Un audit', 'Une revue', 'A', '2'],
+            ]),
+        ])->assertRedirect();
+
+        $question = $this->quiz->quizQuestions()->firstOrFail();
+
+        // Le texte est conservé entier : pas de troncature silencieuse.
+        $this->assertSame($label, $question->field_label);
+        $this->assertSame(mb_strlen($label), mb_strlen($question->field_label));
+    }
+
+    public function test_la_colonne_des_enonces_accepte_un_texte_long(): void
+    {
+        $column = collect(Schema::getColumns('form_fields'))->firstWhere('name', 'field_label');
+
+        // La règle applicative autorise 2000 caractères
+        // (QuizQuestionData::MAX_LABEL_LENGTH) : la colonne doit pouvoir les
+        // recevoir. Un VARCHAR(255) ne le pouvait pas, et SQLite ne le disait
+        // pas — d'où un défaut invisible en local, fatal en production.
+        $this->assertSame('text', strtolower((string) $column['type_name']));
+    }
+
+    public function test_un_enonce_de_plus_de_deux_mille_caracteres_est_refuse_avec_sa_ligne(): void
+    {
+        $tooLong = str_repeat('Question interminable. ', 100);
+
+        $response = $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'A', 'B', 'Bonnes réponses', 'Points'],
+                ['Une question correcte ?', 'Oui', 'Non', 'A', '1'],
+                [$tooLong, 'Oui', 'Non', 'A', '1'],
+            ]),
+        ]);
+
+        $response->assertRedirect();
+
+        $report = $response->getSession()->get('import_questions');
+
+        // La première question est créée, la seconde est refusée en le disant :
+        // jamais une erreur technique, jamais un import muet.
+        $this->assertSame(1, $this->quiz->quizQuestions()->count());
+        $this->assertStringContainsString('Ligne 3', implode(' ', $report['errors']));
+        $this->assertStringContainsString('2000 caractères', implode(' ', $report['errors']));
+    }
+
+    public function test_un_nom_de_la_liste_trop_long_est_refuse_avec_sa_ligne(): void
+    {
+        $tooLong = rtrim(str_repeat('Nom interminable ', 20));
+
+        $response = $this->post(route('admin.quizzes.students.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Nom', 'Email'],
+                ['Curie Marie', 'marie@test.com'],
+                [$tooLong, 'long@test.com'],
+            ], 'etudiants.xlsx'),
+        ]);
+
+        $response->assertRedirect();
+
+        $report = $response->getSession()->get('import_students');
+
+        // La colonne ne prend que 255 caractères : refuser la ligne vaut mieux
+        // que faire échouer tout le fichier.
+        $this->assertSame(1, $this->quiz->attempts()->count());
+        $this->assertStringContainsString('Ligne 3', implode(' ', $report['errors']));
+        $this->assertStringContainsString('255 caractères', implode(' ', $report['errors']));
+    }
+
+    public function test_une_ecriture_refusee_par_la_base_ne_finit_pas_en_page_blanche(): void
+    {
+        // Bogue réel de production : MySQL refuse l'écriture, l'exception
+        // traversait l'écran et laissait une page blanche sans un mot
+        // (APP_DEBUG=false). On force l'incident en retirant la table que
+        // l'import alimente — l'erreur est donc bien réelle, sans simulacre.
+        Schema::drop('form_fields');
+
+        $response = $this->post(route('admin.quizzes.questions.import', $this->quiz), [
+            'file' => $this->upload([
+                ['Question', 'A', 'B', 'Bonnes réponses'],
+                ['Une question ?', 'Un', 'Deux', 'A'],
+            ]),
+        ]);
+
+        $response->assertRedirect();
+        $response->assertSessionMissing('import_questions');
+
+        $error = (string) $response->getSession()->get('error');
+
+        $this->assertStringContainsString("L'import n'a pas pu être enregistré", $error);
+        // La transaction est annulée : le dire évite de croire à un import partiel.
+        $this->assertStringContainsString("rien n'a été ajouté", $error);
     }
 
     // --------------------------------------------------- Modèles et références

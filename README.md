@@ -241,6 +241,9 @@ une même connexion n'est jamais freinée. Pour un domaine encore plus court
    étudiants (nom, email, filière), soit en générant un nombre de références.
    Chaque référence fait 10 caractères, sans lettres ambiguës (ni O/0, ni I/1/L).
    Le bouton « Télécharger la liste (CSV) » donne les références à distribuer.
+   Nom, adresse et filière sont limités à **255 caractères** — la taille des
+   colonnes : une cellule plus longue fait refuser **cette ligne**, avec son
+   numéro, jamais le fichier entier.
    Importer une liste ou générer des références **fige le mode d'accès** :
    l'évaluation demandera la référence au lieu du nom, définitivement — même
    après que toutes les copies ont été rendues. Sans référence préparée,
@@ -340,6 +343,9 @@ puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
   désignées par leur lettre restent correctes (la lettre désigne la colonne).
 - Une **ligne refusée n'est jamais perdue en silence** : elle est listée avec son
   numéro et son motif, et les autres lignes sont bien importées.
+- Un **énoncé long** est accepté : jusqu'à **2 000 caractères**, ce qu'un cas
+  pratique atteint couramment (1 200 à 1 500 dans une épreuve réelle). Au-delà,
+  la ligne est refusée avec son numéro, comme les autres.
 - Word est accepté sous les deux formes habituelles : un tableau (une ligne par
   question) ou un paragraphe par question, propositions séparées par `|`.
 - Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi

@@ -257,6 +257,32 @@ jouées.
 > indique à l'enseignant quand les corrections ne sont pas encore publiées, et à
 > quelle date elles le seront.
 
+> **Énoncés de questions longs (mise à jour du 01/10).** **Une seule** migration,
+> `2026_10_01_000001_widen_field_label_on_form_fields_table` : la colonne
+> `form_fields.field_label` passe de `VARCHAR(255)` à `TEXT`. Sur MySQL c'est un
+> simple `MODIFY` — aucune donnée n'est réécrite, aucun index ni clé étrangère
+> n'est touché, la colonne n'étant ni indexée ni référencée. Nommée d'après son
+> effet, elle est reconnue par la réconciliation de `/update` : un élargissement
+> déjà en place est constaté au lieu de faire échouer la mise à jour.
+>
+> Ce que ça corrige : **l'import des questions renvoyait 500 en production** dès
+> qu'un énoncé dépassait 255 caractères — un cas pratique en fait couramment 1200
+> à 1500. SQLite, le poste de développement, ne contrôle pas la longueur
+> déclarée : le défaut était donc invisible en local et fatal sur MySQL
+> (« Data too long for column 'field_label' »), qui faisait échouer l'import
+> **entier**. La limite annoncée reste de **2 000 caractères**, désormais tenue
+> par la base comme par le formulaire — c'est vrai de l'import comme de la saisie
+> manuelle d'une question.
+>
+> Sont arrivés avec : les noms, adresses et filières d'une liste importée sont
+> refusés **ligne par ligne** au-delà de 255 caractères (la taille des colonnes)
+> au lieu de faire échouer tout le fichier ; et une écriture impossible n'affiche
+> plus une page blanche — la page d'erreur est en français, et un import qui
+> échoue dit que **rien n'a été ajouté**, l'incident restant journalisé.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent.
+> **Après la mise à jour, relancez l'import** : le précédent avait tout annulé.
+
 > **Second niveau de relecture (mise à jour du 20/09).** **Une seule** migration,
 > purement additive : la table `quiz_grade_reviews`. Aucune colonne modifiée,
 > aucun index supprimé, aucune donnée réécrite. Elle journalise les relectures —
@@ -751,6 +777,7 @@ bash deploy.sh
 | **403 « Access to this resource on the server is denied! »** sur `/up`, `/install`, `/index.php`, alors que `/favicon.ico` répond 200 | Le vhost n'a **pas de handler PHP** : LiteSpeed refuse de servir un `.php` comme fichier statique. Le journal du domaine (cPanel → **Metrics → Errors**) affiche `MIME type [application/x-httpd-php] for suffix '.php' does not allow serving as static file`. → cPanel → **MultiPHP Manager** → cocher le sous-domaine → **PHP 8.2** → Apply (pour forcer la reconstruction du vhost : passer en 8.1, Apply, puis revenir en 8.2, Apply). Si le 403 persiste, ouvrir un ticket en citant cette ligne de journal : la configuration du vhost doit être reconstruite |
 | Le site affiche un **« Index of / » vide** | Le Document Root pointe sur un dossier vide — voir B.4 (préfixe `/home/<compte>` doublé par cPanel) |
 | Un fichier de `storage/app/public` est **téléchargeable en ligne** (`https://…/storage/…`) | L'archive a suivi le lien `public/storage`. Vérifier avec `php tools/verify-release.php`, **supprimer le dossier `public/storage` du serveur**, puis reconstruire l'archive |
+| **500** en page blanche sur `/admin/quizzes/{id}/questions/import` (ou à l'ajout d'une question) | Un énoncé dépasse la longueur de la colonne : MySQL refuse ce que SQLite accepte. Vérifiez `storage/logs/laravel.log` — `1406 Data too long for column 'field_label'` —, jouez la migration de l'énoncé long (mise à jour du 01/10), puis **relancez l'import** |
 | Doute sur l'état réel du serveur (docroot servi, fichiers présents, extensions) | Téléverser [`tools/probe.php`](tools/probe.php) dans le Document Root et ouvrir `/probe.php` : il affiche le `DOCUMENT_ROOT` réellement servi, l'emplacement de l'application, la présence de `.htaccess` et les extensions PHP. À supprimer après usage |
 
 ---

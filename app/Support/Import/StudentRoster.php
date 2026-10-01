@@ -15,6 +15,16 @@ final class StudentRoster
     public const MAX_STUDENTS = 1000;
 
     /**
+     * Longueur maximale d'un nom, d'une adresse ou d'une filière.
+     *
+     * Les colonnes correspondantes de `quiz_attempts` sont des VARCHAR(255) :
+     * une cellule plus longue ferait échouer l'import *entier* sur MySQL, qui
+     * refuse ce que SQLite accepte. On refuse donc la ligne, avec son numéro,
+     * comme pour tout le reste de ce lecteur.
+     */
+    private const MAX_FIELD_LENGTH = 255;
+
+    /**
      * @param  array<int, array<int, string>>  $rows
      * @return array{0: array<int, array{name: string, email: ?string, major: ?string}>, 1: ImportOutcome}
      */
@@ -56,6 +66,24 @@ final class StudentRoster
 
             if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
                 $outcome->addError($line, 'l\'adresse « '.$email.' » n\'est pas valide.');
+
+                continue;
+            }
+
+            if (mb_strlen($name) > self::MAX_FIELD_LENGTH) {
+                $outcome->addError($line, 'le nom dépasse '.self::MAX_FIELD_LENGTH.' caractères.');
+
+                continue;
+            }
+
+            if (mb_strlen($email) > self::MAX_FIELD_LENGTH) {
+                $outcome->addError($line, 'l\'adresse dépasse '.self::MAX_FIELD_LENGTH.' caractères.');
+
+                continue;
+            }
+
+            if (mb_strlen($major) > self::MAX_FIELD_LENGTH) {
+                $outcome->addError($line, 'la filière dépasse '.self::MAX_FIELD_LENGTH.' caractères.');
 
                 continue;
             }

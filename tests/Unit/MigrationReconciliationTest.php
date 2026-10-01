@@ -58,6 +58,26 @@ class MigrationReconciliationTest extends TestCase
         );
     }
 
+    public function test_a_widen_column_migration_is_satisfied_when_the_column_already_takes_long_text(): void
+    {
+        // Cas d'une mise à jour interrompue juste après l'ALTER : l'élargissement
+        // est en place, la migration ne doit donc pas être rejouée.
+        $this->forget('2026_10_01_000001_widen_field_label_on_form_fields_table');
+
+        $this->assertTrue(
+            $this->reconciliation()->isSatisfied('2026_10_01_000001_widen_field_label_on_form_fields_table')
+        );
+    }
+
+    public function test_a_widen_column_migration_is_not_satisfied_when_the_column_is_still_short(): void
+    {
+        // `forms.title` reste un VARCHAR : un élargissement annoncé sur une
+        // colonne courte reste à jouer.
+        $this->assertFalse(
+            $this->reconciliation()->isSatisfied('2099_01_01_000000_widen_title_on_forms_table')
+        );
+    }
+
     public function test_a_migration_whose_effect_is_absent_is_not_satisfied(): void
     {
         $reconciliation = $this->reconciliation();

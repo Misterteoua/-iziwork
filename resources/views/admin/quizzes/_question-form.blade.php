@@ -34,7 +34,11 @@
 
     <div>
         <label class="block text-sm font-medium text-slate-700 mb-1.5">Énoncé <span class="text-red-500" aria-hidden="true">*</span></label>
+        {{-- Le plafond affiché est celui que le serveur applique
+             (QuizQuestionData::MAX_LABEL_LENGTH) : laisser taper au-delà ne
+             ferait que renvoyer un refus après coup. --}}
         <textarea name="field_label" rows="2" required
+                  maxlength="{{ \App\Support\QuizQuestionData::MAX_LABEL_LENGTH }}"
                   placeholder="Ex : Quelle est la complexité de la recherche dichotomique ?"
                   class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('field_label', $question?->field_label) }}</textarea>
     </div>
@@ -84,6 +88,7 @@
     <div data-open-block class="{{ $currentType === 'textarea' ? '' : 'hidden' }}">
         <label class="block text-sm font-medium text-slate-700 mb-1.5">Réponse attendue (guide de correction)</label>
         <textarea name="expected_answer" rows="3"
+                  maxlength="{{ \App\Support\QuizQuestionData::MAX_EXPECTED_ANSWER }}"
                   placeholder="Ex : saponification, huile + soude, glycérine en sous-produit…"
                   class="w-full px-4 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('expected_answer', $question?->expected_answer) }}</textarea>
         <p class="mt-2 text-xs text-slate-500">

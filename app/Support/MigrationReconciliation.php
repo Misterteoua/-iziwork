@@ -22,6 +22,8 @@ use Illuminate\Support\Facades\Schema;
  *   update_<colonne>_enum_in_<table>_table
  *                                     → la colonne accepte déjà les valeurs
  *                                       déclarées par la migration ?
+ *   widen_<colonne>_on_<table>_table  → la colonne accepte déjà les textes
+ *                                       longs ?
  *   make_<colonne>_nullable[…]        → la colonne est déjà nullable ?
  *
  * Seules les migrations dont l'effet est constaté sont marquées comme
@@ -134,6 +136,10 @@ class MigrationReconciliation
             return $this->enumAlreadyAccepts($matches[2], $matches[1], $migration);
         }
 
+        if (preg_match('/_widen_(\w+)_on_(\w+)_table$/', $migration, $matches) === 1) {
+            return $this->columnAcceptsLongText($matches[2], $matches[1]);
+        }
+
         if (preg_match('/_make_(\w+)_nullable/', $migration, $matches) === 1) {
             $table = $this->tableFromSource($migration);
 
@@ -179,6 +185,20 @@ class MigrationReconciliation
         }
 
         return true;
+    }
+
+    /**
+     * La colonne accepte-t-elle les textes longs ?
+     *
+     * Une mise à jour interrompue juste après l'`ALTER` de l'élargissement doit
+     * être constatée en place, et non rejouée : c'est le même service que rend
+     * la reconnaissance des énumérations.
+     */
+    private function columnAcceptsLongText(string $table, string $column): bool
+    {
+        $definition = strtolower($this->columnDefinition($table, $column));
+
+        return $definition !== '' && str_contains($definition, 'text');
     }
 
     private function columnIsNullable(string $table, string $column): bool

@@ -16,7 +16,9 @@ use App\Support\Import\TabularFile;
 use App\Support\QuizFilters;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +38,17 @@ class QuizController extends Controller
 {
     /** Séparateur et encodage du CSV, comme pour l'export des soumissions. */
     private const CSV_SEPARATOR = ';';
+
+    /**
+     * Écriture d'un import refusée par la base.
+     *
+     * La transaction est annulée : rien n'a été enregistré, et le dire vaut
+     * mieux qu'une page blanche sans trace. C'est très exactement ce que
+     * produisait un énoncé plus long que sa colonne en production (MySQL refuse
+     * ce que SQLite accepte).
+     */
+    private const IMPORT_WRITE_FAILED = "L'import n'a pas pu être enregistré : rien n'a été ajouté à l'évaluation. "
+        .'Réessayez dans un instant ; si le problème persiste, signalez-le à l\'administrateur (le détail est journalisé).';
 
     private const CSV_COLUMNS = [
         'Référence',
@@ -276,13 +289,17 @@ class QuizController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        DB::transaction(function () use ($quiz, $questions): void {
-            $order = (int) $quiz->quizQuestions()->max('order');
+        try {
+            DB::transaction(function () use ($quiz, $questions): void {
+                $order = (int) $quiz->quizQuestions()->max('order');
 
-            foreach ($questions as $question) {
-                $quiz->fields()->create(QuizQuestionData::attributes($question, ++$order));
-            }
-        });
+                foreach ($questions as $question) {
+                    $quiz->fields()->create(QuizQuestionData::attributes($question, ++$order));
+                }
+            });
+        } catch (QueryException $e) {
+            return $this->importWriteFailed($e);
+        }
 
         return back()->with('import_questions', [
             'summary' => $outcome->summary('question importée', 'questions importées'),
@@ -317,22 +334,26 @@ class QuizController extends Controller
 
         $skipped = [];
 
-        DB::transaction(function () use ($quiz, $students, $existingEmails, &$skipped): void {
-            foreach ($students as $student) {
-                if ($student['email'] !== null && in_array($student['email'], $existingEmails, true)) {
-                    $skipped[] = $student['name'].' ('.$student['email'].') figure déjà dans la liste.';
+        try {
+            DB::transaction(function () use ($quiz, $students, $existingEmails, &$skipped): void {
+                foreach ($students as $student) {
+                    if ($student['email'] !== null && in_array($student['email'], $existingEmails, true)) {
+                        $skipped[] = $student['name'].' ('.$student['email'].') figure déjà dans la liste.';
 
-                    continue;
+                        continue;
+                    }
+
+                    $quiz->attempts()->create([
+                        'reference' => QuizReference::generate(),
+                        'student_name' => $student['name'],
+                        'student_email' => $student['email'],
+                        'student_major' => $student['major'],
+                    ]);
                 }
-
-                $quiz->attempts()->create([
-                    'reference' => QuizReference::generate(),
-                    'student_name' => $student['name'],
-                    'student_email' => $student['email'],
-                    'student_major' => $student['major'],
-                ]);
-            }
-        });
+            });
+        } catch (QueryException $e) {
+            return $this->importWriteFailed($e);
+        }
 
         $outcome->ignored += count($skipped);
 
@@ -850,6 +871,19 @@ class QuizController extends Controller
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ]);
+    }
+
+    /**
+     * L'import n'a pas pu être écrit : le dire, et le journaliser.
+     *
+     * Rien n'est ajouté — la transaction est annulée — donc l'enseignant peut
+     * reprendre son fichier tel quel après avoir compris ce qui bloque.
+     */
+    private function importWriteFailed(QueryException $e): RedirectResponse
+    {
+        report($e);
+
+        return back()->with('error', self::IMPORT_WRITE_FAILED);
     }
 
     private function assertQuiz(Form $quiz): void
