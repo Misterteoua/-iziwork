@@ -31,6 +31,11 @@ use Illuminate\Validation\ValidationException;
  * Les propositions vides sont conservées pendant l'analyse (pour que « la bonne
  * réponse est C » vise bien la colonne C), puis retirées par
  * {@see QuizQuestionData::normalize()} qui remappe les bonnes réponses.
+ *
+ * Une ligne peut produire plusieurs questions : un énoncé ouvert qui contient
+ * plusieurs « Question N » est un cas pratique, et il est découpé par
+ * {@see QuestionSplitter} en autant de questions, chacune précédée du même
+ * contexte. Sans cela, seul le premier cas pratique serait noté.
  */
 final class QuestionSheet
 {
@@ -72,13 +77,13 @@ final class QuestionSheet
                 continue;
             }
 
-            $question = self::questionFromRow($row, $columns, $line, $outcome);
+            $found = self::questionsFromRow($row, $columns, $line, $outcome);
 
-            if ($question === null) {
+            if ($found === []) {
                 continue;
             }
 
-            $questions[] = $question;
+            $questions = array_merge($questions, $found);
 
             if (count($questions) >= self::MAX_QUESTIONS) {
                 $outcome->addError(0, 'Seules les '.self::MAX_QUESTIONS.' premières questions ont été importées : découpez le fichier.');
@@ -173,11 +178,14 @@ final class QuestionSheet
     }
 
     /**
+     * Une ligne peut produire plusieurs questions : un cas pratique qui contient
+     * plusieurs « Question N » est découpé (voir {@see QuestionSplitter}).
+     *
      * @param  array<int, string>  $row
      * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
-     * @return array<string, mixed>|null
+     * @return array<int, array<string, mixed>>
      */
-    private static function questionFromRow(array $row, array $columns, int $line, ImportOutcome $outcome): ?array
+    private static function questionsFromRow(array $row, array $columns, int $line, ImportOutcome $outcome): array
     {
         $label = self::cleanLabel($row[$columns['question']] ?? '');
 
@@ -186,7 +194,7 @@ final class QuestionSheet
             // tableur. Ce n'est pas une erreur, seulement une ligne ignorée.
             $outcome->ignored++;
 
-            return null;
+            return [];
         }
 
         $kind = self::KIND_QCM;
@@ -195,7 +203,7 @@ final class QuestionSheet
             $kind = self::declaredKind(self::clean($row[$columns['type']] ?? ''), $line, $outcome);
 
             if ($kind === null) {
-                return null;
+                return [];
             }
         }
 
@@ -208,31 +216,27 @@ final class QuestionSheet
         $points = self::parsePoints($row, $columns, $line, $outcome);
 
         if ($points === false) {
-            return null;
+            return [];
         }
 
         try {
             // QuizQuestionData tranche les règles de fond dans les deux cas : une
             // question importée ne peut pas être acceptée là où la saisie manuelle
             // la refuserait.
-            if ($kind === self::KIND_OPEN) {
-                $question = self::openQuestion($label, $options, $row, $columns, $line, $outcome, $points);
-            } else {
-                $question = self::choiceQuestion($label, $options, $row, $columns, $line, $outcome, $points);
-            }
+            $questions = $kind === self::KIND_OPEN
+                ? self::openQuestions($label, $options, $row, $columns, $line, $outcome, $points)
+                : self::choiceQuestions($label, $options, $row, $columns, $line, $outcome, $points);
         } catch (ValidationException $e) {
             $outcome->addError($line, (string) (collect($e->errors())->flatten()->first() ?? 'question invalide.'));
 
-            return null;
+            return [];
         }
 
-        if ($question === null) {
-            return null;
+        foreach ($questions as $question) {
+            $outcome->imported++;
         }
 
-        $outcome->imported++;
-
-        return $question;
+        return $questions;
     }
 
     /**
@@ -267,12 +271,21 @@ final class QuestionSheet
     }
 
     /**
+     * Questions ouvertes produites par une ligne : une seule, ou plusieurs quand
+     * l'énoncé est un cas pratique qui contient plusieurs « Question N ».
+     *
+     * Chaque question issue du découpage porte les repères de son origine
+     * (`group`, `split_line`, `split_index`, `split_total`) : l'aperçu s'en sert
+     * pour montrer d'où elle vient, recoudre deux morceaux, ou scinder à nouveau,
+     * et {@see QuizQuestionData::attributes()} les ignore. `group` reste vrai
+     * même après un découpage manuel, `split_line` nomme la ligne du fichier.
+     *
      * @param  array<int, string>  $options  propositions telles qu'écrites
      * @param  array<int, string>  $row
      * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
-     * @return array<string, mixed>|null
+     * @return array<int, array<string, mixed>>
      */
-    private static function openQuestion(
+    private static function openQuestions(
         string $label,
         array $options,
         array $row,
@@ -280,7 +293,7 @@ final class QuestionSheet
         int $line,
         ImportOutcome $outcome,
         float $points,
-    ): ?array {
+    ): array {
         $correctCell = $columns['correct'] === null ? '' : self::clean($row[$columns['correct']] ?? '');
         $filled = array_values(array_filter($options, static fn (string $option): bool => $option !== ''));
 
@@ -290,19 +303,47 @@ final class QuestionSheet
                 'une question ouverte n\'a pas de propositions ni de bonne réponse : laissez les colonnes A à H et « Bonnes réponses » vides.'
             );
 
-            return null;
+            return [];
         }
 
-        return QuizQuestionData::normalizeOpen($label, $points);
+        $split = QuestionSplitter::split($label, QuizQuestionData::MAX_LABEL_LENGTH);
+
+        if ($split === null) {
+            return [QuizQuestionData::normalizeOpen($label, $points)];
+        }
+
+        $questions = [];
+        $total = count($split['questions']);
+
+        foreach ($split['questions'] as $index => $part) {
+            try {
+                $questions[] = QuizQuestionData::normalizeOpen($part, $points) + [
+                    'group' => 'ligne:'.$line,
+                    'split_line' => $line,
+                    'split_index' => $index + 1,
+                    'split_total' => $total,
+                ];
+            } catch (ValidationException $e) {
+                // Un morceau refusé ne fait pas tomber les autres : l'enseignant
+                // voit précisément ce qui n'est pas passé, et le reste s'importe.
+                $outcome->addError($line, (string) (collect($e->errors())->flatten()->first() ?? 'question invalide.'));
+            }
+        }
+
+        if ($questions !== []) {
+            $outcome->addSplit($line, count($questions), $total);
+        }
+
+        return $questions;
     }
 
     /**
      * @param  array<int, string>  $options
      * @param  array<int, string>  $row
      * @param  array{question: int, options: array<int, int>, correct: ?int, points: ?int, type: ?int}  $columns
-     * @return array<string, mixed>|null
+     * @return array<int, array<string, mixed>>
      */
-    private static function choiceQuestion(
+    private static function choiceQuestions(
         string $label,
         array $options,
         array $row,
@@ -310,20 +351,20 @@ final class QuestionSheet
         int $line,
         ImportOutcome $outcome,
         float $points,
-    ): ?array {
+    ): array {
         if ($columns['correct'] === null) {
             $outcome->addError($line, 'ce fichier n\'a pas de colonne « Bonnes réponses » : impossible de savoir quelle proposition est juste.');
 
-            return null;
+            return [];
         }
 
         $correct = self::parseCorrect(self::clean($row[$columns['correct']] ?? ''), $options, $line, $outcome);
 
         if ($correct === null) {
-            return null;
+            return [];
         }
 
-        return QuizQuestionData::normalize($label, $options, $correct, $points);
+        return [QuizQuestionData::normalize($label, $options, $correct, $points)];
     }
 
     /**

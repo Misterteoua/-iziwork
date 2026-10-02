@@ -13,11 +13,13 @@ final class ImportOutcome
 {
     /**
      * @param  array<int, string>  $errors  messages horodatés par leur numéro de ligne
+     * @param  array<int, string>  $splits  énoncés découpés en plusieurs questions
      */
     public function __construct(
         public int $imported = 0,
         public array $errors = [],
         public int $ignored = 0,
+        public array $splits = [],
     ) {}
 
     public function addError(int $line, string $message): void
@@ -25,6 +27,22 @@ final class ImportOutcome
         // Le numéro de ligne affiché est celui du tableur, pas de l'index de
         // tableau : un décalage d'une unité ici ferait chercher au mauvais endroit.
         $this->errors[] = $line > 0 ? 'Ligne '.$line.' : '.$message : $message;
+    }
+
+    /**
+     * Un énoncé qui contenait plusieurs « Question N » a été découpé.
+     *
+     * L'enseignant doit le savoir : une ligne qui devient cinq questions change
+     * le barème de l'épreuve, et le découvrir après coup serait une surprise.
+     * `$created` peut être inférieur à `$detected` si un morceau a été refusé.
+     */
+    public function addSplit(int $line, int $created, int $detected): void
+    {
+        $detail = $created === $detected
+            ? 'énoncé découpé en '.$created.' questions.'
+            : 'énoncé découpé : '.$created.' question(s) sur '.$detected.' repère(s).';
+
+        $this->splits[] = $line > 0 ? 'Ligne '.$line.' : '.$detail : $detail;
     }
 
     public function hasErrors(): bool
@@ -62,6 +80,10 @@ final class ImportOutcome
 
         if ($this->ignored > 0) {
             $parts[] = $this->ignored.' ligne(s) ignorée(s)';
+        }
+
+        if ($this->splits !== []) {
+            $parts[] = count($this->splits).(count($this->splits) === 1 ? ' énoncé découpé' : ' énoncés découpés');
         }
 
         if ($this->hasErrors()) {

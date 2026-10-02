@@ -119,6 +119,22 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     // deviner le format, et l'import se fait au moment où il choisit le type.
     Route::get('quizzes/questions/template', [QuizController::class, 'questionTemplate'])->name('admin.quizzes.questions.template');
     Route::post('quizzes/{quiz}/questions/import', [QuizController::class, 'importQuestions'])->whereNumber('quiz')->name('admin.quizzes.questions.import');
+    // L'import en deux temps : un aperçu qui n'écrit rien, puis une confirmation.
+    // Le découpage des cas pratiques en plusieurs questions se voit ainsi avant
+    // de peser sur l'épreuve.
+    Route::post('quizzes/{quiz}/questions/import/preview', [QuizController::class, 'previewQuestionsImport'])
+        ->whereNumber('quiz')->name('admin.quizzes.questions.import.preview');
+
+    // L'aperçu vit en base : sa page a une adresse, donc l'enseignant peut y
+    // revenir après une déconnexion ou depuis un autre appareil, sans
+    // retéléverser son fichier. Les actions de relecture y renvoient par une
+    // redirection, ce qui évite de les rejouer au rafraîchissement.
+    Route::get('quizzes/{quiz}/questions/import/{import}', [QuizController::class, 'reviewQuestionsImport'])
+        ->whereNumber('quiz')->whereNumber('import')->name('admin.quizzes.questions.import.review');
+    Route::post('quizzes/{quiz}/questions/import/{import}', [QuizController::class, 'applyQuestionsImport'])
+        ->whereNumber('quiz')->whereNumber('import')->name('admin.quizzes.questions.import.apply');
+    Route::delete('quizzes/{quiz}/questions/import/{import}', [QuizController::class, 'discardQuestionsImport'])
+        ->whereNumber('quiz')->whereNumber('import')->name('admin.quizzes.questions.import.discard');
     Route::get('quizzes/students/template', [QuizController::class, 'studentTemplate'])->name('admin.quizzes.students.template');
     Route::post('quizzes/{quiz}/students/import', [QuizController::class, 'importStudents'])->whereNumber('quiz')->name('admin.quizzes.students.import');
 

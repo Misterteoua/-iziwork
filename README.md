@@ -349,12 +349,56 @@ puis les bonnes réponses (`B`, `A C` ou `2`) et le barème.
 - Les **retours à la ligne** d'une cellule (Excel `Alt+Entrée`, paragraphe Word)
   sont conservés : un énoncé écrit en plusieurs paragraphes arrive en plusieurs
   paragraphes. Seuls les espaces de mise en page sont normalisés.
+- Un **cas pratique** qui contient plusieurs « Question 1 … Question 2 … » sur
+  une seule ligne est **découpé en autant de questions**. Le contexte écrit avant
+  la première question est recopié en tête de chacune, et le numéro d'origine est
+  retiré du texte : chaque question se lit seule, et c'est le rang dans
+  l'évaluation qui numérote. Le découpage ne se déclenche que sur des repères
+  certains — au moins deux numéros qui se suivent, en début de phrase. Une phrase
+  qui cite « la Question 1 du sujet précédent » n'est pas touchée, et une question
+  à propositions garde ses propositions telles quelles.
+
+**Rien n'est enregistré tant que l'enseignant n'a pas confirmé.** Le fichier est
+analysé, puis montré : la page d'**aperçu** affiche chaque question telle qu'elle
+sera créée (énoncés mis en forme, propositions, barème), les énoncés découpés et
+les lignes refusées. C'est le bouton « Confirmer l'import » qui écrit. Le même
+écran montre donc, avant de peser sur l'épreuve, qu'un cas pratique devient trois
+questions — et non l'inverse.
+
+L'aperçu ne vit pas seulement à l'écran : il est **enregistré côté serveur**. Un
+enseignant peut fermer son navigateur, se déconnecter, ou reprendre le travail
+depuis un autre appareil — la page de l'évaluation annonce l'import en attente, et
+un lien le rouvre tel qu'il l'avait laissé, sans retéléverser le fichier. Un
+nouvel import du même enseignant sur la même évaluation **remplace** le précédent
+(un seul aperçu en attente à la fois), et un aperçu jamais confirmé est effacé au
+bout d'**une semaine**. Rien de tout cela n'écrit de question : seul « Confirmer
+l'import » enregistre.
+
+Et ce que le découpage a proposé, l'enseignant le **corrige sur place** :
+
+- **Retirer cette question** écarte une question du lot (une ligne mal comprise
+  qui ne mérite pas d'être notée) ;
+- **Fusionner avec la précédente** recoud deux morceaux d'un même énoncé découpé —
+  le contexte recopié n'est pas répété à la jonction, et les repères se
+  renumérotent ;
+- **Scinder à la coupure** sépare une question en deux : on insère une ligne ne
+  contenant que trois tirets (`---`, ou `***`, ou `___`) à l'endroit voulu, et la
+  coupure disparaît du texte. La séparation joue aussi sur une question qu'aucun
+  « Question N » ne distinguait, et les deux morceaux restent recousables ;
+- **Modifier l'énoncé** déplace la limite : on coupe la fin d'une question et on
+  la colle au début de la suivante.
+
+Tout cela se fait dans un seul formulaire : chaque clic renvoie l'état complet des
+énoncés, donc aucune retouche n'est perdue par l'action voisine. Aucune de ces
+actions n'écrit quoi que ce soit — seul « Confirmer l'import » enregistre, et une
+question retouchée qui ne passerait plus le contrôle revient à l'écran avec son
+motif, sans rien inscrire.
 
 ### Mise en forme des textes longs
 
 Un texte n'est jamais affiché tel qu'il a été stocké : il est **mis en forme à
 l'affichage**, partout où il apparaît — page des questions, carte du candidat,
-écran de correction, bulletin PDF. Cela vaut pour les trois textes longs d'une
+écran de correction, bulletin PDF. Cela vaut pour les textes longs d'une
 évaluation :
 
 - l'**énoncé** de la question,
@@ -362,7 +406,11 @@ l'affichage**, partout où il apparaît — page des questions, carte du candida
   le lit, jamais l'étudiant), à l'écran de correction et sur la page des
   questions,
 - la **copie rendue** par l'étudiant, à la correction, sur son bulletin et dans
-  le récapitulatif PDF.
+  le récapitulatif PDF,
+- l'**appréciation** du correcteur, à l'écran de correction (le commentaire
+  retenu après une reprise par l'administration, et le commentaire précédent au
+  journal de la note) comme sur le bulletin de l'étudiant et dans son
+  récapitulatif PDF.
 
 Partout, les paragraphes se séparent, les retours à la ligne se voient, et les
 énumérations deviennent de vraies listes, même lorsque l'import les avait collées
@@ -393,7 +441,10 @@ Ceci vaut aussi pour la copie d'un candidat, qui reste du texte : ce qu'il a éc
 décide de sa mise en forme, mais rien de ce qu'il écrit ne peut injecter de balise
 dans la page — ni dans celle du correcteur, ni dans son bulletin.
 
-L'**appréciation** du correcteur reste affichée telle qu'elle a été saisie.
+Une appréciation écrite en plusieurs lignes, ou avec ses propres énumérations,
+s'affiche donc comme l'énoncé qu'elle commente — pour le correcteur pendant la
+correction comme pour l'étudiant qui la découvre une fois sa copie entièrement
+corrigée. Le texte stocké, lui, reste exactement ce que le correcteur a tapé.
 - Word est accepté sous les deux formes habituelles : un tableau (une ligne par
   question) ou un paragraphe par question, propositions séparées par `|`.
 - Les anciens formats `.xls` et `.doc` sont refusés avec un message qui dit quoi

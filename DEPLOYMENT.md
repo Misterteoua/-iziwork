@@ -290,6 +290,78 @@ jouées.
 > Rien à configurer : extraction de l'archive puis `/update` suffisent. Les
 > questions déjà présentes sont mises en forme **sans réimport**.
 
+> **Appréciations mises en forme (mise à jour du 01/10).** **Aucune migration**,
+> rien à configurer : extraction de l'archive puis `/update` suffisent. Même
+> règle que ci-dessus, étendue à l'**appréciation du correcteur** : sur l'écran
+> de correction (le commentaire retenu après une reprise par l'administration, le
+> commentaire précédent au journal de la note) comme sur le bulletin de
+> l'étudiant et dans son récapitulatif PDF, une appréciation écrite en plusieurs
+> lignes ou avec ses propres énumérations se lit comme un énoncé.
+>
+> Le texte stocké reste **identique au caractère près**, et l'appréciation reste
+> soumise à la règle de publication : l'étudiant ne la découvre qu'une fois sa
+> copie entièrement corrigée.
+
+> **Aperçu d'import conservé en base (mise à jour du 01/10).** **Une seule**
+> migration, purement additive :
+> `2026_10_01_000002_create_question_imports_table`. Elle crée la table
+> `question_imports` — aucune colonne modifiée, aucun index supprimé, aucune
+> donnée réécrite. Nommée d'après son effet, elle est reconnue par la
+> réconciliation de `/update` : sur une installation qui l'a déjà, la table est
+> constatée au lieu de faire échouer la mise à jour.
+>
+> Ce que ça corrige : un aperçu d'import ne vivait que le temps d'une **session**.
+> Une déconnexion, une fermeture de navigateur ou un autre poste, et l'analyse
+> était perdue — il fallait retéléverser le fichier et refaire sa relecture. Le
+> jeu analysé (découpages, recousures et retouches compris) est désormais gardé en
+> base, une ligne par import en attente, avec sa page de relecture à **adresse
+> stable** : l'enseignant la retrouve après s'être reconnecté, ou depuis un autre
+> appareil, sans repartir du fichier.
+>
+> Un seul aperçu en attente par enseignant et par évaluation : un nouvel import
+> remplace le précédent. Chaque aperçu appartient à son auteur — un autre
+> administrateur ne le voit ni ne l'ouvre (404) — et un aperçu jamais confirmé est
+> **purgé au bout de 7 jours**, à la première consultation comme à chaque nouvel
+> import. La table suit la suppression de l'évaluation (clé étrangère en cascade).
+> Aucun fichier n'est déposé sur le disque, `storage/` n'a pas de dossier à créer,
+> et rien à effacer à la main.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent. Les
+> aperçus en attente au moment de la mise à jour sont simplement repris par la
+> nouvelle version ; un aperçu expiré se signale par « Cet aperçu a expiré ».
+
+> **Import de questions en deux temps, avec découpage des cas pratiques (mise à
+> jour du 01/10).** **Aucune migration** : rien ne change dans la base, aucune
+> donnée n'est réécrite. L'import ne s'exécute plus au clic : le fichier est
+> d'abord **analysé** et montré — questions, énoncés mis en forme, énoncés
+> découpés, lignes refusées — puis un bouton « Confirmer l'import » écrit.
+> Rien n'est enregistré tant que l'enseignant n'a pas confirmé.
+>
+> Un énoncé ouvert qui contient plusieurs « Question 1 … Question 2 … » est
+> découpé en autant de questions : le contexte écrit avant la première est
+> recopié en tête de chacune, et le numéro d'origine retiré du texte.
+>
+> Sur l'écran d'aperçu, l'enseignant **corrige le découpage** avant de valider :
+> **retirer** une question, **recoudre** deux morceaux d'un même énoncé (le
+> contexte n'est pas répété à la jonction, et les repères se renumérotent),
+> **scinder** une question en deux — il insère une ligne de coupure (« --- »,
+> « *** » ou « ___ » seuls sur leur ligne) à l'endroit voulu, et la coupure
+> disparaît du texte ; cela marche aussi sur une question qu'aucun « Question N »
+> ne distinguait, et les deux morceaux restent recousables — ou **modifier
+> l'énoncé** pour déplacer la limite. Tout tient dans un seul formulaire, donc
+> aucune retouche n'est perdue par l'action voisine ; aucune de ces actions
+> n'écrit, seul « Confirmer l'import » enregistre.
+>
+> L'analyse est gardée en base le temps de la relecture (voir l'encadré
+> « Aperçu d'import conservé en base ») : l'aperçu survit à une déconnexion et se
+> retrouve depuis un autre appareil. Aucun fichier n'est déposé sur le disque,
+> `storage/` n'a pas de dossier à créer, et rien à effacer. Une retouche invalide
+> revient à l'écran avec son motif sans rien inscrire.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent. L'import
+> direct (POST d'un fichier à `.../questions/import`) continue de fonctionner
+> exactement comme avant — seul l'écran de l'administration passe par l'aperçu.
+
 > **Énoncés de questions longs (mise à jour du 01/10).** **Une seule** migration,
 > `2026_10_01_000001_widen_field_label_on_form_fields_table` : la colonne
 > `form_fields.field_label` passe de `VARCHAR(255)` à `TEXT`. Sur MySQL c'est un

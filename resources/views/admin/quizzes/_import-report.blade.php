@@ -10,6 +10,14 @@
 <div class="mt-4 rounded-xl border px-4 py-3 text-sm {{ $report['errors'] === [] ? 'bg-emerald-50 border-emerald-200/70 text-emerald-800' : 'bg-amber-50 border-amber-200/70 text-amber-900' }}" role="status">
     <p class="font-medium">{{ $report['summary'] }}</p>
 
+    @if(($report['splits'] ?? []) !== [])
+    <ul class="mt-2 space-y-1 text-xs">
+        @foreach($report['splits'] as $split)
+        <li>{{ $split }}</li>
+        @endforeach
+    </ul>
+    @endif
+
     @if($report['errors'] !== [])
     <ul class="mt-2 space-y-1 text-xs">
         @foreach($report['errors'] as $error)

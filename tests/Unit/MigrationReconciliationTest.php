@@ -69,6 +69,18 @@ class MigrationReconciliationTest extends TestCase
         );
     }
 
+    public function test_the_question_imports_table_migration_is_satisfied_when_the_table_exists(): void
+    {
+        // La table est créée par une migration additive : sur une installation
+        // qui l'a déjà, sa présence suffit à la reconnaître au lieu de rejouer
+        // un « table already exists ».
+        $this->forget('2026_10_01_000002_create_question_imports_table');
+
+        $this->assertTrue(
+            $this->reconciliation()->isSatisfied('2026_10_01_000002_create_question_imports_table')
+        );
+    }
+
     public function test_a_widen_column_migration_is_not_satisfied_when_the_column_is_still_short(): void
     {
         // `forms.title` reste un VARCHAR : un élargissement annoncé sur une

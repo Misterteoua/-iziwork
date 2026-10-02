@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
+use App\Models\QuestionImport;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
 use App\Models\ShortLink;
 use App\Support\Import\ImportException;
+use App\Support\Import\ImportOutcome;
 use App\Support\Import\QuestionSheet;
+use App\Support\Import\QuestionSplitter;
 use App\Support\Import\QuizTemplate;
 use App\Support\Import\StudentRoster;
 use App\Support\Import\TabularFile;
@@ -135,7 +138,7 @@ class QuizController extends Controller
             ->with('success', 'Évaluation créée. Ajoutez maintenant vos questions.');
     }
 
-    public function show(Form $quiz)
+    public function show(Request $request, Form $quiz)
     {
         $this->assertQuiz($quiz);
 
@@ -148,7 +151,12 @@ class QuizController extends Controller
         // le retrouver identique.
         $shortLink = ShortLink::forQuiz($quiz);
 
-        return view('admin.quizzes.show', compact('quiz', 'questions', 'attempts', 'shortLink'));
+        // Un import en attente de relecture est annoncé ici : c'est le seul
+        // endroit d'où un enseignant qui revient — après une déconnexion, depuis
+        // un autre poste — peut le retrouver.
+        $pendingImport = QuestionImport::pendingFor($quiz, $request->session()->get('admin_user.id'));
+
+        return view('admin.quizzes.show', compact('quiz', 'questions', 'attempts', 'shortLink', 'pendingImport'));
     }
 
     public function updateSettings(Request $request, Form $quiz)
@@ -298,6 +306,10 @@ class QuizController extends Controller
      * Les lignes valides sont créées, les autres sont listées avec leur numéro
      * et leur motif : importer quarante-sept questions sur cinquante en silence
      * se découvrirait le jour de l'épreuve.
+     *
+     * L'écran d'administration passe par l'aperçu ({@see previewQuestionsImport()}),
+     * mais cette route reste l'écriture directe : c'est elle que la confirmation
+     * utilise, et un POST direct au fichier s'importe exactement comme avant.
      */
     public function importQuestions(Request $request, Form $quiz)
     {
@@ -309,23 +321,197 @@ class QuizController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
-        try {
-            DB::transaction(function () use ($quiz, $questions): void {
-                $order = (int) $quiz->quizQuestions()->max('order');
+        return $this->writeQuestions($quiz, $questions, $outcome);
+    }
 
-                foreach ($questions as $question) {
-                    $quiz->fields()->create(QuizQuestionData::attributes($question, ++$order));
-                }
-            });
-        } catch (QueryException $e) {
-            return $this->importWriteFailed($e);
+    /**
+     * Étape 1 de l'import : l'analyse, qui n'écrit aucune question.
+     *
+     * Le fichier est analysé et ses questions sont montrées telles qu'elles
+     * seront créées — découpages compris. Rien n'est enregistré tant que
+     * l'enseignant n'a pas confirmé : un fichier de cinquante questions qui
+     * arrive de travers se voit avant de peser sur l'épreuve.
+     *
+     * Le jeu analysé est gardé en base ({@see QuestionImport}), pas en session :
+     * l'enseignant peut fermer son navigateur, se déconnecter, ou reprendre
+     * depuis un autre poste — son aperçu l'attend.
+     */
+    public function previewQuestionsImport(Request $request, Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        try {
+            [$questions, $outcome] = QuestionSheet::parse($this->uploadedRows($request));
+        } catch (ImportException $e) {
+            return back()->with('error', $e->getMessage());
         }
 
-        return back()->with('import_questions', [
-            'summary' => $outcome->summary('question importée', 'questions importées'),
-            'errors' => $outcome->shownErrors(),
-            'hidden' => $outcome->hiddenErrorsCount(),
+        $adminId = $request->session()->get('admin_user.id');
+
+        QuestionImport::sweep();
+
+        // Un seul aperçu en attente par enseignant et par évaluation : le
+        // nouveau remplace l'ancien, sinon la page de l'évaluation proposerait
+        // deux reprises pour le même travail.
+        QuestionImport::query()
+            ->where('form_id', $quiz->getKey())
+            ->where('admin_user_id', $adminId)
+            ->delete();
+
+        $import = QuestionImport::create([
+            'form_id' => $quiz->getKey(),
+            'admin_user_id' => $adminId,
+            'questions' => $questions,
+            'errors' => $outcome->errors,
+            'ignored' => $outcome->ignored,
         ]);
+
+        return $this->questionImportPreview($import);
+    }
+
+    /**
+     * La page de relecture, atteignable directement : c'est elle qui rend
+     * l'aperçu survivable. Après une déconnexion ou depuis un autre appareil,
+     * l'enseignant rouvre ce lien et retrouve son import en attente, sans
+     * retéléverser le fichier.
+     */
+    public function reviewQuestionsImport(Request $request, Form $quiz, QuestionImport $import)
+    {
+        if ($redirect = $this->unusableImport($request, $quiz, $import)) {
+            return $redirect;
+        }
+
+        // Un refus de relecture traverse la redirection : il revient ici, à la
+        // place de la question qu'il concerne.
+        return $this->questionImportPreview(
+            $import,
+            (array) $request->session()->pull('import_question_errors', [])
+        );
+    }
+
+    /**
+     * La relecture : ranger, puis confirmer.
+     *
+     * Quatre actions, un seul formulaire : les énoncés modifiés dans l'aperçu
+     * voyagent avec le clic, donc aucun n'est perdu en chemin — et ils sont
+     * enregistrés dans l'aperçu, qui reste juste même après un aller-retour.
+     *   - `confirm` : chaque question repasse par les règles de la saisie
+     *     manuelle, et c'est la seule action qui écrit ;
+     *   - `merge:N` : recoud la question N à la précédente, quand les deux
+     *     viennent du même énoncé découpé ;
+     *   - `split:N` : coupe la question N aux lignes de coupure qu'elle contient ;
+     *   - `remove:N` : écarte la question N.
+     */
+    public function applyQuestionsImport(Request $request, Form $quiz, QuestionImport $import)
+    {
+        if ($redirect = $this->unusableImport($request, $quiz, $import)) {
+            return $redirect;
+        }
+
+        $questions = $this->editedQuestions($import->questionSet(), $request->input('questions', []));
+        $errors = (array) ($import->errors ?? []);
+        $ignored = (int) $import->ignored;
+        $action = (string) $request->input('action', 'confirm');
+
+        // Une relecture qui range, sans écrire de question : le jeu mis à jour
+        // est enregistré, et la page de relecture se recharge — un rafraîchissement
+        // ne rejoue donc pas l'action une seconde fois.
+        if (preg_match('/^(merge|remove|split):(\d+)$/', $action, $found) === 1) {
+            $index = (int) $found[2];
+            $before = count($questions);
+
+            $questions = match ($found[1]) {
+                'remove' => $this->removeQuestion($questions, $index),
+                'split' => $this->splitQuestion($questions, $index),
+                default => $this->mergeSplit($questions, $index),
+            };
+
+            $import->update(['questions' => $this->renumberSplits($questions)]);
+
+            // Rien n'a bougé : le clic visait une question sans coupure. Le dire
+            // vaut mieux qu'un écran qui semble n'avoir rien entendu.
+            if ($found[1] === 'split' && $import->questionCount() === $before) {
+                $request->session()->flash('import_question_errors', [
+                    $index => 'Aucune coupure trouvée : insérez une ligne « --- » à l\'endroit de la scission.',
+                ]);
+            }
+
+            return redirect()->route('admin.quizzes.questions.import.review', [$quiz, $import]);
+        }
+
+        // Confirmation : une retouche invalide revient à l'écran, elle n'est pas
+        // écrite — le même contrôle que la saisie manuelle décide.
+        $import->update(['questions' => $questions]);
+
+        $normalized = [];
+        $questionErrors = [];
+
+        foreach ($questions as $index => $question) {
+            try {
+                $normalized[] = $this->normalizeSubmittedQuestion($question);
+            } catch (ValidationException $e) {
+                $questionErrors[$index] = (string) (collect($e->errors())->flatten()->first() ?? 'question invalide.');
+            }
+        }
+
+        if ($questionErrors !== []) {
+            $request->session()->flash('import_question_errors', $questionErrors);
+
+            return redirect()->route('admin.quizzes.questions.import.review', [$quiz, $import]);
+        }
+
+        if ($normalized === []) {
+            return redirect()->route('admin.quizzes.show', $quiz)
+                ->with('error', "Aucune question à importer : relancez l'import du fichier.");
+        }
+
+        // L'aperçu a fait son travail : il disparaît, donc il ne peut pas être
+        // confirmé deux fois, ni rester proposé sur la page de l'évaluation.
+        $import->delete();
+
+        return $this->writeQuestions($quiz, $normalized, $this->outcomeFor($normalized, $errors, $ignored));
+    }
+
+    /**
+     * Abandonner un aperçu en attente, sans rien importer.
+     */
+    public function discardQuestionsImport(Request $request, Form $quiz, QuestionImport $import): RedirectResponse
+    {
+        if ($redirect = $this->unusableImport($request, $quiz, $import)) {
+            return $redirect;
+        }
+
+        $import->delete();
+
+        return redirect()->route('admin.quizzes.show', $quiz)
+            ->with('success', "L'aperçu d'import a été abandonné : aucune question n'a été ajoutée.");
+    }
+
+    /**
+     * L'aperçu peut-il être ouvert par cet enseignant, sur cette évaluation ?
+     *
+     * Deux gardes : l'aperçu appartient à une évaluation et à un auteur, et il
+     * ne survit pas à une semaine — au-delà, le fichier importé a probablement
+     * changé, et le reprendre écrirait des questions que personne n'a relues.
+     */
+    private function unusableImport(Request $request, Form $quiz, QuestionImport $import): ?RedirectResponse
+    {
+        $this->assertQuiz($quiz);
+
+        abort_unless(
+            $import->form_id === $quiz->getKey()
+            && $import->admin_user_id === $request->session()->get('admin_user.id'),
+            404
+        );
+
+        if (! $import->isExpired()) {
+            return null;
+        }
+
+        $import->delete();
+
+        return redirect()->route('admin.quizzes.show', $quiz)
+            ->with('error', "Cet aperçu a expiré : relancez l'import du fichier.");
     }
 
     /**
@@ -871,6 +1057,322 @@ class QuizController extends Controller
         }
 
         return TabularFile::rows((string) $upload->getRealPath(), (string) $upload->getClientOriginalName());
+    }
+
+    /**
+     * Crée les questions retenues et laisse le compte rendu à l'écran.
+     *
+     * Écriture partagée par l'import direct et par la confirmation de l'aperçu :
+     * une seule transaction, donc deux chemins qui ne peuvent pas diverger.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     */
+    private function writeQuestions(Form $quiz, array $questions, ImportOutcome $outcome): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($quiz, $questions): void {
+                $order = (int) $quiz->quizQuestions()->max('order');
+
+                foreach ($questions as $question) {
+                    $quiz->fields()->create(QuizQuestionData::attributes($question, ++$order));
+                }
+            });
+        } catch (QueryException $e) {
+            return $this->importWriteFailed($e);
+        }
+
+        // Direction la page de l'évaluation : c'est là que le compte rendu
+        // s'affiche, et l'aperçu d'import n'existe plus.
+        return redirect()->route('admin.quizzes.show', $quiz)->with('import_questions', [
+            'summary' => $outcome->summary('question importée', 'questions importées'),
+            'errors' => $outcome->shownErrors(),
+            'hidden' => $outcome->hiddenErrorsCount(),
+            'splits' => $outcome->splits,
+        ]);
+    }
+
+    /**
+     * La page d'aperçu, à partir du jeu de questions en cours de relecture.
+     *
+     * Le compte rendu de l'analyse (lignes refusées, découpages) vient de
+     * l'import, pas de la relecture : il ne change pas parce qu'on a retiré ou
+     * recousu une question. Les découpages, eux, sont recomptés sur le jeu en
+     * cours — sinon un énoncé recousu resterait annoncé « découpé en 3 ».
+     *
+     * @param  array<int, string>  $questionErrors  messages par question, après une retouche refusée
+     */
+    private function questionImportPreview(QuestionImport $import, array $questionErrors = [])
+    {
+        $questions = $import->questionSet();
+        $splits = [];
+
+        foreach ($this->splitCounts($questions) as $line => $count) {
+            if ($count >= 2) {
+                $splits[] = 'Ligne '.$line.' : énoncé découpé en '.$count.' questions.';
+            }
+        }
+
+        return view('admin.quizzes.import-preview', [
+            'quiz' => $import->form,
+            'import' => $import,
+            'questions' => $questions,
+            'outcome' => new ImportOutcome(count($questions), (array) ($import->errors ?? []), (int) $import->ignored, $splits),
+            'questionErrors' => $questionErrors,
+        ]);
+    }
+
+    /**
+     * Applique les énoncés modifiés dans l'aperçu au jeu gardé en session.
+     *
+     * Seul l'énoncé est modifiable : les propositions, la bonne réponse et le
+     * type ne le sont pas, et restent donc ceux de l'analyse. Un formulaire
+     * vide (réponse d'un ancien onglet) laisse le jeu tel quel.
+     *
+     * @param  array<int, array<string, mixed>>  $stored
+     * @param  mixed  $posted
+     * @return array<int, array<string, mixed>>
+     */
+    private function editedQuestions(array $stored, $posted): array
+    {
+        if (! is_array($posted) || $posted === []) {
+            return $stored;
+        }
+
+        $edited = [];
+
+        // Les clés du formulaire sont les rangs affichés : on s'en sert pour
+        // retrouver la question, jamais pour deviner un ordre.
+        foreach ($posted as $index => $row) {
+            $question = $stored[(int) $index] ?? null;
+
+            if ($question === null) {
+                continue;
+            }
+
+            if (is_array($row)) {
+                $question['field_label'] = (string) ($row['label'] ?? '');
+            }
+
+            $edited[] = $question;
+        }
+
+        return $edited;
+    }
+
+    /**
+     * Écarte une question de l'import.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<int, array<string, mixed>>
+     */
+    private function removeQuestion(array $questions, int $index): array
+    {
+        if (! array_key_exists($index, $questions)) {
+            return $questions;
+        }
+
+        unset($questions[$index]);
+
+        return array_values($questions);
+    }
+
+    /**
+     * Recoud la question N à la précédente.
+     *
+     * Seuls deux morceaux d'un même énoncé se recousent : le contexte recopié
+     * est retiré de la seconde avant la jonction, sinon il apparaîtrait deux
+     * fois. Une fusion entre deux questions sans rapport est ignorée.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<int, array<string, mixed>>
+     */
+    private function mergeSplit(array $questions, int $index): array
+    {
+        if ($index < 1 || ! isset($questions[$index - 1], $questions[$index])) {
+            return $questions;
+        }
+
+        $previous = $questions[$index - 1];
+        $current = $questions[$index];
+        $group = $this->originOf($previous);
+
+        if ($group === null || $group !== $this->originOf($current)) {
+            return $questions;
+        }
+
+        $previous['field_label'] = QuestionSplitter::join((string) $previous['field_label'], (string) $current['field_label']);
+
+        $questions[$index - 1] = $previous;
+        unset($questions[$index]);
+
+        return array_values($questions);
+    }
+
+    /**
+     * Scinde la question N aux lignes de coupure qu'elle contient.
+     *
+     * Les morceaux gardent l'origine de leur question d'origine : scinder une
+     * question déjà découpée laisse donc ses morceaux recousables entre eux, et
+     * ne fabrique pas un énoncé sans parent. Une question sans coupure est
+     * laissée telle quelle — le bouton n'a rien à couper.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<int, array<string, mixed>>
+     */
+    private function splitQuestion(array $questions, int $index): array
+    {
+        if (! isset($questions[$index])) {
+            return $questions;
+        }
+
+        $question = $questions[$index];
+        $parts = QuestionSplitter::cut((string) ($question['field_label'] ?? ''));
+
+        if ($parts === []) {
+            return $questions;
+        }
+
+        $group = $this->originOf($question) ?? 'manuel:'.Str::random(8);
+        $pieces = [];
+
+        foreach ($parts as $part) {
+            $piece = $question;
+            $piece['field_label'] = $part;
+            $piece['group'] = $group;
+            $pieces[] = $piece;
+        }
+
+        array_splice($questions, $index, 1, $pieces);
+
+        return array_values($questions);
+    }
+
+    /**
+     * L'origine d'une question : le groupe dont elle est un morceau, ou null.
+     *
+     * `group` couvre les découpages automatiques comme manuels ; `split_line`
+     * reste lu pour les jeux enregistrés avant que le groupe existe.
+     *
+     * @param  array<string, mixed>  $question
+     */
+    private function originOf(array $question): ?string
+    {
+        if (($question['group'] ?? null) !== null) {
+            return (string) $question['group'];
+        }
+
+        return ($question['split_line'] ?? null) !== null ? 'ligne:'.$question['split_line'] : null;
+    }
+
+    /**
+     * Renumérote les morceaux d'un même énoncé, et retire le repère quand il
+     * n'en reste qu'un : une question seule n'est plus « 1/3 ».
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<int, array<string, mixed>>
+     */
+    private function renumberSplits(array $questions): array
+    {
+        $groups = [];
+
+        foreach ($questions as $index => $question) {
+            $group = $this->originOf($question);
+
+            if ($group !== null) {
+                $groups[$group][] = $index;
+            }
+        }
+
+        foreach ($groups as $indexes) {
+            if (count($indexes) < 2) {
+                foreach ($indexes as $index) {
+                    unset($questions[$index]['group'], $questions[$index]['split_line'], $questions[$index]['split_index'], $questions[$index]['split_total']);
+                }
+
+                continue;
+            }
+
+            foreach ($indexes as $position => $index) {
+                $questions[$index]['split_index'] = $position + 1;
+                $questions[$index]['split_total'] = count($indexes);
+            }
+        }
+
+        return $questions;
+    }
+
+    /**
+     * Repasse une question relue par les règles de la saisie manuelle.
+     *
+     * @param  array<string, mixed>  $question
+     * @return array<string, mixed>
+     */
+    private function normalizeSubmittedQuestion(array $question): array
+    {
+        $label = (string) ($question['field_label'] ?? '');
+        $points = (float) ($question['points'] ?? 1);
+        $type = (string) ($question['field_type'] ?? '');
+
+        $meta = array_filter([
+            'group' => $question['group'] ?? null,
+            'split_line' => $question['split_line'] ?? null,
+            'split_index' => $question['split_index'] ?? null,
+            'split_total' => $question['split_total'] ?? null,
+        ], static fn ($value): bool => $value !== null);
+
+        if ($type === FormField::OPEN_TYPE) {
+            return QuizQuestionData::normalizeOpen($label, $points) + $meta;
+        }
+
+        $options = array_map('strval', (array) ($question['options'] ?? []));
+        $correct = array_map('intval', (array) ($question['correct_answer'] ?? []));
+        $declared = in_array($type, FormField::QUESTION_TYPES, true) ? $type : null;
+
+        return QuizQuestionData::normalize($label, $options, $correct, $points, $declared) + $meta;
+    }
+
+    /**
+     * Le compte rendu de l'import, à partir de ce qui a été écrit.
+     *
+     * Les lignes refusées viennent de l'analyse du fichier (elles ne sont pas
+     * réécrites ici) ; les découpages sont recomptés sur le jeu final, pour
+     * qu'une fusion ne soit pas annoncée comme un découpage.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @param  array<int, string>  $errors
+     */
+    private function outcomeFor(array $questions, array $errors, int $ignored): ImportOutcome
+    {
+        $outcome = new ImportOutcome(count($questions), $errors, $ignored);
+
+        foreach ($this->splitCounts($questions) as $line => $count) {
+            if ($count >= 2) {
+                $outcome->addSplit($line, $count, $count);
+            }
+        }
+
+        return $outcome;
+    }
+
+    /**
+     * Combien de questions restent de chaque énoncé découpé, par ligne d'origine.
+     *
+     * @param  array<int, array<string, mixed>>  $questions
+     * @return array<int, int>
+     */
+    private function splitCounts(array $questions): array
+    {
+        $counts = [];
+
+        foreach ($questions as $question) {
+            $line = $question['split_line'] ?? null;
+
+            if ($line !== null) {
+                $counts[$line] = ($counts[$line] ?? 0) + 1;
+            }
+        }
+
+        return $counts;
     }
 
     /**

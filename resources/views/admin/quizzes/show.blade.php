@@ -333,6 +333,37 @@
             supplémentaire : une ligne refusée est signalée avec son numéro et son motif.
         </p>
 
+        {{-- Un import analysé mais non confirmé attend son auteur. C'est le seul
+             endroit qui le retrouve après une déconnexion ou depuis un autre
+             appareil : l'aperçu est enregistré, pas seulement affiché. --}}
+        @isset($pendingImport)
+        <div class="mt-5 rounded-xl border border-brand-200/70 bg-brand-50/70 px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+             role="status">
+            <div class="min-w-0">
+                <p class="text-sm font-semibold text-brand-900">Un import attend votre relecture</p>
+                <p class="mt-0.5 text-xs text-brand-800">
+                    {{ $pendingImport->questionCount() }} question(s) analysée(s) mais pas encore importée(s).
+                    Vous pouvez reprendre la vérification, ou l'abandonner.
+                </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                <a href="{{ route('admin.quizzes.questions.import.review', [$quiz, $pendingImport]) }}"
+                   class="inline-flex items-center justify-center px-4 py-2 border border-transparent text-xs font-semibold rounded-lg text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
+                    Reprendre la vérification
+                </a>
+                <form method="POST" action="{{ route('admin.quizzes.questions.import.discard', [$quiz, $pendingImport]) }}"
+                      onsubmit="return confirm('Abandonner cet aperçu ? Aucune question ne sera ajoutée.');">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit"
+                            class="inline-flex items-center justify-center px-4 py-2 border border-red-200 text-xs font-semibold rounded-lg text-red-700 hover:bg-red-50 transition-colors duration-150">
+                        Abandonner
+                    </button>
+                </form>
+            </div>
+        </div>
+        @endisset
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
             {{-- Questions --}}
             <div class="rounded-xl border border-slate-200/70 p-5">
@@ -341,7 +372,8 @@
                     Une ligne par question : l'énoncé, les propositions A à F, la ou les bonnes réponses
                     (par exemple <span class="font-mono">B</span>, <span class="font-mono">A C</span> ou
                     <span class="font-mono">2</span>), puis le barème. Le type de question se déduit du nombre
-                    de bonnes réponses.
+                    de bonnes réponses. Un énoncé qui contient plusieurs « Question 1 … Question 2 … » est
+                    découpé en autant de questions, chacune précédée du même contexte.
                 </p>
 
                 <div class="flex flex-wrap items-center gap-3 mt-4">
@@ -351,16 +383,20 @@
                     </a>
                 </div>
 
-                <form method="POST" action="{{ route('admin.quizzes.questions.import', $quiz) }}" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
+                <form method="POST" action="{{ route('admin.quizzes.questions.import.preview', $quiz) }}" enctype="multipart/form-data" class="mt-4 flex flex-wrap items-center gap-3">
                     @csrf
                     <input type="file" name="file" required accept=".xlsx,.docx,.csv,.txt"
                            aria-label="Fichier des questions"
                            class="block w-full text-xs text-slate-600 file:mr-3 file:px-3.5 file:py-2 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-slate-100 file:text-slate-700 hover:file:bg-slate-200">
                     <button type="submit"
                             class="inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
-                        Importer les questions
+                        Vérifier avant d'importer
                     </button>
                 </form>
+                <p class="mt-2 text-xs text-slate-500">
+                    Rien n'est enregistré à cette étape : les questions détectées s'affichent d'abord,
+                    et l'import n'a lieu qu'une fois confirmé.
+                </p>
 
                 @include('admin.quizzes._import-report', ['key' => 'import_questions'])
             </div>
