@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\FormField;
+use App\Models\Grader;
 use App\Models\QuizAttempt;
 use App\Models\ShortLink;
 use App\Support\Qr\QrPng;
@@ -278,6 +279,151 @@ class QuestionFormattingTest extends TestCase
         $this->assertStringNotContainsString('(guide)', $html);
     }
 
+    // ------------------------------------------------------------ Appréciations
+
+    /**
+     * L'appréciation du correcteur : le même texte qu'un énoncé, et souvent les
+     * mêmes énumérations — elle doit se lire pareil.
+     */
+    private function appreciation(): string
+    {
+        return "Ce qui manque :\n\na) La revue des documents\nb) La codification incohérente";
+    }
+
+    private function grade(FormField $question, QuizAttempt $attempt, string $comment, string $points = '2'): void
+    {
+        $answer = $attempt->answers()->where('form_field_id', $question->id)->firstOrFail();
+
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $attempt]), [
+            'points' => [$answer->id => $points],
+            'comments' => [$answer->id => $comment],
+        ])->assertSessionHasNoErrors();
+    }
+
+    public function test_l_appreciation_est_mise_en_forme_sur_le_bulletin(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        $this->grade($question, $attempt, $this->appreciation());
+
+        // La correction ne se publie qu'une fois l'épreuve fermée.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $response = $this->get(route('quiz.result', $this->quiz->token));
+
+        $response->assertOk();
+        $response->assertSee('Appréciation');
+        $response->assertSee(
+            '<ol type="a" class="qt-list qt-alpha"><li>La revue des documents</li><li>La codification incohérente</li></ol>',
+            false
+        );
+    }
+
+    public function test_l_appreciation_est_mise_en_forme_dans_le_recapitulatif_pdf(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        $this->grade($question, $attempt, $this->appreciation());
+
+        $attempt = $attempt->refresh()->load('answers');
+        $followLink = ShortLink::forAttempt($this->quiz, $attempt);
+
+        $html = view('student.quiz.recap-pdf', [
+            'quiz' => $this->quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
+            'pending' => 0,
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
+        ])->render();
+
+        $this->assertStringContainsString('Appréciation :', $html);
+        $this->assertStringContainsString(
+            '<ol type="a" class="qt-list qt-alpha"><li>La revue des documents</li><li>La codification incohérente</li></ol>',
+            $html
+        );
+
+        // Et le document se fabrique toujours : dompdf dessine la liste de
+        // l'appréciation comme celle d'une copie.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $this->get(route('quiz.recap.pdf', [$this->quiz->token, $attempt->reference]))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+    }
+
+    public function test_le_commentaire_precedent_est_mis_en_forme_a_la_correction(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        // Une première appréciation, puis une reprise : l'ancienne est archivée
+        // au journal, et doit se lire aussi bien que la nouvelle.
+        $this->grade($question, $attempt, $this->appreciation());
+        $this->grade($question, $attempt, 'Finalement, seule la revue des documents manquait.');
+
+        $response = $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]));
+
+        $response->assertOk();
+        $response->assertSee('Commentaire précédent :');
+        $response->assertSee(
+            '<ol type="a" class="qt-list qt-alpha"><li>La revue des documents</li><li>La codification incohérente</li></ol>',
+            false
+        );
+    }
+
+    public function test_le_commentaire_retenu_est_mis_en_forme_pour_le_correcteur(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        // L'administration pose l'appréciation, puis reprend la note : la
+        // relecture rend la réponse définitive pour le correcteur, qui voit
+        // alors le commentaire retenu.
+        $this->grade($question, $attempt, $this->appreciation(), '1');
+        $this->grade($question, $attempt, $this->appreciation(), '2');
+
+        $grader = Grader::createFor('Awa Kouassi', 'awa@test.com', Carbon::now()->addDays(3), $this->admin->id);
+        $grader->forms()->attach($this->quiz->id);
+
+        $this->flushSession();
+        $this->post(route('correction.authenticate'), [
+            'code' => $grader->link_code,
+            'email' => $grader->email,
+            'reference' => $grader->reference,
+        ])->assertRedirect(route('correction.index'));
+
+        $response = $this->get(route('correction.show', $attempt));
+
+        $response->assertOk();
+        $response->assertSee('Commentaire retenu :');
+        $response->assertSee(
+            '<ol type="a" class="qt-list qt-alpha"><li>La revue des documents</li><li>La codification incohérente</li></ol>',
+            false
+        );
+    }
+
+    public function test_une_appreciation_piege_n_injecte_pas_de_html(): void
+    {
+        $question = $this->question('Expliquez la démarche documentaire.');
+        $attempt = $this->answer($question, 'La démarche documentaire.');
+
+        $this->grade($question, $attempt, "<script>alert(1)</script> puis :\n1. un\n2. deux");
+
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $response = $this->get(route('quiz.result', $this->quiz->token));
+
+        $response->assertOk();
+        $response->assertDontSee('<script>alert(1)</script>', false);
+        $response->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false);
+        $response->assertSee('<li>un</li>', false);
+    }
+
     // -------------------------------------------------------- Récapitulatif
 
     public function test_le_recapitulatif_pdf_met_l_enonce_en_forme(): void
@@ -353,9 +499,16 @@ class QuestionFormattingTest extends TestCase
 
             $this->assertStringContainsString('partials.question-text', $source, $view.' doit passer par le fragment de texte.');
 
-            // Ni l'énoncé, ni le guide, ni la copie ne s'affichent en brut :
-            // c'est le même formateur qui les met en forme, et il échappe.
-            foreach (['{{ $question->field_label }}', '{{ $question->expected_answer }}', '{{ $answer->answer_text }}'] as $brut) {
+            // Ni l'énoncé, ni le guide, ni la copie, ni l'appréciation ne
+            // s'affichent en brut : c'est le même formateur qui les met en forme,
+            // et il échappe.
+            foreach ([
+                '{{ $question->field_label }}',
+                '{{ $question->expected_answer }}',
+                '{{ $answer->answer_text }}',
+                '{{ $answer->grader_comment }}',
+                '{{ $review->previous_comment }}',
+            ] as $brut) {
                 $this->assertStringNotContainsString($brut, $source, $view.' affiche encore du texte brut.');
             }
         }

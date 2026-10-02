@@ -132,7 +132,8 @@
                  lue comme définitive. --}}
             @if($pending === 0 && $answer?->hasComment())
             <div class="meta" style="background: #eef2ff; border-left: 3px solid #033299; padding: 6px 10px; margin-top: 4px;">
-                Appréciation : {{ $answer->grader_comment }}
+                Appréciation :
+                @include('partials.question-text', ['text' => $answer->grader_comment])
             </div>
             @endif
             @else

@@ -1,8 +1,9 @@
 {{-- Un texte d'évaluation, mis en forme : paragraphes et listes.
 
-     Servent ce fragment : l'énoncé, le guide de correction et la copie rendue
-     par l'étudiant — la même règle, les mêmes repères, une seule mise en forme
-     pour les cinq écrans. Le texte vient de la base (fichier importé, saisie à
+     Servent ce fragment : l'énoncé, le guide de correction, la copie rendue par
+     l'étudiant et l'appréciation du correcteur — la même règle, les mêmes
+     repères, une seule mise en forme pour tous les écrans. Le texte vient de la
+     base (fichier importé, saisie à
      la main, réponse du candidat) : App\Support\QuestionText l'échappe fragment
      par fragment et n'ouvre que les balises de la mise en forme (paragraphes,
      listes). Aucun HTML du texte ne traverse la vue — un texte ne peut donc pas

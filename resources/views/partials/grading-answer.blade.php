@@ -59,7 +59,8 @@
                 </p>
                 @endif
                 @if($answer->hasComment())
-                <p class="mt-2 text-xs text-slate-700 whitespace-pre-line">Commentaire retenu : {{ $answer->grader_comment }}</p>
+                <p class="mt-2 text-xs text-slate-700">Commentaire retenu :</p>
+                @include('partials.question-text', ['text' => $answer->grader_comment, 'class' => 'mt-0.5 text-xs text-slate-700'])
                 @endif
                 <p class="mt-2 text-xs text-amber-800">
                     Vous ne pouvez plus modifier cette réponse : la relecture de l'administration est définitive.
@@ -142,9 +143,8 @@
                 </p>
                 @endif
                 @if(trim((string) $review->previous_comment) !== '')
-                <p class="mt-1 text-xs text-slate-500 whitespace-pre-line">
-                    Commentaire précédent : {{ $review->previous_comment }}
-                </p>
+                <p class="mt-1 text-xs text-slate-500">Commentaire précédent :</p>
+                @include('partials.question-text', ['text' => $review->previous_comment, 'class' => 'mt-0.5 text-xs text-slate-500'])
                 @endif
             </div>
             @endif

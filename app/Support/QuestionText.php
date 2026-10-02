@@ -6,8 +6,8 @@ use Illuminate\Support\HtmlString;
 
 /**
  * Mise en forme d'un texte d'évaluation, au moment de l'affichage : l'énoncé,
- * le guide de correction et la copie rendue par l'étudiant — les trois suivent la
- * même règle, un texte long doit se lire.
+ * le guide de correction, la copie rendue par l'étudiant et l'appréciation du
+ * correcteur — tous suivent la même règle, un texte long doit se lire.
  *
  * Un énoncé arrive souvent du fichier importé comme une seule ligne : les
  * retours à la ligne de la cellule ont été écrasés, et les énumérations
