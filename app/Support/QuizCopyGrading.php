@@ -16,10 +16,11 @@ use Illuminate\Validation\ValidationException;
  * de reprise changent. Dupliquer cette logique aurait produit deux règles qui
  * divergent à la première évolution — et la note d'un étudiant ne peut pas
  * dépendre de qui a cliqué.
- *
- * Quatre garanties, tenues ici et donc valables pour les deux :
- *   1. on ne touche qu'aux questions à réponse rédigée ;
- *   2. la note ne peut pas dépasser le barème de la question ;
+ * * Quatre garanties, tenues ici et donc valables pour les deux :
+ *   1. on ne touche qu'aux questions qui attendent une note — les réponses
+ *      rédigées, et les questions à propositions quand l'évaluation a demandé
+ *      leur correction manuelle (jamais un QCM déjà auto-corrigé);
+ *   2. la note ne peut pas dépasser le barème de la question;
  *   3. un champ laissé vide n'écrit rien — la réponse reste « en attente », ce
  *      qui permet de corriger une copie en plusieurs fois ;
  *   4. une note relue par l'administration est **définitive** : le correcteur ne
@@ -48,8 +49,18 @@ final class QuizCopyGrading
             'answers.reviews.reviewer',
         ]);
 
-        $openAnswers = $attempt->answers->filter(
+        // Réponses corrigeables : toujours les questions rédigées — y compris
+        // déjà notées, pour permettre de reprendre une note — et, en plus, les
+        // questions à propositions quand l'évaluation a demandé leur correction
+        // manuelle. Une question à propositions auto-corrigée n'a rien à faire
+        // ici : elle a toujours une note (zéro compris) et l'écran ne doit pas
+        // la proposer à la notation. C'est le réglage de l'évaluation qui
+        // décide, pas un test de type.
+        $manualChoice = $attempt->form->quizGradesChoiceManually();
+
+        $gradableAnswers = $attempt->answers->filter(
             static fn (QuizAnswer $answer): bool => $answer->field?->isOpen() === true
+                || ($manualChoice && $answer->field?->isChoice() === true)
         );
 
         $validated = $request->validate([
@@ -72,7 +83,7 @@ final class QuizCopyGrading
         // définitive pour le correcteur.
         $reviewer = is_int($by) ? $by : null;
 
-        foreach ($openAnswers as $answer) {
+        foreach ($gradableAnswers as $answer) {
             if ($by instanceof Grader && $answer->reviewedByAdmin()) {
                 // Note déjà relue : le correcteur ne la reprend pas, même s'il
                 // rejoue le formulaire à la main.

@@ -22,6 +22,12 @@ use Illuminate\Support\Carbon;
  *     qu'elles n'en ont pas, `points_awarded` reste `null` : « en attente » n'est
  *     pas « zéro point », et c'est cette différence qui permet de compter les
  *     copies à corriger.
+ *
+ * Un troisième cas s'ajoute : une évaluation peut demander que ses questions à
+ * propositions soient corrigées à la main ({@see Form::quizGradesChoiceManually()}).
+ * Elles suivent alors le régime des questions ouvertes — pas de note
+ * automatique, `points_awarded` reste `null` — sans que rien ne change pour les
+ * évaluations qui ne l'ont pas demandé.
  */
 final class QuizGrader
 {
@@ -41,6 +47,12 @@ final class QuizGrader
         $questions = $attempt->questions();
         $answers = $attempt->answers()->get()->keyBy('form_field_id');
 
+        // Une évaluation peut retirer l'auto-correction de ses questions à
+        // propositions : elles attendent alors une note, comme une réponse
+        // rédigée. Le réglage est lu une seule fois, la décision ne peut donc
+        // pas changer d'une question à l'autre dans la même copie.
+        $manualChoice = $attempt->form->quizGradesChoiceManually();
+
         foreach ($questions as $question) {
             $answer = $answers[$question->id] ?? null;
 
@@ -54,7 +66,12 @@ final class QuizGrader
             // Question ouverte : aucune machine ne note un texte libre. Elle est
             // marquée « en attente » et non « zéro », sinon l'enseignant n'aurait
             // plus aucun moyen de retrouver ce qui lui reste à corriger.
-            if ($question->isOpen()) {
+            //
+            // Même traitement pour une question à propositions quand
+            // l'évaluation a demandé la correction manuelle : on efface toute
+            // note qu'une auto-correction aurait pu laisser, pour qu'elle
+            // rejoigne la file de correction sans ambiguïté.
+            if ($question->isOpen() || ($manualChoice && $question->isChoice())) {
                 $answer->update(['is_correct' => null, 'points_awarded' => null]);
 
                 continue;

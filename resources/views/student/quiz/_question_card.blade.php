@@ -33,19 +33,25 @@
         · {{ $question->points }} point(s)
     </p>
 
-    <form method="POST" action="{{ route('quiz.answer', $quiz->token) }}" class="mt-6 space-y-3" data-quiz-answer-form>
+    {{-- `enctype` n'est nécessaire que pour les questions rédigées : une question
+         à propositions n'envoie que des index, et un multipart sans fichier ne
+         ferait qu'alourdir la requête. --}}
+    <form method="POST" action="{{ route('quiz.answer', $quiz->token) }}"
+          @if($question->isOpen()) enctype="multipart/form-data" @endif
+          class="mt-6 space-y-3" data-quiz-answer-form>
         @csrf
         <input type="hidden" name="question_id" value="{{ $question->id }}">
 
         @if($question->isOpen())
-        {{-- Question ouverte : la réponse est un texte, corrigé ensuite par
-             l'enseignant. Aucune proposition, donc aucun risque qu'une bonne
-             réponse fuite dans le HTML. --}}
+        {{-- Question ouverte : la réponse est un texte (et éventuellement des
+             pièces jointes), corrigée ensuite par l'enseignant. Aucune
+             proposition, donc aucun risque qu'une bonne réponse fuite dans le
+             HTML. --}}
         <div>
             <label for="answer_text" class="block text-sm font-medium text-slate-700 mb-1.5">Votre réponse</label>
-            <textarea name="answer_text" id="answer_text" rows="7" required
+            <textarea name="answer_text" id="answer_text" rows="7"
                       maxlength="{{ \App\Support\QuizQuestionData::MAX_STUDENT_ANSWER }}"
-                      placeholder="Rédigez votre réponse ici."
+                      placeholder="Rédigez votre réponse ici — ou joignez un document ci-dessous."
                       class="w-full px-4 py-3 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:border-brand-500 transition-colors duration-150">{{ old('answer_text') }}</textarea>
             <p class="mt-1.5 text-xs text-slate-500">
                 <span id="answer-counter" style="font-variant-numeric: tabular-nums">0</span>
@@ -55,6 +61,31 @@
             <p class="mt-1.5 text-xs text-amber-700">
                 La surveillance de fenêtre désactive le collage : votre réponse doit être saisie au clavier.
             </p>
+            @endif
+        </div>
+
+        {{-- Pièces jointes : une image ou un PDF, 1 Mo chacun, deux au maximum.
+             Un texte ou un document suffit : l'étudiant qui photographie sa
+             copie n'a rien à retaper. --}}
+        <div>
+            <label for="attachments" class="block text-sm font-medium text-slate-700 mb-1.5">
+                Pièce(s) jointe(s) <span class="text-slate-400 font-normal">— facultatif</span>
+            </label>
+            <input type="file" name="attachments[]" id="attachments" multiple
+                   accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,application/pdf,image/*"
+                   class="block w-full text-sm text-slate-700 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 cursor-pointer">
+            <p class="mt-1.5 text-xs text-slate-500">
+                Image ou PDF · 1 Mo maximum par document · 2 documents au maximum.
+                Vous pouvez répondre par un texte, par un document, ou par les deux.
+            </p>
+            {{-- Les erreurs d'un fichier sont indexées (`attachments.0`,
+                 `attachments.1`) : on cherche la première clé qui commence par
+                 « attachments », sinon le message n'apparaîtrait pour aucun
+                 rang. --}}
+            @php($attachmentError = collect($errors->getBag('default')->keys())
+                ->first(fn ($key) => str_starts_with((string) $key, 'attachments')))
+            @if($attachmentError)
+            <p class="mt-1.5 text-sm text-red-600" role="alert">{{ $errors->first($attachmentError) }}</p>
             @endif
         </div>
         @else

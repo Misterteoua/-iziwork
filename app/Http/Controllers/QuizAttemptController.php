@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
+use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
 use App\Models\ShortLink;
+use App\Support\PdfWatermark;
 use App\Support\Qr\QrPng;
 use App\Support\QuizDraw;
 use App\Support\QuizGrader;
@@ -18,6 +20,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -48,6 +51,21 @@ class QuizAttemptController extends Controller
 
     /** Durée de vie de l'empreinte : un an, soit une année universitaire large. */
     private const DEVICE_COOKIE_MINUTES = 60 * 24 * 365;
+
+    /**
+     * Pièces jointes acceptées en réponse à une question rédigée.
+     *
+     * Une image ou un PDF : de quoi photographier une copie manuscrite ou
+     * joindre un document. La liste est blanche et vérifiée par extension ET par
+     * type MIME — un fichier renommé ne passe donc pas.
+     */
+    private const ATTACHMENT_EXTENSIONS = ['pdf', 'jpg', 'jpeg', 'png', 'webp', 'gif'];
+
+    /** Taille maximale d'une pièce jointe : 1 Mo (en kilo-octets, pour Laravel). */
+    private const ATTACHMENT_MAX_KB = 1024;
+
+    /** Nombre maximal de pièces jointes par question. */
+    private const ATTACHMENT_MAX_PER_QUESTION = 2;
 
     /**
      * Les seuls statuts qui pèsent dans l'anti-doublon : une copie engagée.
@@ -239,16 +257,31 @@ class QuizAttemptController extends Controller
         }
 
         // Deux natures de réponse, un seul enregistrement : une question ouverte
-        // garde le texte tapé, une question à propositions garde les index cochés.
+        // garde le texte tapé (et ses éventuelles pièces jointes), une question à
+        // propositions garde les index cochés.
         if ($question->isOpen()) {
+            $text = $this->validatedOpenAnswer($request);
+            $uploads = $this->validatedAttachments($request);
+
+            // Une question ouverte se répond par un texte, par une pièce jointe,
+            // ou par les deux : exiger un texte priverait d'une réponse honnête
+            // l'étudiant qui rend une photo de sa copie manuscrite.
+            if ($text === null && $uploads === []) {
+                throw ValidationException::withMessages([
+                    'answer_text' => 'Rédigez votre réponse ou joignez un document avant de continuer.',
+                ]);
+            }
+
             QuizAnswer::updateOrCreate(
                 ['quiz_attempt_id' => $attempt->id, 'form_field_id' => $question->id],
                 [
-                    'answer_text' => $this->validatedOpenAnswer($request),
+                    'answer_text' => $text,
                     'choice' => null,
                     'answered_at' => Carbon::now(),
                 ]
             );
+
+            $this->storeAttachments($attempt, $question, $uploads);
 
             return $this->answerResponse($request, $quiz, $attempt);
         }
@@ -340,6 +373,11 @@ class QuizAttemptController extends Controller
         // définitive, une fois les questions rédigées corrigées.
         $followLink = ShortLink::forAttempt($quiz, $attempt);
 
+        // Les pièces jointes de la copie, chargées d'un coup : le détail de la
+        // correction les liste question par question, et sans cela chaque
+        // question déclencherait sa propre requête.
+        $attempt->load('attachments');
+
         return view('student.quiz.result', [
             'quiz' => $quiz,
             'attempt' => $attempt,
@@ -382,9 +420,14 @@ class QuizAttemptController extends Controller
 
         abort_unless($attempt->isFinished(), 404);
 
-        $attempt->load('answers');
+        $attempt->load(['answers', 'attachments']);
 
         $followLink = ShortLink::forAttempt($quiz, $attempt);
+
+        // Numéro de document : stable pour cette copie, dérivé de la clé de
+        // l'application et de sa référence. C'est lui qui rend un document
+        // recopié d'un autre dossier reconnaissable.
+        $documentId = PdfWatermark::documentId('quiz-attempt', $attempt->reference);
 
         $pdf = Pdf::loadView('student.quiz.recap-pdf', [
             'quiz' => $quiz,
@@ -400,9 +443,52 @@ class QuizAttemptController extends Controller
             // c'est ce qui lui permet de revenir voir sa note définitive.
             'followLink' => $followLink,
             'followQr' => QrPng::dataUri($followLink->url()),
+            'documentId' => $documentId,
         ]);
 
+        PdfWatermark::apply($pdf, $documentId);
+
         return $pdf->download('evaluation_'.$attempt->reference.'.pdf');
+    }
+
+    /**
+     * Télécharge une pièce jointe de sa propre copie.
+     *
+     * L'accès est décidé par la session : c'est la copie en cours de ce
+     * navigateur, ou rien. Un identifiant deviné ne mène donc pas au document
+     * d'un autre candidat. Depuis un lien de suivi (`/l/{code}`), il n'y a pas
+     * de session à confronter : ce chemin-là est réservé à la session normale.
+     */
+    public function attachment(Request $request, Form $quiz, QuizAttachment $attachment)
+    {
+        $this->assertQuiz($quiz);
+
+        $attempt = $this->sessionAttempt($quiz);
+
+        abort_unless(
+            $attempt !== null && (int) $attachment->quiz_attempt_id === (int) $attempt->id,
+            404
+        );
+
+        return $this->downloadAttachment($attachment);
+    }
+
+    /**
+     * Le flux de téléchargement, partagé par les trois portes d'accès
+     * (étudiant, administration, correcteur) : chacune vérifie les droits à sa
+     * façon, puis appelle ceci. Le fichier est cherché sur le disque privé, et
+     * jamais dans un dossier public.
+     */
+    public static function downloadAttachment(QuizAttachment $attachment)
+    {
+        $disk = Storage::disk('local');
+
+        abort_unless($disk->exists($attachment->file_path), 404);
+
+        return response()->download(
+            $disk->path($attachment->file_path),
+            basename($attachment->original_name ?: $attachment->stored_name)
+        );
     }
 
     /**
@@ -875,27 +961,28 @@ class QuizAttemptController extends Controller
     }
 
     /**
-     * Valide une réponse rédigée.
+     * Valide et normalise la réponse rédigée, ou rend null si elle est vide.
      *
-     * Un texte fait uniquement d'espaces est refusé : la règle `required` de
+     * Le texte n'est plus obligatoire : une pièce jointe peut tenir lieu de
+     * réponse. On rend donc `null` quand rien n'est tapé, et c'est l'appelant qui
+     * décide si l'absence de texte **et** de fichier est un refus.
+     *
+     * Un texte fait uniquement d'espaces vaut vide : la règle `required` de
      * Laravel accepte «   » comme une chaîne non vide, ce qui laisserait passer
      * une question ouverte « répondue » sans un mot.
      */
-    private function validatedOpenAnswer(Request $request): string
+    private function validatedOpenAnswer(Request $request): ?string
     {
         $request->validate([
-            'answer_text' => ['required', 'string', 'max:'.QuizQuestionData::MAX_STUDENT_ANSWER],
+            'answer_text' => ['nullable', 'string', 'max:'.QuizQuestionData::MAX_STUDENT_ANSWER],
         ], [
-            'answer_text.required' => 'Rédigez votre réponse avant de continuer.',
             'answer_text.max' => 'Votre réponse ne peut pas dépasser '.QuizQuestionData::MAX_STUDENT_ANSWER.' caractères.',
         ]);
 
         $text = trim((string) $request->input('answer_text'));
 
         if ($text === '') {
-            throw ValidationException::withMessages([
-                'answer_text' => 'Rédigez votre réponse avant de continuer.',
-            ]);
+            return null;
         }
 
         // Un navigateur envoie de l'UTF-8, mais une requête forgée peut porter une
@@ -908,6 +995,78 @@ class QuizAttemptController extends Controller
         }
 
         return $text;
+    }
+
+    /**
+     * Valide les pièces jointes d'une réponse et rend les fichiers reçus.
+     *
+     * Image ou PDF, 1 Mo maximum, deux fichiers par question. La validation est
+     * faite ici et non dans le formulaire : une requête peut toujours être forgée
+     * à la main, et c'est le serveur qui doit refuser un fichier trop gros ou d'un
+     * format inattendu.
+     *
+     * @return array<int, \Illuminate\Http\UploadedFile>
+     */
+    private function validatedAttachments(Request $request): array
+    {
+        $files = $request->file('attachments', []);
+        $files = is_array($files) ? array_values(array_filter($files)) : ($files === null ? [] : [$files]);
+
+        if ($files === []) {
+            return [];
+        }
+
+        $request->validate([
+            'attachments' => ['array', 'max:'.self::ATTACHMENT_MAX_PER_QUESTION],
+            'attachments.*' => [
+                'file',
+                'max:'.self::ATTACHMENT_MAX_KB,
+                'mimes:'.implode(',', self::ATTACHMENT_EXTENSIONS),
+                'extensions:'.implode(',', self::ATTACHMENT_EXTENSIONS),
+            ],
+        ], [
+            'attachments.max' => 'Vous pouvez joindre au maximum '.self::ATTACHMENT_MAX_PER_QUESTION.' documents par question.',
+            'attachments.*.max' => 'Chaque document ne peut pas dépasser 1 Mo.',
+            'attachments.*.mimes' => 'Le document doit être une image (jpg, png, webp, gif) ou un PDF.',
+            'attachments.*.extensions' => 'Le document doit être une image (jpg, png, webp, gif) ou un PDF.',
+        ]);
+
+        return $files;
+    }
+
+    /**
+     * Range les pièces jointes sur le disque privé et crée leurs lignes.
+     *
+     * Le nom stocké est un UUID : un nom choisi par l'utilisateur ne touche donc
+     * jamais le système de fichiers, et deux dépôts du même « scan.pdf » ne se
+     * recouvrent pas. Le nom d'origine, lui, est conservé pour l'affichage et le
+     * téléchargement.
+     *
+     * @param  array<int, \Illuminate\Http\UploadedFile>  $files
+     */
+    private function storeAttachments(QuizAttempt $attempt, FormField $question, array $files): void
+    {
+        if ($files === []) {
+            return;
+        }
+
+        $directory = 'quiz-attachments/'.$attempt->form_id.'/'.$attempt->id;
+
+        foreach ($files as $file) {
+            $extension = strtolower($file->getClientOriginalExtension());
+            $storedName = Str::uuid()->toString().'.'.$extension;
+            $path = $file->storeAs($directory, $storedName, 'local');
+
+            QuizAttachment::create([
+                'quiz_attempt_id' => $attempt->id,
+                'form_field_id' => $question->id,
+                'original_name' => Str::limit($file->getClientOriginalName(), 255, ''),
+                'stored_name' => $storedName,
+                'file_path' => $path,
+                'file_size' => $file->getSize(),
+                'mime_type' => $file->getMimeType() ?: 'application/octet-stream',
+            ]);
+        }
     }
 
     /**

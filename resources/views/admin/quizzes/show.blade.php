@@ -156,6 +156,24 @@
                     <span class="text-sm text-slate-700">Afficher la note à la fin</span>
                 </label>
 
+                {{-- Retirer l'auto-correction : le réglage est décoché par défaut,
+                     une évaluation existante garde donc exactement son
+                     comportement. Coché, les QCM rejoignent la correction à la
+                     main — pour une question où plusieurs réponses se défendent. --}}
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" name="manual_choice_grading" value="1" @checked(old('manual_choice_grading', $quiz->quizGradesChoiceManually()))
+                           class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
+                    <span class="text-sm text-slate-700">
+                        Corriger les QCM manuellement
+                        <span class="mt-0.5 block text-xs text-slate-500">
+                            Décochez cette case pour noter automatiquement les questions à choix.
+                            Coché, l'auto-correction est retirée : chaque question à propositions attend
+                            une note, comme une réponse rédigée, et vous (ou un correcteur) la corrigez
+                            depuis l'écran de correction. Désactivé par défaut.
+                        </span>
+                    </span>
+                </label>
+
                 {{-- La règle de publication est rappelée là où l'enseignant règle
                      l'évaluation : elle surprend toujours la première fois, et
                      elle se pilote entièrement d'ici. --}}

@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\QuizAttemptController;
 use App\Models\FormField;
 use App\Models\Grader;
 use App\Models\QuizAnswer;
+use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
 use App\Support\QuizCopyGrading;
@@ -184,6 +186,8 @@ class CorrectionController extends Controller
             // lecture seule, avec son motif.
             'answers.reviews.previousGrader',
             'answers.reviews.previousAdmin',
+            // Les pièces jointes de la copie, chargées d'un coup.
+            'attachments',
         ]);
 
         $series = $request->boolean('serie');
@@ -203,6 +207,23 @@ class CorrectionController extends Controller
             'queueSize' => $queue->count(),
             'next' => $series ? $this->nextToGrade($grader, $attempt->id) : null,
         ]);
+    }
+
+    /**
+     * Télécharge une pièce jointe d'une copie assignée.
+     *
+     * Le périmètre est le même que pour la copie elle-même : une évaluation
+     * affectée au correcteur, et une pièce qui appartient à cette copie. Le
+     * document d'une autre évaluation reste donc inaccessible.
+     */
+    public function attachment(Request $request, QuizAttempt $attempt, QuizAttachment $attachment)
+    {
+        $grader = $this->currentGrader($request);
+        $this->assertInScope($grader, $attempt);
+
+        abort_unless((int) $attachment->quiz_attempt_id === (int) $attempt->id, 404);
+
+        return QuizAttemptController::downloadAttachment($attachment);
     }
 
     public function store(Request $request, QuizAttempt $attempt): RedirectResponse

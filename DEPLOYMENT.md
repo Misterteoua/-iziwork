@@ -362,6 +362,109 @@ jouées.
 > direct (POST d'un fichier à `.../questions/import`) continue de fonctionner
 > exactement comme avant — seul l'écran de l'administration passe par l'aperçu.
 
+> **Refonte des PDF (mise à jour du 03/10).**
+> **Aucune migration**, aucune donnée touchée : c'est une refonte d'habillage.
+> **Trois** documents sont remis en page — le récapitulatif d'une **évaluation**
+> (bulletin), celui d'un **dépôt de travaux** (reçu) et la **fiche de mission
+d'un correcteur** : en-tête avec le **logo de l'établissement**
+> (`efsc-recap-pdf.png`) en haut, **logo Iziwork en pied de page** répété sur
+> chaque page, bandeau mis en valeur (note de l'évaluation / confirmation du
+> dépôt / mission du correcteur), cartes de sections et de questions avec accent
+> coloré selon l'état, encadrés pour la copie, les pièces jointes et
+> l'appréciation, QR codes encadrés (lien de suivi de l'étudiant, lien de
+> correction du correcteur).
+>
+> **Rien ne change au contenu** : les textes, la note provisoire/définitive, les
+> règles de publication de la correction, les informations d'un reçu de dépôt
+> (code anonyme, statut, fichiers) et la mise en forme des énoncés sont ceux
+> d'avant, au caractère près. Le point de sécurité de la fiche de mission est
+> inchangé : la **référence du correcteur ne s'imprime que sur demande**
+> (`?reference=1`), une fiche portant à la fois le lien et la clé ouvrant
+> l'accès à elle seule.
+>
+> **Un point à vérifier après la mise à jour** : le fichier
+> `public/images/efsc-recap-pdf.png` doit être présent. Il est **inclus dans
+> l'archive** (tout `public/` l'est, sauf `public/storage`), donc rien à faire
+> dans le cas normal — mais si le logo manquait, le document se génère **sans
+> lui** plutôt que d'échouer : c'est volontaire, un habillage ne doit jamais
+> casser un bulletin. Le logo Iziwork (`public/images/iziwork-logo.png`) reste
+> celui des autres documents.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent.
+
+> **Filigrane et numéro de document des PDF (mise à jour du 03/10).**
+> **Aucune migration**, aucune donnée touchée. Les **trois** documents déjà mis
+> en page (récapitulatif d'évaluation, récapitulatif de dépôt, fiche de mission
+> d'un correcteur) portent désormais :
+>
+>   • un **filigrane** diagonal, répété sur **chaque page**, avec le numéro du
+>     document en clair ;
+>   • un **numéro de document unique** (« DOC-XXXX-XXXX-XXXX »), affiché en clair
+>     dans le pied de page, sous la mention de génération.
+>
+> Le numéro est calculé par HMAC à partir de la **clé de l'application**
+> (`APP_KEY`) et de l'identifiant de l'objet : il est donc **stable** (le même
+> document rend toujours le même numéro) et **impossible à fabriquer sans le
+> secret du serveur**. Il ne dépend pas d'une donnée affichée dans le document,
+> ce qui en fait un repère de contrôle indépendant du contenu : un document
+> recopié d'un autre dossier — ou retouché — porte un numéro qui ne correspond
+> pas au dossier réel.
+>
+> **Point à connaître :** le numéro étant dérivé de `APP_KEY`, **ne régénérez
+> pas la clé** d'une installation en service. Cela ne casse aucun document déjà
+> émis — les PDF déjà téléchargés restent lisibles, et leur numéro imprimé ne
+> bouge pas — mais un document **regénéré** porterait un numéro différent.
+> C'est sans conséquence : le numéro est un repère de contrôle, pas une clé de
+> déchiffrement.
+>
+> Le filigrane est tracé **dans le flux du PDF** (et non en HTML) : dompdf
+> n'applique pas la rotation CSS, un bloc incliné se rendrait droit. Il reste
+> donc impossible à retirer en éditant le gabarit, et il ne peut pas être
+> « coupé » d'une page à l'autre. Il ne dépend d'aucune extension PHP : **GD
+> n'est pas requis** et **aucune extension supplémentaire** n'est nécessaire. Le
+> contenu, les tests et la structure des documents ne sont pas affectés.
+>
+> Rien à configurer : extraction de l'archive puis `/update` suffisent. Un
+> document dont la **clé de l'application est absente** ne cesse pas de se
+> générer pour autant : le numéro retombe alors sur une valeur fixe, plutôt que
+> de lever une erreur en pleine génération. C'est le même principe que les
+> logos : un habillage ne doit jamais casser un bulletin.
+>
+
+> **Correction manuelle des QCM et pièces jointes étudiantes (mise à jour du
+> 03/10).** **Une seule** migration, purement additive :
+> `2026_10_03_000001_create_quiz_attachments_table`. Elle crée la table
+> `quiz_attachments` — aucune colonne modifiée, aucun index supprimé, aucune
+> donnée réécrite. Nommée d'après son effet, elle est reconnue par la
+> réconciliation de `/update` : sur une installation qui l'a déjà, la table est
+> constatée au lieu de faire échouer la mise à jour. La table suit la suppression
+> de la copie comme de la question (clés étrangères en cascade).
+>
+> **Correction manuelle des QCM** : un nouveau réglage d'évaluation, « Corriger
+> les QCM manuellement », permet de **retirer l'auto-correction** des questions à
+> propositions. Il vit dans `quiz_settings` (aucune colonne), et il est
+> **désactivé par défaut** : une évaluation existante garde exactement son
+> comportement — aucune note ne change sans qu'un enseignant l'ait demandé.
+> Activé, les QCM attendent une note comme les réponses rédigées : la copie entre
+> dans la file de correction, l'enseignant **et** les correcteurs externes notent
+> de la même façon, et l'export CSV regroupe les réponses à corriger, QCM
+> compris.
+>
+> **Pièces jointes** : en réponse à une question rédigée, l'étudiant peut
+> joindre jusqu'à **2 documents** (image jpg/png/webp/gif, ou PDF), **1 Mo
+> maximum chacun**. Un texte seul, un document seul, ou les deux : la réponse est
+> valide dès que l'un est présent. Les fichiers sont rangés sur le disque
+> **privé** (`storage/app/private/quiz-attachments/…`) et ne se téléchargent que
+> par une route qui revérifie l'accès ; réinitialiser ou supprimer une copie
+> efface aussi les fichiers.
+>
+> **Rien à créer à la main** : `storage/app/private` existe déjà (les dépôts de
+> travaux y écrivent), et l'extraction de l'archive puis `/update` suffisent.
+> Vérifiez seulement que `upload_max_filesize` et `post_max_size` sont d'au moins
+> **2 Mo** (voir B.7.1) : 1 Mo de fichier plus les données du formulaire ne
+> doivent pas être coupés en amont par PHP, sans quoi le dépôt échouerait avec
+> « Le fichier n'a pas pu être téléversé ».
+
 > **Énoncés de questions longs (mise à jour du 01/10).** **Une seule** migration,
 > `2026_10_01_000001_widen_field_label_on_form_fields_table` : la colonne
 > `form_fields.field_label` passe de `VARCHAR(255)` à `TEXT`. Sur MySQL c'est un
@@ -460,10 +563,14 @@ tableau des extensions plus bas).
 ### B.7.1 Vérifier les limites PHP
 
 Après la première installation ou une mise à jour, vérifiez que `upload_max_filesize`
-est suffisant (≥ 8M) pour permettre aux étudiants d'uploader leurs fichiers :
+est suffisant (≥ 8M) pour permettre aux étudiants d'uploader leurs fichiers
+(les dépôts de travaux comme les pièces jointes d'une évaluation, 1 Mo chacune) :
 
 cPanel → **MultiPHP Manager** → cocher le sous-domaine → **PHP Options** →
 chercher `upload_max_filesize` → valeur recommandée : **8M** ou **16M**.
+Réglez aussi `post_max_size` au moins à la même valeur : un envoi de pièce
+jointe peut être coupé avant même la validation si le corps de la requête
+dépasse cette limite.
 
 > **Piège courant :** sur certains hébergements, la valeur par défaut est
 > `512` (octets, pas Mo !), ce qui rejette tout fichier. Le fichier

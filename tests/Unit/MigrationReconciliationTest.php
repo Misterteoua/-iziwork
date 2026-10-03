@@ -81,6 +81,19 @@ class MigrationReconciliationTest extends TestCase
         );
     }
 
+    public function test_the_quiz_attachments_table_migration_is_satisfied_when_the_table_exists(): void
+    {
+        // Même service que pour les aperçus d'import : la table des pièces
+        // jointes est additive, sa présence suffit à la reconnaître — sans quoi
+        // `/update` rejouerait « table already exists » sur une installation qui
+        // l'a déjà.
+        $this->forget('2026_10_03_000001_create_quiz_attachments_table');
+
+        $this->assertTrue(
+            $this->reconciliation()->isSatisfied('2026_10_03_000001_create_quiz_attachments_table')
+        );
+    }
+
     public function test_a_widen_column_migration_is_not_satisfied_when_the_column_is_still_short(): void
     {
         // `forms.title` reste un VARCHAR : un élargissement annoncé sur une

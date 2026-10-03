@@ -11,6 +11,16 @@
 @php($review = $answer?->latestReview())
 @php($locked = $answer !== null && ! $asAdmin && $answer->reviewedByAdmin())
 
+{{-- Une question est corrigée à la main si c'est une question rédigée, ou si
+     l'évaluation a retiré l'auto-correction de ses QCM. C'est ce seul critère
+     qui décide de l'écran : les deux cas montrent la même chose, parce qu'ils
+     attendent exactement la même décision de l'enseignant. --}}
+@php($manual = $question->isOpen() || ($question->isChoice() && $attempt->form->quizGradesChoiceManually()))
+@php($chosen = $answer?->chosenIndexes() ?? [])
+@php($responded = $answer !== null && ($question->isOpen()
+    ? trim((string) $answer->answer_text) !== ''
+    : $chosen !== []))
+
 @php($points = static fn ($value): string => rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ','))
 
 <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6">
@@ -25,24 +35,71 @@
         <span class="shrink-0 text-xs text-slate-500">{{ $question->points }} point(s)</span>
     </div>
 
-    @if($question->isOpen())
-        @if($question->expected_answer)
-        <div class="mt-4 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
-            <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Réponse attendue (guide)</p>
-            @include('partials.question-text', ['text' => $question->expected_answer, 'class' => 'mt-1 text-xs text-slate-700'])
-        </div>
+    @if($manual)
+        @if($question->isOpen())
+            @if($question->expected_answer)
+            <div class="mt-4 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
+                <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Réponse attendue (guide)</p>
+                @include('partials.question-text', ['text' => $question->expected_answer, 'class' => 'mt-1 text-xs text-slate-700'])
+            </div>
+            @endif
+        @else
+            {{-- QCM corrigé à la main : l'enseignant doit voir la réponse
+                 attendue à côté de celle du candidat, mais c'est lui qui décide
+                 des points — aucune comparaison automatique n'est appliquée. --}}
+            @php($correctLabels = [])
+            @foreach($attempt->displayOptions($question) as $option)
+                @if(in_array($option['original'], $question->correctIndexes(), true))
+                    @php($correctLabels[] = $option['label'])
+                @endif
+            @endforeach
+            <div class="mt-4 rounded-xl bg-brand-50/60 border border-brand-100 px-4 py-3">
+                <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Bonne réponse (indicative)</p>
+                <p class="mt-1 text-xs text-slate-700">{{ $correctLabels === [] ? '—' : implode(' ; ', $correctLabels) }}</p>
+            </div>
         @endif
 
         <div class="mt-4 rounded-xl border border-slate-200 px-4 py-3">
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Réponse de l'étudiant</p>
-            @if($answer === null || trim((string) $answer->answer_text) === '')
+            @if(! $responded)
                 <p class="mt-1 text-sm text-slate-500">Aucune réponse rendue : rien à corriger, la question vaut zéro.</p>
-            @else
+            @elseif($question->isOpen())
                 @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
+            @else
+                @php($chosenLabels = [])
+                @foreach($attempt->displayOptions($question) as $option)
+                    @if(in_array($option['original'], $chosen, true))
+                        @php($chosenLabels[] = $option['label'])
+                    @endif
+                @endforeach
+                <p class="mt-1 text-sm text-slate-800">{{ $chosenLabels === [] ? 'sans réponse' : implode(' ; ', $chosenLabels) }}</p>
             @endif
         </div>
 
-        @if($answer !== null && trim((string) $answer->answer_text) !== '')
+        {{-- Pièces jointes déposées par l'étudiant : leur nom, leur taille et un
+             lien. Le fichier n'est jamais embarqué dans la page, il se
+             télécharge par une route qui revérifie l'accès. --}}
+        @php($attachments = $attempt->attachmentsFor($question))
+        @if($attachments->isNotEmpty())
+        <div class="mt-3 rounded-xl border border-slate-200 px-4 py-3">
+            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pièces jointes</p>
+            <ul class="mt-2 space-y-1.5">
+                @foreach($attachments as $attachment)
+                <li class="flex flex-wrap items-center gap-2 text-sm">
+                    <a href="{{ $asAdmin
+                        ? route('admin.quizzes.attempts.attachment', [$attempt->form_id, $attempt, $attachment])
+                        : route('correction.attachment', [$attempt, $attachment]) }}"
+                       class="font-medium text-brand-700 hover:text-brand-900 underline underline-offset-2">
+                        {{ $attachment->original_name }}
+                    </a>
+                    <span class="text-xs text-slate-500">{{ $attachment->formatted_size }}</span>
+                </li>
+                @endforeach
+            </ul>
+        </div>
+        @endif
+
+        @if($responded)
             @if($locked)
             {{-- Le correcteur devant une note reprise : il voit la note retenue,
                  le motif, et comprend pourquoi il ne peut plus y toucher. --}}
@@ -158,7 +215,6 @@
             @endif
         @endif
     @else
-        @php($chosen = $answer?->chosenIndexes() ?? [])
         @php($chosenLabels = [])
         @php($correctLabels = [])
 

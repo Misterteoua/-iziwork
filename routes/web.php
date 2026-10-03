@@ -45,6 +45,11 @@ Route::get('/q/{quiz:token}/resultat', [QuizAttemptController::class, 'result'])
 Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::class, 'recapPdf'])
     ->name('quiz.recap.pdf');
 
+// Une pièce jointe déposée par un étudiant : servie à travers la session de sa
+// copie, jamais depuis un dossier public.
+Route::get('/q/{quiz:token}/pieces-jointes/{attachment}', [QuizAttemptController::class, 'attachment'])
+    ->whereNumber('attachment')->name('quiz.attachment');
+
 // Liens courts (/l/Ab12Cd34) : huit caractères au lieu d'un jeton de trente-deux.
 // Le code est tiré au sort, jamais séquentiel. Les liens longs ci-dessus
 // continuent de fonctionner exactement comme avant : rien n'est remplacé.
@@ -70,6 +75,8 @@ Route::prefix('correction')->name('correction.')->group(function () {
             ->whereNumber('attempt')->name('show');
         Route::post('copies/{attempt}', [CorrectionController::class, 'store'])
             ->whereNumber('attempt')->name('store');
+        Route::get('copies/{attempt}/pieces-jointes/{attachment}', [CorrectionController::class, 'attachment'])
+            ->whereNumber('attempt')->whereNumber('attachment')->name('attachment');
         Route::get('export', [CorrectionController::class, 'export'])->name('export');
     });
 
@@ -187,6 +194,9 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.grade');
     Route::post('quizzes/{quiz}/attempts/{attempt}/grade', [QuizGradingController::class, 'store'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.grade.store');
+    Route::get('quizzes/{quiz}/attempts/{attempt}/pieces-jointes/{attachment}', [QuizGradingController::class, 'attachment'])
+        ->whereNumber('quiz')->whereNumber('attempt')->whereNumber('attachment')
+        ->name('admin.quizzes.attempts.attachment');
 
     Route::get('forms', [FormController::class, 'index'])->name('admin.forms.index');
     Route::get('forms/create', [FormController::class, 'create'])->name('admin.forms.create');

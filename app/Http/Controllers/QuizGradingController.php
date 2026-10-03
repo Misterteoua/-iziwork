@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Form;
+use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
 use App\Support\QuizCopyGrading;
 use App\Support\QuizGrader;
@@ -52,6 +53,24 @@ class QuizGradingController extends Controller
         return redirect()->route('admin.quizzes.attempts.grade', [$quiz, $next, 'serie' => 1]);
     }
 
+    /**
+     * Télécharge une pièce jointe d'une copie, côté administration.
+     *
+     * Deux vérifications, dans cet ordre : la pièce appartient bien à cette
+     * copie, et la copie appartient bien à cette évaluation. Sans la seconde, un
+     * identifiant de pièce joint valide ouvrirait le document d'une autre
+     * évaluation.
+     */
+    public function attachment(Form $quiz, QuizAttempt $attempt, QuizAttachment $attachment)
+    {
+        $this->assertQuiz($quiz);
+        $this->assertAttempt($quiz, $attempt);
+
+        abort_unless((int) $attachment->quiz_attempt_id === (int) $attempt->id, 404);
+
+        return QuizAttemptController::downloadAttachment($attachment);
+    }
+
     public function show(Request $request, Form $quiz, QuizAttempt $attempt)
     {
         $this->assertQuiz($quiz);
@@ -72,6 +91,9 @@ class QuizGradingController extends Controller
             'answers.gradingAdmin',
             'answers.reviews.previousGrader',
             'answers.reviews.previousAdmin',
+            // Les pièces jointes de la copie, chargées d'un coup : une copie de
+            // cinquante questions ne doit pas déclencher cinquante requêtes.
+            'attachments',
         ]);
 
         $series = $request->boolean('serie');

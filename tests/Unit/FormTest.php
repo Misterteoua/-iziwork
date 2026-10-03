@@ -319,6 +319,35 @@ class FormTest extends TestCase
         $this->assertFalse($form->quizRevealsCorrection());
     }
 
+    // ------------------------------------ Correction manuelle des QCM
+
+    public function test_la_correction_manuelle_des_qcm_est_desactivee_par_defaut(): void
+    {
+        // Le défaut est le comportement historique : une évaluation créée avant
+        // que ce réglage existe garde son auto-correction.
+        $form = Form::create([
+            'title' => 'Examen par défaut',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertFalse($form->quizGradesChoiceManually());
+    }
+
+    public function test_la_correction_manuelle_des_qcm_s_active_par_reglage(): void
+    {
+        $form = Form::create([
+            'title' => 'Examen manuel',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'quiz_settings' => ['manual_choice_grading' => true],
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertTrue($form->quizGradesChoiceManually());
+    }
+
     private function quizWithPublication(\DateTimeInterface $publication, ?\DateTimeInterface $closeDate = null): Form
     {
         return Form::create([

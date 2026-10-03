@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAnswer;
+use App\Models\QuizAttachment;
 use App\Models\QuestionImport;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
@@ -26,6 +27,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -668,6 +670,11 @@ class QuizController extends Controller
 
         $attempt->answers()->delete();
 
+        // Les pièces jointes suivent : l'étudiant qui repasse l'épreuve repart
+        // d'une copie blanche, et laisser les anciens documents sur le disque
+        // ferait survivre le travail effacé.
+        $this->purgeAttachments($attempt);
+
         $attempt->update([
             'status' => QuizAttempt::STATUS_PENDING,
             'started_at' => null,
@@ -707,6 +714,10 @@ class QuizController extends Controller
             QuizGradeReview::whereIn('quiz_answer_id', $answerIds)->delete();
             $attempt->answers()->delete();
 
+            // Les fichiers physiques partent aussi : la cascade en base efface
+            // les lignes, mais pas ce qui est écrit sur le disque.
+            $this->purgeAttachments($attempt);
+
             // Le lien de suivi d'une copie supprimée mènerait à une page vide :
             // il s'en va avec elle.
             ShortLink::where('quiz_attempt_id', $attempt->id)->delete();
@@ -715,6 +726,23 @@ class QuizController extends Controller
         });
 
         return back()->with('success', 'Copie '.$reference.' supprimée.');
+    }
+
+    /**
+     * Efface du disque les pièces jointes d'une copie, et leurs lignes.
+     *
+     * La cascade en base ne supprime que les lignes : sans ce passage, les
+     * documents d'un étudiant resteraient sur le serveur après l'effacement de
+     * sa copie — exactement ce qu'on ne veut pas d'un travail rendu.
+     */
+    private function purgeAttachments(QuizAttempt $attempt): void
+    {
+        $attachments = QuizAttachment::where('quiz_attempt_id', $attempt->id)->get();
+
+        foreach ($attachments as $attachment) {
+            Storage::disk('local')->delete($attachment->file_path);
+            $attachment->delete();
+        }
     }
 
     // --------------------------------------------------------------- Résultats
@@ -811,11 +839,19 @@ class QuizController extends Controller
     {
         $this->assertQuiz($quiz);
 
+        // Une évaluation qui corrige ses QCM à la main a, elle aussi, des
+        // réponses à relire : l'export doit les inclure, sinon l'enseignant
+        // croirait la liste complète alors qu'il lui manquerait la moitié de ce
+        // qu'il doit noter. Une évaluation en mode automatique garde l'export
+        // d'origine — uniquement les réponses rédigées.
+        $manualChoice = $quiz->quizGradesChoiceManually();
+        $types = $manualChoice ? FormField::ANSWER_TYPES : [FormField::OPEN_TYPE];
+
         $answers = QuizAnswer::query()
             ->join('quiz_attempts', 'quiz_attempts.id', '=', 'quiz_answers.quiz_attempt_id')
             ->join('form_fields', 'form_fields.id', '=', 'quiz_answers.form_field_id')
             ->where('quiz_attempts.form_id', $quiz->id)
-            ->where('form_fields.field_type', FormField::OPEN_TYPE)
+            ->whereIn('form_fields.field_type', $types)
             // Tri total : sans la clé primaire en dernier, deux réponses du même
             // candidat se retrouveraient à égalité et la pagination par paquets
             // pourrait en sauter ou en compter deux fois.
@@ -827,8 +863,11 @@ class QuizController extends Controller
                 'quiz_attempts.reference as reference',
                 'quiz_attempts.student_name as student_name',
                 'form_fields.field_label as question',
+                'form_fields.field_type as field_type',
+                'form_fields.options as options',
                 'form_fields.points as max_points',
                 'quiz_answers.answer_text as answer_text',
+                'quiz_answers.choice as choice',
                 'quiz_answers.points_awarded as points_awarded',
             ]);
 
@@ -849,7 +888,7 @@ class QuizController extends Controller
                         // dans l'export des résultats.
                         $anonymous ? null : $row->student_name,
                         $row->question,
-                        $row->answer_text,
+                        $this->answerTextForExport($row),
                         $row->points_awarded,
                         $row->max_points,
                         $row->points_awarded === null ? 'À corriger' : 'Corrigée',
@@ -859,6 +898,50 @@ class QuizController extends Controller
 
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
+    }
+
+    /**
+     * Le texte d'une réponse tel qu'il se lit dans l'export.
+     *
+     * Une question rédigée rend son texte ; une question à propositions corrigée
+     * à la main n'a pas de texte — on rend alors les propositions cochées, par
+     * leur intitulé, car une liste d'index (« 0, 2 ») ne dirait rien à qui
+     * relit le fichier.
+     */
+    private function answerTextForExport(object $row): ?string
+    {
+        if ($row->answer_text !== null && trim((string) $row->answer_text) !== '') {
+            return $row->answer_text;
+        }
+
+        if ($row->field_type === FormField::OPEN_TYPE) {
+            return null;
+        }
+
+        // Le modèle caste `choice` et `options` en tableaux : selon le chemin de
+        // lecture, la valeur arrive déjà décodée ou sous forme de chaîne JSON.
+        // On accepte les deux, sinon un select brut ferait échouer l'export.
+        $options = $row->options;
+        if (is_string($options)) {
+            $options = json_decode($options, true);
+        }
+        $options = is_array($options) ? $options : [];
+
+        $chosen = $row->choice;
+        if (is_string($chosen)) {
+            $chosen = json_decode($chosen, true);
+        }
+        $chosen = is_array($chosen) ? array_map('intval', $chosen) : [];
+
+        $labels = [];
+
+        foreach ($chosen as $index) {
+            if (isset($options[$index])) {
+                $labels[] = (string) $options[$index];
+            }
+        }
+
+        return $labels === [] ? 'sans réponse' : implode(' ; ', $labels);
     }
 
     // ---------------------------------------------------------------- Interne
@@ -983,6 +1066,10 @@ class QuizController extends Controller
             // Date de publication des corrections : null tant que l'enseignant
             // n'en fixe pas, ce qui laisse la fermeture décider.
             'reveal_answers_at' => $this->publicationMoment($validated),
+            // Correction des QCM : décoché = auto-correction (comportement
+            // historique). Coché = les questions à propositions attendent une
+            // note, comme les questions rédigées.
+            'manual_choice_grading' => $request->boolean('manual_choice_grading'),
         ];
     }
 

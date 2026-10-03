@@ -38,19 +38,26 @@ class QuizAnswer extends Model
     }
 
     /**
-     * Réponses rédigées qui attendent une note.
+     * Réponses qui attendent une note.
      *
      * Le filtre vit ici, et non dans un contrôleur : la page des résultats, la
      * correction d'une copie et l'enchaînement des copies à corriger doivent
      * compter exactement la même chose, sans quoi l'une annoncerait « 3 copies à
      * corriger » quand l'autre n'en proposerait que deux.
      *
+     * Le critère porte sur le fait d'être **notée**, pas sur le type de
+     * question : une question à propositions corrigée automatiquement a toujours
+     * une note (zéro compris) et n'est donc jamais comptée ; une question à
+     * propositions laissée en attente parce que l'évaluation demande une
+     * correction manuelle l'est. Les questions rédigées suivent la même règle,
+     * exactement comme avant.
+     *
      * @param  \Illuminate\Database\Eloquent\Builder<QuizAnswer>  $query
      */
     public function scopePendingManual($query)
     {
         return $query->whereNull('points_awarded')
-            ->whereHas('field', fn ($field) => $field->where('field_type', FormField::OPEN_TYPE));
+            ->whereHas('field', fn ($field) => $field->whereIn('field_type', FormField::ANSWER_TYPES));
     }
 
     /**

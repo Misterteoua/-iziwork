@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Form;
 use App\Models\Submission;
 use App\Models\SubmissionFile;
+use App\Support\PdfWatermark;
 use App\Support\SubmissionFilters;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -225,7 +226,14 @@ class SubmissionController extends Controller
         $form = Form::where('token', $token)->firstOrFail();
         $submission = $this->submissionForReceipt($form, $receiptToken);
 
-        $pdf = Pdf::loadView('student.recap-pdf', compact('form', 'submission'));
+        // Numéro de document : stable pour ce dépôt, dérivé de la clé de
+        // l'application et du jeton de reçu. Un récapitulatif recopié d'un
+        // autre dossier ne portera pas le même numéro.
+        $documentId = PdfWatermark::documentId('submission', $submission->receipt_token);
+
+        $pdf = Pdf::loadView('student.recap-pdf', compact('form', 'submission', 'documentId'));
+
+        PdfWatermark::apply($pdf, $documentId);
 
         return $pdf->download("recapitulatif_{$submission->id}.pdf");
     }

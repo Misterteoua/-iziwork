@@ -42,6 +42,13 @@ class Form extends Model
         // explicite sert aux épreuves qui restent ouvertes plusieurs jours alors
         // que tous les candidats ont déjà composé : on publie sans attendre.
         'reveal_answers_at' => null,
+        // Correction des questions à propositions : automatique par défaut, et
+        // volontairement. Une évaluation déjà réglée avant que cette option
+        // existe garde donc exactement le comportement qu'elle avait — aucune
+        // note ne change sous les pieds d'un enseignant. Activé, le réglage
+        // retire l'auto-correction : les QCM rejoignent la file de correction
+        // manuelle, au même titre qu'une réponse rédigée.
+        'manual_choice_grading' => false,
     ];
 
     protected $fillable = [
@@ -181,6 +188,19 @@ class Form extends Model
     public function quizShowsScore(): bool
     {
         return (bool) $this->quizSettings()['show_score'];
+    }
+
+    /**
+     * Les questions à propositions sont-elles corrigées à la main ?
+     *
+     * Désactivé par défaut : sans ce réglage, un QCM est noté à la remise.
+     * Activé, l'auto-correction est retirée et l'enseignant note lui-même les
+     * questions à choix — utile quand plusieurs réponses sont défendables, ou
+     * quand la question sert à faire argumenter plutôt qu'à cocher.
+     */
+    public function quizGradesChoiceManually(): bool
+    {
+        return (bool) $this->quizSettings()['manual_choice_grading'];
     }
 
     public function quizUsesProctoring(): bool

@@ -73,6 +73,37 @@ class QuizAttempt extends Model
         return $this->hasMany(QuizAnswer::class);
     }
 
+    /**
+     * Pièces jointes déposées avec les réponses de cette copie.
+     *
+     * Chargées sur la copie plutôt que sur chaque réponse : une correction lit
+     * toutes les questions d'un coup, et une relation par réponse multiplierait
+     * les requêtes sur une copie de cinquante questions.
+     */
+    public function attachments()
+    {
+        return $this->hasMany(QuizAttachment::class, 'quiz_attempt_id');
+    }
+
+    /**
+     * Les pièces jointes d'une question, dans l'ordre de dépôt.
+     *
+     * @return Collection<int, QuizAttachment>
+     */
+    public function attachmentsFor(FormField $question): Collection
+    {
+        if ($this->relationLoaded('attachments')) {
+            return $this->attachments
+                ->where('form_field_id', $question->id)
+                ->values();
+        }
+
+        return $this->attachments()
+            ->where('form_field_id', $question->id)
+            ->orderBy('id')
+            ->get();
+    }
+
     /** Les réponses rédigées de cette copie, dans l'ordre des questions. */
     public function openAnswers()
     {

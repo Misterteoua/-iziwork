@@ -6,6 +6,7 @@ use App\Models\Form;
 use App\Models\Grader;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
+use App\Support\PdfWatermark;
 use App\Support\Qr\QrPng;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
@@ -212,6 +213,11 @@ class GraderController extends Controller
 
         $withReference = $request->boolean('reference');
 
+        // Numéro de document : stable pour ce correcteur, dérivé de la clé de
+        // l'application et de sa référence. Une fiche recopiée porte un numéro
+        // qui ne correspond pas au dossier réel.
+        $documentId = PdfWatermark::documentId('grader', $grader->reference);
+
         $pdf = Pdf::loadView('admin.quizzes.grader-mission-pdf', [
             'quiz' => $quiz,
             'grader' => $grader,
@@ -221,7 +227,10 @@ class GraderController extends Controller
             // demande, et sans dépendre de l'écran.
             'qr' => QrPng::dataUri($grader->link(), 10),
             'withReference' => $withReference,
+            'documentId' => $documentId,
         ]);
+
+        PdfWatermark::apply($pdf, $documentId);
 
         return $pdf->download('fiche-correction_'.str($grader->name)->slug().'.pdf');
     }

@@ -83,6 +83,10 @@
             @php($answer = $answered[$question->id] ?? null)
             @php($chosen = $answer?->chosenIndexes() ?? [])
             @php($awarded = $answer?->awardedPoints())
+            {{-- Question notée à la main : une réponse rédigée, ou un QCM d'une
+                 évaluation qui a retiré l'auto-correction. L'affichage suit la
+                 même règle dans les deux cas. --}}
+            @php($manual = $question->isOpen() || ($question->isChoice() && $quiz->quizGradesChoiceManually()))
             <li class="p-6">
                 <div class="flex items-start justify-between gap-4">
                     <div class="min-w-0">
@@ -94,13 +98,13 @@
                     </div>
                     <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
                         @if($answer === null) bg-slate-100 text-slate-600
-                        @elseif($question->isOpen() && $awarded === null) bg-amber-50 text-amber-700
+                        @elseif($manual && $awarded === null) bg-amber-50 text-amber-700
                         @elseif($awarded !== null && $awarded > 0) bg-emerald-50 text-emerald-700
                         @else bg-red-50 text-red-700
                         @endif">
                         @if($answer === null)
                             Sans réponse
-                        @elseif($question->isOpen())
+                        @elseif($manual)
                             {{ $awarded === null
                                 ? 'En attente de correction'
                                 : rtrim(rtrim(number_format($awarded, 2, ',', ' '), '0'), ',').' / '.$question->points.' pt' }}
@@ -110,7 +114,7 @@
                     </span>
                 </div>
 
-                @if($question->isOpen())
+                @if($manual && $question->isOpen())
                 {{-- Sa propre réponse, telle qu'il l'a écrite : c'est la seule
                      chose vérifiable pour une question rédigée, il n'y a pas de
                      bonne réponse à comparer. --}}
@@ -121,12 +125,51 @@
                     @else
                     @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
                     @endif
+
+                    {{-- Pièces jointes rendues par l'étudiant : il les retrouve
+                         ici, pour vérifier que le bon document est bien parti. --}}
+                    @php($attachments = $attempt->attachmentsFor($question))
+                    @if($attachments->isNotEmpty())
+                    <ul class="mt-2 space-y-1">
+                        @foreach($attachments as $attachment)
+                        <li class="text-xs">
+                            <a href="{{ route('quiz.attachment', [$quiz->token, $attachment]) }}"
+                               class="font-medium text-brand-700 hover:text-brand-900 underline underline-offset-2">
+                                {{ $attachment->original_name }}
+                            </a>
+                            <span class="text-slate-400">· {{ $attachment->formatted_size }}</span>
+                        </li>
+                        @endforeach
+                    </ul>
+                    @endif
                 </div>
 
                 {{-- L'appréciation du correcteur : une note sans phrase est vécue
                      comme arbitraire. Elle n'apparaît qu'une fois la copie
                      entièrement corrigée, jamais sur une note provisoire. Sans
                      nom : le correcteur n'a pas à être identifié par l'étudiant. --}}
+                @if($pending === 0 && $answer?->hasComment())
+                <div class="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3">
+                    <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Appréciation</p>
+                    @include('partials.question-text', ['text' => $answer->grader_comment, 'class' => 'mt-1 text-sm text-slate-800'])
+                </div>
+                @endif
+                @elseif($manual)
+                {{-- QCM corrigé à la main : on montre ce que le candidat a coché
+                     et ce que l'enseignant a décidé, sans prétendre à une
+                     correction automatique. --}}
+                <ul class="mt-3 space-y-1">
+                    @foreach($attempt->displayOptions($question) as $position => $option)
+                    @php($isChosen = in_array($option['original'], $chosen, true))
+                    <li class="text-xs flex items-start gap-2 {{ $isChosen ? 'text-slate-800 font-medium' : 'text-slate-500' }}">
+                        <span aria-hidden="true">{{ $isChosen ? '•' : '·' }}</span>
+                        <span>
+                            {{ chr(65 + $position) }}. {{ $option['label'] }}
+                            @if($isChosen) <span class="text-slate-400">(votre réponse)</span> @endif
+                        </span>
+                    </li>
+                    @endforeach
+                </ul>
                 @if($pending === 0 && $answer?->hasComment())
                 <div class="mt-3 rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3">
                     <p class="text-xs font-semibold text-brand-800 uppercase tracking-wider">Appréciation</p>

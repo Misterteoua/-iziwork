@@ -21,9 +21,10 @@ corrigés automatiquement).
 - **Références alphanumériques** : 10 caractères générés pour la liste des étudiants ; la référence sert de numéro d'anonymat
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
 - **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible — et, quand le navigateur le permet, la question suivante **remplace la précédente sans recharger la page**
-- **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve
-- **Questions à réponse rédigée** : l'étudiant tape un texte, l'enseignant attribue les points depuis une page de correction qui **enchaîne les copies** les unes après les autres ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
-- **Récapitulatif PDF** : note, référence et temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
+- **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve — ou **correction manuelle des QCM** au choix de l'enseignant
+- **Questions à réponse rédigée** : l'étudiant tape un texte (et peut joindre jusqu'à **2 documents image ou PDF, 1 Mo chacun**), l'enseignant attribue les points depuis une page de correction qui **enchaîne les copies** les unes après les autres ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
+- **Récapitulatif PDF** : document mis en page (logo de l'établissement en tête, logo Iziwork en pied de page), avec la note, la référence et le temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
+- **Filigrane et numéro de document** : les trois PDF générés (évaluation, dépôt, fiche de mission) portent un **filigrane diagonal** répété sur chaque page et un **numéro de document unique** en pied de page — tracés dans le flux du PDF, ils ne se retirent pas en éditant le gabarit
 - **Surveillance (proctoring)** : blocage du copier-coller et du clic droit, plein écran proposé puis accordé par un geste dédié, journal horodaté des **seules** sorties réelles (onglet masqué, plein écran quitté) — valider une réponse n'est jamais compté
 - **Résultats côté admin** : liste des participations, export CSV, réinitialisation d'une participation
 
@@ -31,7 +32,7 @@ corrigés automatiquement).
 - **Accès via lien sécurisé** : Pas besoin de compte
 - **Formulaire intelligent** : Validation en temps réel
 - **Téléchargement** : PDF, Word, PowerPoint, ZIP (max 5 Mo)
-- **Page récapitulative** : Consultation et téléchargement du résumé
+- **Page récapitulative** : Consultation et téléchargement du résumé — le PDF porte le logo de l'établissement en tête, le logo Iziwork en pied de page, un filigrane et son numéro de document
 - **Anonymat** : Code anonyme pour les examens
 
 ## 📋 Prérequis
@@ -464,9 +465,14 @@ numéro**, jamais convertie en silence.
 
 Ce qui se passe ensuite, dans l'ordre :
 
-1. L'étudiant tape sa réponse dans une zone de texte (5 000 caractères maximum).
+1. L'étudiant tape sa réponse dans une zone de texte (5 000 caractères maximum)
+   **et/ou** joint jusqu'à **2 documents** (image ou PDF, **1 Mo maximum
+   chacun**). Un texte seul, un document seul, ou les deux : la réponse est
+   valide dès que l'un des deux est présent.
 2. À la remise, les QCM sont notés ; les réponses rédigées sont marquées
-   **en attente** — `null`, et non `0`, ce qui est toute la différence.
+   **en attente** — `null`, et non `0`, ce qui est toute la différence. Les
+   documents se consultent et se téléchargent depuis la page de correction, où
+   chaque pièce jointe affiche son nom et sa taille.
 3. Sa note est annoncée comme **provisoire**, avec le nombre de réponses à
    corriger ; le récapitulatif PDF porte la même mention.
 4. Dans **Résultats**, la copie apparaît avec un bouton « **Corriger (n)** ». La
@@ -482,6 +488,41 @@ Ce qui se passe ensuite, dans l'ordre :
    comme dans le PDF : sur une note provisoire, il serait lu comme définitif. Un
    champ laissé vide ne produit aucun cadre vide, et un commentaire écrit sans
    note est conservé (la réponse, elle, reste en attente).
+
+### Corriger les QCM à la main
+
+Par défaut, une question à propositions est **notée automatiquement** à la
+remise. Un réglage de l'évaluation permet de retirer cette auto-correction :
+« **Corriger les QCM manuellement** », dans les réglages de l'évaluation, à
+côté de « Afficher la note à la fin ». Il est **décoché par défaut**, donc une
+évaluation existante garde exactement son comportement.
+
+Coéché, chaque question à propositions attend une note, comme une réponse
+rédigée : la copie entre dans la file de correction, le tableau des résultats
+annonce les copies à corriger, et l'écran de correction affiche la réponse du
+candidat, la bonne réponse (indicative) et un champ de points. L'enseignant
+**et** les correcteurs externes notent de la même façon. L'export CSV regroupe
+alors les réponses à corriger, QCM compris.
+
+C'est utile quand plusieurs réponses se défendent, ou quand la question sert à
+faire argumenter plutôt qu'à cocher. Une note partielle est acceptée, et
+reprendre une note laisse la même trace au journal qu'une réponse rédigée.
+
+### Pièces jointes d'une réponse
+
+En réponse à une question rédigée, l'étudiant peut **joindre jusqu'à 2
+documents** : une **image** (jpg, png, webp, gif) ou un **PDF**, de **1 Mo
+maximum chacun**. Il peut répondre par un texte, par un document, ou par les
+deux.
+
+Les fichiers sont rangés **hors du dossier public** (disque privé) et ne se
+téléchargent que par une route qui revérifie l'accès : l'étudiant depuis la
+session de sa copie, l'enseignant depuis la copie de son évaluation, le
+correcteur depuis une évaluation qui lui est affectée. Réinitialiser ou
+supprimer une copie **efface aussi les fichiers** sur le disque.
+
+Un seul prérequis côté serveur : `upload_max_filesize` et `post_max_size`
+d'au moins 2 Mo (recommandé : 8 Mo). Voir `DEPLOYMENT.md`.
 
 ### L'étudiant suit son résultat
 
@@ -520,6 +561,32 @@ Deux exports complètent la page des résultats : l'export CSV des résultats
 gagne une colonne « Réponses libres à corriger », et « **Réponses rédigées
 (CSV)** » produit une ligne par réponse (question, texte, points, barème,
 état de correction) — les noms restent absents d'une évaluation anonyme.
+
+### Filigrane et numéro de document des PDF
+
+Les trois documents que l'application produit — **récapitulatif d'évaluation**,
+**récapitulatif de dépôt** et **fiche de mission d'un correcteur** — portent
+désormais deux marques qui rendent une retouche ou une recopie repérable :
+
+- un **filigrane** diagonal (le numéro de document) répété sur **chaque page**,
+  très léger pour ne jamais gêner la lecture ;
+- un **numéro de document unique**, `DOC-XXXX-XXXX-XXXX`, imprimé en clair dans
+  le pied de page de chaque page.
+
+Le numéro est calculé par HMAC à partir de la **clé de l'application**
+(`APP_KEY`) et de l'identifiant de l'objet : référence de l'évaluation, jeton de
+reçu d'un dépôt, référence du correcteur. Deux conséquences pratiques :
+
+- le numéro est **stable** : le même document rend toujours le même numéro,
+  sans qu'aucune colonne ne soit ajoutée en base ;
+- il est **infalsifiable** sans le secret du serveur : un document recopié d'un
+  autre dossier, ou retouché, porte un numéro qui ne correspond pas au dossier
+  réel. C'est ce qui permet de le détecter.
+
+Le filigrane est tracé **dans le flux du PDF**, après le contenu du document.
+Il ne peut donc pas être retiré en éditant le gabarit, et il se répète d'une page
+à l'autre. Aucune extension PHP supplémentaire n'est nécessaire (**GD n'est pas
+requis**), et un logo ou une clé absents ne font jamais échouer la génération.
 
 ### Quand les corrections sont publiées
 
@@ -563,8 +630,9 @@ défaut), et l'application engendre pour lui une **référence de dix caractère
 personnel** (`/correction/Ab12Cd34`).
 
 - La page affiche le lien avec un bouton « Copier », son **QR code**, et une
-  **fiche de mission PDF** à imprimer — QR code en haute résolution, consignes,
-  échéance. Par défaut la fiche **ne porte pas la référence** : une fiche qui
+  **fiche de mission PDF** à imprimer — mise en page aux couleurs de
+  l'établissement (logo en tête, logo Iziwork en pied de page), QR code en haute
+  résolution, consignes, échéance. Par défaut la fiche **ne porte pas la référence** : une fiche qui
   contiendrait le lien *et* la clé ouvrirait l'accès à elle seule. Le bouton
   « Fiche + référence » existe pour une remise en main propre.
 - Le correcteur ouvre son lien, saisit **son email et sa référence** : le lien

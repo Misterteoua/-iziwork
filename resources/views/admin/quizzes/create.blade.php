@@ -98,6 +98,15 @@
             </label>
 
             <label class="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" name="manual_choice_grading" value="1" @checked(old('manual_choice_grading', false))
+                       class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500/40">
+                <span>
+                    <span class="block text-sm font-medium text-slate-700">Corriger les QCM manuellement</span>
+                    <span class="block text-xs text-slate-500">Désactivé, les questions à choix sont notées automatiquement. Activé, l'auto-correction est retirée : elles attendent une note et vous les corrigez à la main.</span>
+                </span>
+            </label>
+
+            <label class="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" name="proctoring" value="1" @checked(old('proctoring', true))
                        class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus-visible:ring-2 focus-visible:ring-brand-500/40">
                 <span>

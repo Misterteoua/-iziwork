@@ -60,12 +60,14 @@
                     Exporter en CSV
                 </a>
 
-                @if($quiz->quizHasOpenQuestions())
-                {{-- Les textes rédigés se lisent groupés, pas dans un tableau :
-                     une ligne par réponse, avec ce qui reste à noter. --}}
+                @if($quiz->quizHasOpenQuestions() || $quiz->quizGradesChoiceManually())
+                {{-- Les réponses à corriger se lisent groupées, pas dans un
+                     tableau : une ligne par réponse, avec ce qui reste à noter.
+                     Le libellé suit ce que l'évaluation demande réellement —
+                     réponses rédigées, et QCM si l'auto-correction est retirée. --}}
                 <a href="{{ route('admin.quizzes.results.open-answers', $quiz) }}"
                    class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
-                    Réponses rédigées (CSV)
+                    {{ $quiz->quizGradesChoiceManually() ? 'Réponses à corriger (CSV)' : 'Réponses rédigées (CSV)' }}
                 </a>
                 @endif
                 @endif
@@ -80,7 +82,12 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span>
-                    {{ $toBeGraded }} copie(s) attendent une correction : les réponses rédigées ne sont pas notées automatiquement.
+                    {{ $toBeGraded }} copie(s) attendent une correction :
+                    @if($quiz->quizGradesChoiceManually())
+                        l'auto-correction des QCM est désactivée pour cette évaluation, et les réponses rédigées ne sont pas notées automatiquement.
+                    @else
+                        les réponses rédigées ne sont pas notées automatiquement.
+                    @endif
                     Les notes correspondantes sont provisoires pour les étudiants.
                 </span>
             </p>

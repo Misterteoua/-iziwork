@@ -79,6 +79,16 @@ class FormField extends Model
     }
 
     /**
+     * Question à propositions : une machine peut la comparer à une bonne
+     * réponse — sauf si l'évaluation a demandé une correction manuelle, auquel
+     * cas l'appelant doit consulter {@see Form::quizGradesChoiceManually()}.
+     */
+    public function isChoice(): bool
+    {
+        return in_array($this->field_type, self::QUESTION_TYPES, true);
+    }
+
+    /**
      * Index des bonnes réponses, triés.
      *
      * @return array<int, int>

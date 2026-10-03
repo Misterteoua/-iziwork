@@ -102,6 +102,43 @@ class FormFieldTest extends TestCase
         $this->assertEquals('file', $fileField->field_type);
     }
 
+    public function test_is_choice_distingue_les_questions_a_propositions(): void
+    {
+        $radio = FormField::create([
+            'form_id' => $this->form->id,
+            'field_label' => 'Choix unique',
+            'field_type' => 'radio',
+            'required' => true,
+            'order' => 0,
+            'options' => ['Un', 'Deux'],
+            'correct_answer' => [1],
+        ]);
+
+        $checkbox = FormField::create([
+            'form_id' => $this->form->id,
+            'field_label' => 'Choix multiple',
+            'field_type' => 'checkbox',
+            'required' => true,
+            'order' => 1,
+            'options' => ['Un', 'Deux'],
+            'correct_answer' => [0, 1],
+        ]);
+
+        $open = FormField::create([
+            'form_id' => $this->form->id,
+            'field_label' => 'Rédaction',
+            'field_type' => FormField::OPEN_TYPE,
+            'required' => true,
+            'order' => 2,
+        ]);
+
+        $this->assertTrue($radio->isChoice());
+        $this->assertTrue($checkbox->isChoice());
+        $this->assertFalse($open->isChoice());
+        $this->assertTrue($open->isOpen());
+        $this->assertFalse($radio->isOpen());
+    }
+
     public function test_form_field_select_and_checkbox_types(): void
     {
         $selectField = FormField::create([
