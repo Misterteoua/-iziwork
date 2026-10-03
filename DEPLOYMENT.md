@@ -413,7 +413,7 @@ d'un correcteur** : en-tête avec le **logo de l'établissement**
 > **Point à connaître :** le numéro étant dérivé de `APP_KEY`, **ne régénérez
 > pas la clé** d'une installation en service. Cela ne casse aucun document déjà
 > émis — les PDF déjà téléchargés restent lisibles, et leur numéro imprimé ne
-> bouge pas — mais un document **regénéré** porterait un numéro différent.
+> bouge pas — mais un document **régénéré** porterait un numéro différent.
 > C'est sans conséquence : le numéro est un repère de contrôle, pas une clé de
 > déchiffrement.
 >
