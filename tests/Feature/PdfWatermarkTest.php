@@ -409,4 +409,62 @@ class PdfWatermarkTest extends TestCase
         // ... et translucide (ExtGState /ca), sinon il masquerait le contenu.
         $this->assertMatchesRegularExpression('/\/ca 0\.0[0-9]/', $pdf);
     }
+
+    /**
+     * Le numéro doit être trouvé à **chaque** génération, pas une fois sur deux.
+     *
+     * Le test de dépôt échouait autrefois de façon intermittente : le numéro
+     * était bien dans le PDF, mais l'extraction des flux pouvait ressortir vide.
+     * Ce test régénère le document plusieurs fois d'affilée et l'exige à chaque
+     * tour, pour qu'une régression du décodage se voie immédiatement.
+     */
+    public function test_le_numero_est_trouve_a_chaque_generation_du_recapitulatif(): void
+    {
+        $form = Form::create([
+            'title' => 'Dépôt de rapport',
+            'token' => 'JETON-WM-BOUCLE-'.uniqid(),
+            'status' => 'active',
+            'created_by' => $this->admin->id,
+        ]);
+
+        $submission = Submission::create([
+            'form_id' => $form->id,
+            'student_name' => 'John Doe',
+            'status' => 'validated',
+        ]);
+
+        $expectedId = PdfWatermark::documentId('submission', $submission->receipt_token);
+
+        for ($run = 1; $run <= 6; $run++) {
+            $response = $this->get("/s/{$form->token}/recap/{$submission->receipt_token}/pdf");
+            $response->assertOk();
+
+            $streams = $this->contentStreams((string) $response->getContent());
+
+            $this->assertNotSame('', $streams, "Extraction vide au tour {$run}.");
+            $this->assertStringContainsString($expectedId, $streams, "Numéro de document absent au tour {$run}.");
+        }
+    }
+
+    /**
+     * L'extraction ne dépend ni de la compression, ni d'un détail du PDF.
+     *
+     * Un flux gzip, un flux « deflate » brut et un flux non compressé doivent
+     * tous être lus : le numéro d'un document ne doit pas dépendre de la façon
+     * dont dompdf a choisi d'écrire ses flux.
+     */
+    public function test_l_extraction_lit_tous_les_encodages_de_flux(): void
+    {
+        $lf = chr(10);
+        $payload = 'DOC-AAAA-BBBB-CCCC';
+
+        $pdf = '%PDF-1.7'.$lf
+            .'1 0 obj'.$lf.'<< /Length 0 >>'.$lf.'stream'.$lf.gzcompress($payload).$lf.'endstream'.$lf.'endobj'.$lf
+            .'2 0 obj'.$lf.'<< /Length 0 >>'.$lf.'stream'.$lf.gzdeflate($payload).$lf.'endstream'.$lf.'endobj'.$lf
+            .'3 0 obj'.$lf.'<< /Length 0 >>'.$lf.'stream'.$lf.$payload.$lf.'endstream'.$lf.'endobj'.$lf;
+
+        $streams = $this->contentStreams($pdf);
+
+        $this->assertSame(3, substr_count($streams, $payload));
+    }
 }
