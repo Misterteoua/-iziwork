@@ -9,6 +9,8 @@ use App\Models\QuizAttempt;
 use App\Models\Submission;
 use App\Support\PdfWatermark;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -296,5 +298,69 @@ class PdfWatermarkTest extends TestCase
 
         $this->assertStringContainsString('Numéro de document', $html);
         $this->assertStringContainsString($expectedId, $html);
+    }
+
+    /**
+     * Le récapitulatif d'une réponse rendue uniquement par un document.
+     *
+     * Le document est produit par dompdf, via la route réelle, puis inspecté :
+     * le filigrane incliné et le numéro de document doivent être là comme pour
+     * n'importe quelle copie — c'est la réponse de l'étudiant, et c'est cette
+     * copie-là que l'établissement peut avoir à authentifier.
+     */
+    public function test_le_recapitulatif_d_une_reponse_par_document_porte_le_filigrane_et_le_numero(): void
+    {
+        Storage::fake('local');
+
+        $quiz = Form::create([
+            'title' => 'Examen de Chimie',
+            'token' => 'JETON-WM-DOC-'.uniqid(),
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'is_anonymous' => false,
+            'quiz_settings' => ['duration_minutes' => 30, 'show_score' => true, 'proctoring' => false],
+            'created_by' => $this->admin->id,
+        ]);
+
+        $question = $quiz->fields()->create([
+            'field_label' => 'Rédigez la procédure de traitement des réclamations.',
+            'field_type' => FormField::OPEN_TYPE,
+            'required' => true,
+            'order' => 1,
+            'options' => [],
+            'correct_answer' => [],
+            'points' => 5,
+        ]);
+
+        // Un document seul : aucun texte saisi.
+        $this->post(route('quiz.begin', $quiz->token), ['student_name' => 'Curie Marie']);
+        $this->post(route('quiz.answer', $quiz->token), [
+            'question_id' => $question->id,
+            'answer_text' => null,
+            'attachments' => [UploadedFile::fake()->create('Listing_Ex_180926.pdf', 96, 'application/pdf')],
+        ])->assertSessionHasNoErrors();
+        $this->post(route('quiz.submit', $quiz->token));
+
+        $attempt = $quiz->attempts()->firstOrFail();
+
+        $response = $this->get(route('quiz.recap.pdf', [$quiz->token, $attempt->reference]));
+        $response->assertOk();
+
+        $pdf = (string) $response->getContent();
+
+        // Un vrai PDF dompdf, produit de bout en bout.
+        $this->assertStringStartsWith('%PDF-', $pdf);
+
+        $streams = $this->contentStreams($pdf);
+        $expectedId = PdfWatermark::documentId('quiz-attempt', $attempt->reference);
+
+        // Le numéro de document, en clair dans le flux (eau + pied de page).
+        $this->assertStringContainsString($expectedId, $streams);
+
+        // Le filigrane est incliné (matrice de rotation à 45°)...
+        $this->assertStringContainsString('0.707 -0.707 0.707 0.707', $streams);
+
+        // ... et translucide (ExtGState /ca), sinon il masquerait le contenu.
+        $this->assertMatchesRegularExpression('/\/ca 0\.0[0-9]/', $pdf);
     }
 }

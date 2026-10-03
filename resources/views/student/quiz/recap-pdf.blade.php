@@ -527,8 +527,13 @@
             @if($manual && $question->isOpen())
             <div class="answer">
                 <span class="answer-label">Votre réponse</span>
+                @php($attachments = $attempt->attachmentsFor($question))
                 @if(trim((string) $answer?->answer_text) === '')
+                    @if($attachments->isNotEmpty())
+                    <span>Réponse rendue par un document joint.</span>
+                    @else
                     <span class="pending">Aucune réponse rendue.</span>
+                    @endif
                 @else
                     @include('partials.question-text', ['text' => $answer->answer_text])
                 @endif
@@ -536,7 +541,6 @@
 
             {{-- Pièces jointes déposées par l'étudiant : leur nom, pour qu'il
                  retrouve dans le document ce qu'il a rendu. --}}
-            @php($attachments = $attempt->attachmentsFor($question))
             @if($attachments->isNotEmpty())
             <div class="attachment">
                 <span class="answer-label">Pièces jointes</span>

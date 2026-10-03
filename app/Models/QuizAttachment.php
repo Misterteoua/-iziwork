@@ -18,6 +18,11 @@ class QuizAttachment extends Model
 {
     use HasFactory;
 
+    /** Types et extensions d'image matricielle montrables en aperçu. */
+    public const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+
+    public const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+
     protected $fillable = [
         'quiz_attempt_id',
         'form_field_id',
@@ -62,9 +67,22 @@ class QuizAttachment extends Model
         return round($bytes, 2).' '.$units[$pow];
     }
 
-    /** Le fichier est-il une image ? (décide de l'aperçu, pas du droit d'accès) */
+    /**
+     * Le fichier est-il une image affichable en aperçu ?
+     *
+     * Seuls les formats matriciels comptent : un SVG, qui peut porter du script,
+     * n'est jamais un aperçu. Le type enregistré est confronté au nom d'origine,
+     * pour qu'une ligne ancienne sans type reconnu reste téléchargeable sans
+     * jamais s'afficher dans la page.
+     */
     public function isImage(): bool
     {
-        return str_starts_with((string) $this->mime_type, 'image/');
+        if (in_array(strtolower((string) $this->mime_type), self::IMAGE_MIMES, true)) {
+            return true;
+        }
+
+        $extension = strtolower(pathinfo((string) ($this->original_name ?: $this->stored_name), PATHINFO_EXTENSION));
+
+        return in_array($extension, self::IMAGE_EXTENSIONS, true);
     }
 }

@@ -492,6 +492,43 @@ class QuizAttemptController extends Controller
     }
 
     /**
+     * Sert une pièce jointe en aperçu dans la page, quand c'est une image.
+     *
+     * Le fichier reste sur le disque privé : c'est le serveur qui le lit et le
+     * renvoie au navigateur. Seules les images matricielles sont servies en
+     * ligne — le type **réel** du fichier est revérifié, pas celui annoncé à
+     * l'envoi — et tout le reste (un PDF, un format inattendu) retombe sur le
+     * téléchargement, jamais sur un affichage dans la page.
+     */
+    public static function previewAttachment(QuizAttachment $attachment)
+    {
+        if (! $attachment->isImage()) {
+            return self::downloadAttachment($attachment);
+        }
+
+        $disk = Storage::disk('local');
+
+        abort_unless($disk->exists($attachment->file_path), 404);
+
+        $mime = $disk->mimeType($attachment->file_path);
+
+        if (! in_array($mime, QuizAttachment::IMAGE_MIMES, true)) {
+            return self::downloadAttachment($attachment);
+        }
+
+        // Affiché dans la page (`inline`), avec le type réel et `nosniff` : le
+        // navigateur ne devine rien et n'exécute rien. L'en-tête est posé
+        // explicitement : sans lui, un navigateur pourrait proposer de
+        // télécharger l'aperçu au lieu de le montrer.
+        return response()
+            ->file($disk->path($attachment->file_path), [
+                'Content-Type' => $mime,
+                'X-Content-Type-Options' => 'nosniff',
+            ])
+            ->setContentDisposition('inline');
+    }
+
+    /**
      * Journalise une perte de focus signalée par la page (changement d'onglet,
      * sortie de plein écran). Trace, jamais de sanction automatique.
      */

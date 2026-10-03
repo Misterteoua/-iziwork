@@ -120,15 +120,17 @@
                      bonne réponse à comparer. --}}
                 <div class="mt-3 rounded-xl bg-slate-50 px-4 py-3">
                     <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Votre réponse</p>
+                    @php($attachments = $attempt->attachmentsFor($question))
                     @if(trim((string) $answer?->answer_text) === '')
-                    <p class="mt-1 text-sm text-slate-800">Aucune réponse rendue.</p>
+                    <p class="mt-1 text-sm text-slate-800">
+                        {{ $attachments->isNotEmpty() ? 'Réponse rendue par un document joint.' : 'Aucune réponse rendue.' }}
+                    </p>
                     @else
                     @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
                     @endif
 
                     {{-- Pièces jointes rendues par l'étudiant : il les retrouve
                          ici, pour vérifier que le bon document est bien parti. --}}
-                    @php($attachments = $attempt->attachmentsFor($question))
                     @if($attachments->isNotEmpty())
                     <ul class="mt-2 space-y-1">
                         @foreach($attachments as $attachment)

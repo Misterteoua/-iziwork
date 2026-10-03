@@ -515,11 +515,27 @@ documents** : une **image** (jpg, png, webp, gif) ou un **PDF**, de **1 Mo
 maximum chacun**. Il peut répondre par un texte, par un document, ou par les
 deux.
 
+Un **document seul vaut réponse** : la question n'est pas comptée zéro, elle
+**reste en attente de correction**, et l'enseignant peut lui attribuer ses points
+depuis la page de correction, exactement comme pour une réponse tapée. La page de
+résultat et le récapitulatif PDF indiquent alors « Réponse rendue par un document
+joint. ». Les listes de copies à corriger (celle de l'administration comme celle
+du correcteur) portent un **repère** pour ces réponses, afin qu'elles ne soient
+pas prises pour des absences et sautées.
+
 Les fichiers sont rangés **hors du dossier public** (disque privé) et ne se
 téléchargent que par une route qui revérifie l'accès : l'étudiant depuis la
 session de sa copie, l'enseignant depuis la copie de son évaluation, le
 correcteur depuis une évaluation qui lui est affectée. Réinitialiser ou
 supprimer une copie **efface aussi les fichiers** sur le disque.
+
+Dans la page de correction, une pièce jointe **image** s'affiche en **aperçu**
+(vignette) : le correcteur voit le document sans le télécharger, et un clic
+l'ouvre **en grand sur la même page** (visionneuse posée par-dessus, sans quitter
+la correction). Seules les images matricielles sont montrées — un PDF reste un
+lien à ouvrir. L'aperçu est servi par la **même route** que le téléchargement,
+qui revérifie l'accès, et avec le type **réel** du fichier. La visionneuse repose
+sur du **CSS seul** (`:target`) : aucun script n'est nécessaire.
 
 Un seul prérequis côté serveur : `upload_max_filesize` et `post_max_size`
 d'au moins 2 Mo (recommandé : 8 Mo). Voir `DEPLOYMENT.md`.

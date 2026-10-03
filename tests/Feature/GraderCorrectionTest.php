@@ -8,8 +8,11 @@ use App\Models\FormField;
 use App\Models\Grader;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
+use App\Models\QuizAttachment;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 /**
@@ -475,5 +478,63 @@ class GraderCorrectionTest extends TestCase
         // Que l'en-tête : aucune copie corrigée par lui ne peut y figurer.
         $this->assertStringContainsString('Mon commentaire', $csv);
         $this->assertStringNotContainsString("\n", trim($csv));
+    }
+
+    /**
+     * Sa file signale une réponse rendue uniquement par un document, pour qu'il
+     * ouvre la copie au lieu de la croire sans réponse.
+     */
+    public function test_la_file_signale_une_reponse_par_document(): void
+    {
+        Storage::fake('local');
+
+        $question = $this->openQuestion($this->quiz, 3);
+
+        $this->post(route('quiz.begin', $this->quiz->token), ['student_name' => 'Curie Marie']);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $question->id,
+            'answer_text' => null,
+            'attachments' => [UploadedFile::fake()->create('copie.pdf', 200, 'application/pdf')],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->login();
+
+        $this->get(route('correction.index'))
+            ->assertOk()
+            ->assertSee('à lire dans un document joint');
+    }
+
+    /**
+     * Le correcteur voit aussi la vignette, et l'aperçu passe par sa propre
+     * porte d'accès (périmètre de ses évaluations vérifié).
+     */
+    public function test_le_correcteur_previsualise_une_image(): void
+    {
+        Storage::fake('local');
+
+        $question = $this->openQuestion($this->quiz, 3);
+
+        $this->post(route('quiz.begin', $this->quiz->token), ['student_name' => 'Curie Marie']);
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $question->id,
+            'answer_text' => null,
+            'attachments' => [UploadedFile::fake()->image('scan.png', 200, 200)],
+        ])->assertSessionHasNoErrors();
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attempt = $this->quiz->attempts()->orderByDesc('id')->firstOrFail();
+        $attachment = QuizAttachment::firstOrFail();
+
+        $this->login();
+
+        $this->get(route('correction.show', $attempt))
+            ->assertOk()
+            ->assertSee('apercu=1', false);
+
+        $response = $this->get(route('correction.attachment', [$attempt, $attachment, 'apercu' => 1]));
+
+        $response->assertOk()->assertHeader('Content-Type', 'image/png');
+        $this->assertStringStartsWith('inline', (string) $response->headers->get('Content-Disposition'));
     }
 }

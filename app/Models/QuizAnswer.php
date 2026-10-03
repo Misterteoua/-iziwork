@@ -61,6 +61,28 @@ class QuizAnswer extends Model
     }
 
     /**
+     * Réponses rendues uniquement par un document joint.
+     *
+     * Le champ texte est vide, mais au moins une pièce jointe a été déposée pour
+     * cette question : la réponse attend une note de l'enseignant et n'a rien à
+     * lire au clavier. La liste des copies à corriger s'en sert pour signaler ce
+     * cas, afin qu'un correcteur ne le prenne pas pour une absence de réponse.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<QuizAnswer>  $query
+     */
+    public function scopePendingDocumentOnly($query)
+    {
+        return $query->pendingManual()
+            ->where(fn ($q) => $q->whereNull('answer_text')->orWhere('answer_text', ''))
+            ->whereExists(function ($sub) {
+                $sub->selectRaw('1')
+                    ->from('quiz_attachments')
+                    ->whereColumn('quiz_attachments.quiz_attempt_id', 'quiz_answers.quiz_attempt_id')
+                    ->whereColumn('quiz_attachments.form_field_id', 'quiz_answers.form_field_id');
+            });
+    }
+
+    /**
      * Cette réponse a-t-elle été notée ?
      *
      * `null` n'est pas zéro : une question ouverte attend une note, une question

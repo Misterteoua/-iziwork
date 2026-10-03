@@ -7,10 +7,12 @@ use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
+use App\Models\ShortLink;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use App\Support\Qr\QrPng;
 use Tests\TestCase;
 
 /**
@@ -354,5 +356,204 @@ class QuizAttachmentTest extends TestCase
         $this->get(route('quiz.result', $this->quiz->token))
             ->assertOk()
             ->assertSee('rendu.pdf');
+    }
+
+    /**
+     * Un document seul vaut réponse : la correction doit proposer de la noter,
+     * et non annoncer « rien à corriger, la question vaut zéro ».
+     */
+    public function test_la_correction_propose_de_noter_une_reponse_par_document_seul(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('copie-rendue.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]))
+            ->assertOk()
+            ->assertSee('points[', false)
+            ->assertSee('En attente')
+            ->assertSee('copie-rendue.pdf')
+            ->assertDontSee('vaut zéro');
+    }
+
+    /**
+     * Le parcours complet : une réponse par document seul se corrige, puis la
+     * copie quitte la file d'attente.
+     */
+    public function test_une_reponse_par_document_seul_se_corrige_et_quitte_l_attente(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf()]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $answer = $attempt->answers()->firstOrFail();
+
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $attempt]), [
+            'points' => [$answer->id => 5],
+        ])->assertRedirect();
+
+        $this->assertSame('5.00', $answer->refresh()->points_awarded);
+        $this->assertTrue($attempt->fresh()->isFullyGraded());
+        $this->assertSame(0, $attempt->fresh()->pendingManualCount());
+    }
+
+    /**
+     * L'étudiant doit lire que sa réponse a bien été rendue par un document,
+     * et non « Aucune réponse rendue. ».
+     */
+    public function test_le_resultat_annonce_une_reponse_par_document_joint(): void
+    {
+        $this->start();
+        $this->answerWith(null, [$this->pdf('rendu.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Réponse rendue par un document joint.')
+            ->assertSee('rendu.pdf')
+            ->assertDontSee('Aucune réponse rendue.');
+    }
+
+    /**
+     * Le récapitulatif PDF porte la même mention : le document de l'étudiant ne
+     * doit pas prétendre qu'aucune réponse n'a été rendue.
+     */
+    public function test_le_recapitulatif_pdf_annonce_une_reponse_par_document_joint(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('rendu.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+        $attempt->load(['answers', 'attachments']);
+
+        $followLink = ShortLink::forAttempt($this->quiz, $attempt);
+
+        $html = view('student.quiz.recap-pdf', [
+            'quiz' => $this->quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => $this->quiz->quizRevealMoment(),
+            'pending' => $attempt->pendingManualCount(),
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
+        ])->render();
+
+        $this->assertStringContainsString('Réponse rendue par un document joint.', $html);
+        $this->assertStringContainsString('rendu.pdf', $html);
+        $this->assertStringNotContainsString('Aucune réponse rendue.', $html);
+    }
+
+    /**
+     * La liste des copies à corriger signale une réponse rendue par un document
+     * seul, pour que le correcteur ne la confonde pas avec une absence.
+     */
+    public function test_la_liste_des_copies_signale_une_reponse_par_document(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('rendu.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->assertSame(1, $attempt->answers()->pendingDocumentOnly()->count());
+
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertSee('rendue(s) par document joint');
+
+        // La note posée, la réponse n'attend plus : le signal s'éteint.
+        $answer = $attempt->answers()->firstOrFail();
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $attempt]), [
+            'points' => [$answer->id => 5],
+        ])->assertRedirect();
+
+        $this->assertSame(0, $attempt->answers()->pendingDocumentOnly()->count());
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertDontSee('rendue(s) par document joint');
+    }
+
+    /**
+     * Une réponse accompagnée d'un texte n'est pas « rendue par un document » :
+     * l'indicateur doit rester éteint.
+     */
+    public function test_une_reponse_avec_texte_ne_declenche_pas_l_indicateur(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith('Ma réponse rédigée.', [$this->pdf()]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->assertSame(0, $attempt->answers()->pendingDocumentOnly()->count());
+
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertDontSee('rendue(s) par document joint');
+    }
+
+    /**
+     * L'aperçu d'une image évite au correcteur de télécharger chaque fichier :
+     * la correction affiche la vignette, servie en ligne par la même route.
+     */
+    public function test_la_correction_affiche_un_apercu_des_images(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->image('scan.png')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]))
+            ->assertOk()
+            ->assertSee('<img', false)
+            ->assertSee('apercu=1', false)
+            // La vignette ouvre la visionneuse sur la page (`:target`), pas un
+            // nouvel onglet : le lien vise l'ancre de la boîte, et la boîte
+            // existe dans le document.
+            ->assertSee('href="#apercu-', false)
+            ->assertSee('class="izw-lightbox"', false)
+            ->assertSee('role="dialog"', false);
+    }
+
+    /** Un document n'est jamais montré dans la page : il reste un lien. */
+    public function test_un_pdf_ne_declenche_pas_d_apercu(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('copie.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]))
+            ->assertOk()
+            ->assertSee('copie.pdf')
+            ->assertDontSee('apercu=1', false);
+    }
+
+    /** L'aperçu d'une image est servi en ligne, avec son type réel. */
+    public function test_l_apercu_sert_l_image_en_ligne(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->image('scan.png')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attachment = QuizAttachment::firstOrFail();
+
+        $response = $this->get(route('admin.quizzes.attempts.attachment', [$this->quiz, $attempt, $attachment, 'apercu' => 1]));
+
+        $response->assertOk()->assertHeader('Content-Type', 'image/png');
+        // Affiché dans la page, jamais proposé au téléchargement.
+        $this->assertStringStartsWith('inline', (string) $response->headers->get('Content-Disposition'));
+    }
+
+    /** L'aperçu d'un PDF retombe sur le téléchargement, jamais sur l'affichage. */
+    public function test_l_apercu_d_un_pdf_retombe_sur_le_telechargement(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('copie.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attachment = QuizAttachment::firstOrFail();
+
+        $this->get(route('admin.quizzes.attempts.attachment', [$this->quiz, $attempt, $attachment, 'apercu' => 1]))
+            ->assertOk()
+            ->assertDownload('copie.pdf');
     }
 }

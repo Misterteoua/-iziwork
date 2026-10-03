@@ -63,6 +63,11 @@
                         @endunless
                         · remise {{ $attempt->submitted_at?->format('d/m/Y à H:i') ?? '—' }}
                     </p>
+                    @if($attempt->document_only_count > 0)
+                    <p class="mt-1 text-xs font-medium text-brand-700">
+                        {{ $attempt->document_only_count }} réponse(s) à lire dans un document joint
+                    </p>
+                    @endif
                 </div>
 
                 <a href="{{ route('correction.show', $attempt) }}"

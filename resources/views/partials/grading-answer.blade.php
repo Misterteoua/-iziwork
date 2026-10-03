@@ -17,8 +17,12 @@
      attendent exactement la même décision de l'enseignant. --}}
 @php($manual = $question->isOpen() || ($question->isChoice() && $attempt->form->quizGradesChoiceManually()))
 @php($chosen = $answer?->chosenIndexes() ?? [])
+{{-- Les pièces jointes comptent comme réponse : un document seul doit rendre la
+     question corrigeable, exactement comme un texte. Le calcul est fait ici, une
+     fois pour toutes. --}}
+@php($attachments = $attempt->attachmentsFor($question))
 @php($responded = $answer !== null && ($question->isOpen()
-    ? trim((string) $answer->answer_text) !== ''
+    ? (trim((string) $answer->answer_text) !== '' || $attachments->isNotEmpty())
     : $chosen !== []))
 
 @php($points = static fn ($value): string => rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ','))
@@ -64,7 +68,11 @@
             @if(! $responded)
                 <p class="mt-1 text-sm text-slate-500">Aucune réponse rendue : rien à corriger, la question vaut zéro.</p>
             @elseif($question->isOpen())
+                @if(trim((string) $answer->answer_text) === '')
+                <p class="mt-1 text-sm text-slate-800">Réponse rendue par un document joint — voir les pièces jointes ci-dessous.</p>
+                @else
                 @include('partials.question-text', ['text' => $answer->answer_text, 'class' => 'mt-1 text-sm text-slate-800'])
+                @endif
             @else
                 @php($chosenLabels = [])
                 @foreach($attempt->displayOptions($question) as $option)
@@ -79,20 +87,63 @@
         {{-- Pièces jointes déposées par l'étudiant : leur nom, leur taille et un
              lien. Le fichier n'est jamais embarqué dans la page, il se
              télécharge par une route qui revérifie l'accès. --}}
-        @php($attachments = $attempt->attachmentsFor($question))
         @if($attachments->isNotEmpty())
+        {{-- Route et paramètres selon le contexte (administration ou correcteur) :
+             le téléchargement et l'aperçu passent par la même porte, qui revérifie
+             l'accès à chaque appel. --}}
+        @php($attachmentRoute = $asAdmin ? 'admin.quizzes.attempts.attachment' : 'correction.attachment')
+        @php($attachmentBase = $asAdmin ? [$attempt->form_id, $attempt] : [$attempt])
         <div class="mt-3 rounded-xl border border-slate-200 px-4 py-3">
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Pièces jointes</p>
-            <ul class="mt-2 space-y-1.5">
+            <ul class="mt-2 space-y-3">
                 @foreach($attachments as $attachment)
-                <li class="flex flex-wrap items-center gap-2 text-sm">
-                    <a href="{{ $asAdmin
-                        ? route('admin.quizzes.attempts.attachment', [$attempt->form_id, $attempt, $attachment])
-                        : route('correction.attachment', [$attempt, $attachment]) }}"
-                       class="font-medium text-brand-700 hover:text-brand-900 underline underline-offset-2">
-                        {{ $attachment->original_name }}
+                <li class="text-sm">
+                    @if($attachment->isImage())
+                    {{-- Aperçu de l'image : la vignette ouvre la même image en
+                         grand dans une visionneuse posée sur la page, sans
+                         changer d'onglet ni quitter la correction. Seules les
+                         images sont montrées ; un document reste un lien. --}}
+                    @once
+                    <style>
+                        .izw-lightbox { display: none; }
+                        .izw-lightbox:target { display: flex; position: fixed; inset: 0; z-index: 60; align-items: center; justify-content: center; padding: 1rem; }
+                        .izw-lightbox-backdrop { position: absolute; inset: 0; background: rgba(15, 23, 42, 0.82); }
+                        .izw-lightbox-body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 0.6rem; margin: 0; max-width: min(92vw, 1100px); max-height: 92vh; }
+                        .izw-lightbox-image { display: block; max-width: 92vw; max-height: 80vh; width: auto; height: auto; margin: 0 auto; border-radius: 0.6rem; background: #fff; }
+                        .izw-lightbox-caption { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; color: #e2e8f0; font-size: 0.8rem; }
+                        .izw-lightbox-caption a { color: #93c5fd; text-decoration: underline; text-underline-offset: 2px; }
+                    </style>
+                    @endonce
+                    <a href="#apercu-{{ $attachment->id }}" id="apercu-lien-{{ $attachment->id }}"
+                       class="inline-block group" title="Agrandir l'aperçu">
+                        <img src="{{ route($attachmentRoute, [...$attachmentBase, $attachment, 'apercu' => 1]) }}"
+                             alt="Aperçu de {{ $attachment->original_name }}" loading="lazy"
+                             class="max-h-48 w-auto rounded-lg border border-slate-200 group-hover:border-brand-400 transition-colors duration-150">
                     </a>
-                    <span class="text-xs text-slate-500">{{ $attachment->formatted_size }}</span>
+                    {{-- Visionneuse : ouverte par la vignette, refermée par un clic
+                         sur le fond ou sur « Fermer ». Elle n'existe qu'à l'état
+                         ciblé (`:target`), donc aucun script n'est nécessaire. --}}
+                    <div id="apercu-{{ $attachment->id }}" class="izw-lightbox"
+                         role="dialog" aria-modal="true" aria-label="Aperçu de {{ $attachment->original_name }}">
+                        <a href="#apercu-lien-{{ $attachment->id }}" class="izw-lightbox-backdrop" aria-label="Fermer l'aperçu"></a>
+                        <figure class="izw-lightbox-body">
+                            <img src="{{ route($attachmentRoute, [...$attachmentBase, $attachment, 'apercu' => 1]) }}"
+                                 alt="Aperçu de {{ $attachment->original_name }}" class="izw-lightbox-image">
+                            <figcaption class="izw-lightbox-caption">
+                                <span>{{ $attachment->original_name }}</span>
+                                <a href="{{ route($attachmentRoute, [...$attachmentBase, $attachment]) }}">Télécharger</a>
+                                <a href="#apercu-lien-{{ $attachment->id }}">Fermer</a>
+                            </figcaption>
+                        </figure>
+                    </div>
+                    @endif
+                    <div class="mt-1.5 flex flex-wrap items-center gap-2">
+                        <a href="{{ route($attachmentRoute, [...$attachmentBase, $attachment]) }}"
+                           class="font-medium text-brand-700 hover:text-brand-900 underline underline-offset-2">
+                            {{ $attachment->original_name }}
+                        </a>
+                        <span class="text-xs text-slate-500">{{ $attachment->formatted_size }}</span>
+                    </div>
                 </li>
                 @endforeach
             </ul>

@@ -141,6 +141,7 @@ class CorrectionController extends Controller
             ->whereIn('form_id', $forms->pluck('id'))
             ->awaitsManualGrading()
             ->with('form')
+            ->withCount(['answers as document_only_count' => fn ($answers) => $answers->pendingDocumentOnly()])
             ->get();
 
         // Les copies où il a déjà posé une note ou un commentaire — y compris
@@ -223,7 +224,9 @@ class CorrectionController extends Controller
 
         abort_unless((int) $attachment->quiz_attempt_id === (int) $attempt->id, 404);
 
-        return QuizAttemptController::downloadAttachment($attachment);
+        return $request->boolean('apercu')
+            ? QuizAttemptController::previewAttachment($attachment)
+            : QuizAttemptController::downloadAttachment($attachment);
     }
 
     public function store(Request $request, QuizAttempt $attempt): RedirectResponse

@@ -61,14 +61,16 @@ class QuizGradingController extends Controller
      * identifiant de pièce joint valide ouvrirait le document d'une autre
      * évaluation.
      */
-    public function attachment(Form $quiz, QuizAttempt $attempt, QuizAttachment $attachment)
+    public function attachment(Request $request, Form $quiz, QuizAttempt $attempt, QuizAttachment $attachment)
     {
         $this->assertQuiz($quiz);
         $this->assertAttempt($quiz, $attempt);
 
         abort_unless((int) $attachment->quiz_attempt_id === (int) $attempt->id, 404);
 
-        return QuizAttemptController::downloadAttachment($attachment);
+        return $request->boolean('apercu')
+            ? QuizAttemptController::previewAttachment($attachment)
+            : QuizAttemptController::downloadAttachment($attachment);
     }
 
     public function show(Request $request, Form $quiz, QuizAttempt $attempt)

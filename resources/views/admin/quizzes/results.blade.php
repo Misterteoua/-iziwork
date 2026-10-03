@@ -174,6 +174,15 @@
                             <span class="text-slate-400">—</span>
                             @endif
 
+                            @if($attempt->document_only_count > 0)
+                            {{-- Réponse sans texte, rendue par un document : le
+                                 correcteur doit ouvrir la copie pour la lire, et
+                                 non la croire sans réponse. --}}
+                            <span class="block mt-1 text-xs font-medium text-brand-700">
+                                {{ $attempt->document_only_count }} réponse(s) rendue(s) par document joint
+                            </span>
+                            @endif
+
                             @if($attempt->reviewed_count > 0)
                             {{-- Une note qui n'est plus celle du correcteur : le
                                  lien mène à la copie, où le journal dit qui a
