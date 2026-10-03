@@ -104,20 +104,66 @@ class PdfWatermarkTest extends TestCase
 
     // ---------------------------------------------------- Filigrane dans le PDF
 
-    /** Extrait et décompresse les flux de contenu d'un PDF. */
+    /**
+     * Extrait et décompresse les flux de contenu d'un PDF.
+     *
+     * Découpage par `strpos`, et non par expression régulière : un motif
+     * non-gourmand sur un fichier binaire peut dépasser la pile du moteur PCRE
+     * (JIT) et rendre `false` sans prévenir sous charge — l'extraction serait
+     * alors vide, et le test échouerait au hasard. Un parcours linéaire ne
+     * dépend ni de la taille du document, ni de la mémoire disponible.
+     */
     private function contentStreams(string $pdf): string
     {
-        preg_match_all('/stream\r?\n(.*?)\r?\nendstream/s', $pdf, $matches);
-
         $out = '';
-        foreach ($matches[1] as $stream) {
-            $decoded = @gzuncompress($stream);
-            if ($decoded !== false) {
-                $out .= $decoded;
+        $offset = 0;
+
+        while (($start = strpos($pdf, 'stream', $offset)) !== false) {
+            $dataStart = $start + strlen('stream');
+
+            // Un flux est annoncé par « stream » suivi d'un saut de ligne.
+            if (substr($pdf, $dataStart, 2) === "\r\n") {
+                $dataStart += 2;
+            } elseif (in_array(substr($pdf, $dataStart, 1), ["\r", "\n"], true)) {
+                $dataStart++;
+            } else {
+                // « stream » au milieu d'un autre mot (en-tête, métadonnée).
+                $offset = $dataStart;
+                continue;
             }
+
+            $end = strpos($pdf, 'endstream', $dataStart);
+
+            if ($end === false) {
+                break;
+            }
+
+            $out .= $this->decodeStream(rtrim(substr($pdf, $dataStart, $end - $dataStart), "\r\n"));
+
+            // Reprendre après « endstream », qui contient « stream ».
+            $offset = $end + strlen('endstream');
         }
 
         return $out;
+    }
+
+    /** Décompresse un flux de PDF, quel que soit son encodage ; à défaut, brut. */
+    private function decodeStream(string $stream): string
+    {
+        $decoded = @gzuncompress($stream);
+
+        if ($decoded !== false) {
+            return $decoded;
+        }
+
+        $inflated = @gzinflate($stream);
+
+        if ($inflated !== false) {
+            return $inflated;
+        }
+
+        // Flux non compressé : le texte reste lisible, on le garde tel quel.
+        return $stream;
     }
 
     private function attempt(): QuizAttempt
