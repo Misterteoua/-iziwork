@@ -537,6 +537,11 @@ lien à ouvrir. L'aperçu est servi par la **même route** que le téléchargeme
 qui revérifie l'accès, et avec le type **réel** du fichier. La visionneuse repose
 sur du **CSS seul** (`:target`) : aucun script n'est nécessaire.
 
+Dans le **récapitulatif PDF**, le nom de chaque pièce jointe est un **lien
+cliquable** : consulter le document en ligne permet d'ouvrir la pièce d'un clic.
+L'accès repose sur la **référence de la copie**, la même clé que le
+récapitulatif lui-même — donc sans dépendre d'une session de navigateur.
+
 Un seul prérequis côté serveur : `upload_max_filesize` et `post_max_size`
 d'au moins 2 Mo (recommandé : 8 Mo). Voir `DEPLOYMENT.md`.
 

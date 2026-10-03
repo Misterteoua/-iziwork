@@ -474,6 +474,32 @@ class QuizAttemptController extends Controller
     }
 
     /**
+     * Télécharge une pièce jointe à partir de la référence de la copie.
+     *
+     * Le récapitulatif PDF se télécharge avec la seule référence et porte le nom
+     * des pièces jointes : le lien qu'il contient doit donc fonctionner sans la
+     * session du navigateur, exactement comme le document lui-même. La référence
+     * est la clé, et elle ne vaut que pour cette copie : une pièce étrangère est
+     * refusée même avec la bonne référence.
+     */
+    public function recapAttachment(Request $request, Form $quiz, string $reference, QuizAttachment $attachment)
+    {
+        $this->assertQuiz($quiz);
+
+        $normalized = QuizReference::normalize($reference);
+        abort_if($normalized === null, 404);
+
+        $attempt = $quiz->attempts()->where('reference', $normalized)->firstOrFail();
+
+        abort_unless($attempt->isFinished(), 404);
+        abort_unless((int) $attachment->quiz_attempt_id === (int) $attempt->id, 404);
+
+        return $request->boolean('apercu')
+            ? self::previewAttachment($attachment)
+            : self::downloadAttachment($attachment);
+    }
+
+    /**
      * Le flux de téléchargement, partagé par les trois portes d'accès
      * (étudiant, administration, correcteur) : chacune vérifie les droits à sa
      * façon, puis appelle ceci. Le fichier est cherché sur le disque privé, et

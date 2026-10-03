@@ -45,6 +45,12 @@ Route::get('/q/{quiz:token}/resultat', [QuizAttemptController::class, 'result'])
 Route::get('/q/{quiz:token}/recap/{reference}/pdf', [QuizAttemptController::class, 'recapPdf'])
     ->name('quiz.recap.pdf');
 
+// Les pieces jointes citees dans le recapitulatif PDF : le document se telecharge
+// avec la seule reference, son lien doit donc fonctionner aussi sans la session
+// du navigateur. La reference est la cle, exactement comme pour le PDF.
+Route::get('/q/{quiz:token}/recap/{reference}/pieces-jointes/{attachment}', [QuizAttemptController::class, 'recapAttachment'])
+    ->whereNumber('attachment')->name('quiz.recap.attachment');
+
 // Une pièce jointe déposée par un étudiant : servie à travers la session de sa
 // copie, jamais depuis un dossier public.
 Route::get('/q/{quiz:token}/pieces-jointes/{attachment}', [QuizAttemptController::class, 'attachment'])

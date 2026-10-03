@@ -307,6 +307,11 @@
             color: #475569;
         }
 
+        .question .attachment a {
+            color: #1d4ed8;
+            text-decoration: underline;
+        }
+
         /* Énoncé mis en forme (App\Support\QuestionText) : paragraphes et listes.
            dompdf ne connaît pas Tailwind, ces règles sont donc écrites ici. */
         .qt-p { margin: 0 0 6px; }
@@ -545,7 +550,11 @@
             <div class="attachment">
                 <span class="answer-label">Pièces jointes</span>
                 @foreach($attachments as $attachment)
-                    {{ $attachment->original_name }} ({{ $attachment->formatted_size }})@if(! $loop->last) · @endif
+                    {{-- Un lien, pas seulement un nom : consulter le PDF en ligne
+                         doit permettre d'ouvrir le document d'un clic. L'accès
+                         repose sur la référence de la copie, la même clé que le
+                         récapitulatif. --}}
+                    <a href="{{ route('quiz.recap.attachment', [$quiz->token, $attempt->reference, $attachment]) }}">{{ $attachment->original_name }}</a> ({{ $attachment->formatted_size }})@if(! $loop->last) · @endif
                 @endforeach
             </div>
             @endif

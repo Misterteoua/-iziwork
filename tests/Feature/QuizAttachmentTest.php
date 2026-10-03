@@ -556,4 +556,58 @@ class QuizAttachmentTest extends TestCase
             ->assertOk()
             ->assertDownload('copie.pdf');
     }
+
+    /**
+     * Le récapitulatif PDF cite les pièces jointes par un lien cliquable, pour
+     * qu'on puisse les ouvrir depuis le document lui-même — pas seulement lire
+     * leur nom.
+     */
+    public function test_le_recapitulatif_pdf_lie_les_pieces_jointes(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('rendu.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attachment = $attempt->attachments()->firstOrFail();
+
+        // Le détail n'est publié qu'une fois l'évaluation fermée.
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        $response = $this->get(route('quiz.recap.pdf', [$this->quiz->token, $attempt->reference]));
+        $response->assertOk();
+
+        $pdf = (string) $response->getContent();
+        $target = '/recap/'.$attempt->reference.'/pieces-jointes/'.$attachment->id;
+
+        // Le lien est écrit dans le PDF (annotation d'URI), pas seulement le nom.
+        $this->assertStringContainsString($target, $pdf);
+        $this->assertStringContainsString('/URI', $pdf);
+    }
+
+    /** Le lien du récapitulatif ouvre bien la pièce, sans session de copie. */
+    public function test_le_lien_du_recapitulatif_ouvre_la_piece_jointe(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf('rendu.pdf')]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attachment = $attempt->attachments()->firstOrFail();
+
+        $this->get(route('quiz.recap.attachment', [$this->quiz->token, $attempt->reference, $attachment]))
+            ->assertOk()
+            ->assertDownload('rendu.pdf');
+    }
+
+    /** Une autre référence n'ouvre pas la pièce : la clé ne vaut que pour sa copie. */
+    public function test_le_lien_du_recapitulatif_reste_ferme_avec_une_autre_reference(): void
+    {
+        $attempt = $this->start();
+        $this->answerWith(null, [$this->pdf()]);
+        $this->post(route('quiz.submit', $this->quiz->token));
+
+        $attachment = $attempt->attachments()->firstOrFail();
+
+        $this->get(route('quiz.recap.attachment', [$this->quiz->token, 'ZZZZZZZZZZ', $attachment]))
+            ->assertNotFound();
+    }
 }
