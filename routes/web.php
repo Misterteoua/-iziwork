@@ -30,6 +30,11 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Évaluation en ligne : parcours entièrement séparé du dépôt de travaux.
 Route::get('/q/{quiz:token}', [QuizAttemptController::class, 'start'])->name('quiz.start');
+Route::get('/q/{quiz:token}/resultat/retrouver', [QuizAttemptController::class, 'recoverResultForm'])
+    ->name('quiz.result.recovery');
+Route::post('/q/{quiz:token}/resultat/retrouver', [QuizAttemptController::class, 'recoverResult'])
+    ->middleware('throttle:quiz-result-recovery')
+    ->name('quiz.result.recovery.submit');
 
 // Salle d'attente : ce que l'étudiant saisit avant l'ouverture est retenu en
 // session, et le formulaire d'accès s'en trouvera pré-rempli. Rien n'est créé

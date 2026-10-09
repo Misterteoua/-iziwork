@@ -484,6 +484,101 @@ class QuizAttemptController extends Controller
                 : 'Le temps imparti est écoulé : l\'évaluation a été rendue automatiquement.');
     }
 
+    /**
+     * Page de saisie pour retrouver une copie rendue sans lien personnel.
+     */
+    public function recoverResultForm(Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        return response()->view('student.quiz.recover-result', [
+            'quiz' => $quiz,
+            'canUseIdentity' => ! $quiz->is_anonymous,
+        ])->withHeaders([
+            'Cache-Control' => 'private, no-store',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+
+    /**
+     * Récupère une copie rendue par sa référence, ou par nom complet + email.
+     *
+     * Les copies non rendues ne sont jamais candidates. Tous les échecs
+     * partagent le même message, et aucune donnée n'est placée en session.
+     */
+    public function recoverResult(Request $request, Form $quiz): RedirectResponse
+    {
+        $this->assertQuiz($quiz);
+
+        $method = $request->input('method');
+        $attempt = null;
+
+        if ($method === 'reference' && is_string($request->input('reference'))) {
+            $reference = QuizReference::normalize($request->input('reference'));
+
+            if ($reference !== null) {
+                $attempt = $quiz->attempts()
+                    ->whereIn('status', [QuizAttempt::STATUS_SUBMITTED, QuizAttempt::STATUS_EXPIRED])
+                    ->where('reference', $reference)
+                    ->first();
+            }
+        } elseif ($method === 'identity' && ! $quiz->is_anonymous) {
+            $name = $request->input('student_name');
+            $email = $request->input('student_email');
+
+            if (is_string($name) && is_string($email)) {
+                $name = preg_replace('/\\s+/u', ' ', trim($name)) ?? trim($name);
+                $email = mb_strtolower(trim($email));
+                $normalizedName = mb_strtolower($name);
+
+                if (
+                    $name !== ''
+                    && mb_strlen($name) <= 255
+                    && mb_strlen($email) <= 255
+                    && filter_var($email, FILTER_VALIDATE_EMAIL) !== false
+                ) {
+                    $candidates = $quiz->attempts()
+                        ->whereIn('status', [QuizAttempt::STATUS_SUBMITTED, QuizAttempt::STATUS_EXPIRED])
+                        ->whereRaw('LOWER(TRIM(student_email)) = ?', [$email])
+                        ->get()
+                        ->filter(function (QuizAttempt $candidate) use ($normalizedName): bool {
+                            if ($candidate->student_name === null) {
+                                return false;
+                            }
+
+                            $candidateName = preg_replace('/\\s+/u', ' ', trim($candidate->student_name))
+                                ?? trim($candidate->student_name);
+
+                            return mb_strtolower($candidateName) === $normalizedName;
+                        });
+
+                    // Une identité ambiguë n'ouvre jamais plusieurs copies à la fois.
+                    if ($candidates->count() === 1) {
+                        $attempt = $candidates->first();
+                    }
+                }
+            }
+        }
+
+        if ($attempt === null) {
+            return redirect()->route('quiz.result.recovery', $quiz->token)
+                ->with('error', 'Aucun résultat ne correspond aux informations fournies. Vérifiez-les ou contactez votre enseignant.')
+                ->withHeaders([
+                    'Cache-Control' => 'private, no-store',
+                    'X-Robots-Tag' => 'noindex, nofollow',
+                ]);
+        }
+
+        // La porte finale reste le code aléatoire existant ; aucune session du
+        // poste partagé n'est rattachée à la copie retrouvée.
+        $link = ShortLink::forAttempt($quiz, $attempt);
+
+        return redirect()->to($link->url(), 302)->withHeaders([
+            'Cache-Control' => 'private, no-store',
+            'X-Robots-Tag' => 'noindex, nofollow',
+        ]);
+    }
+
     public function result(Form $quiz)
     {
         $this->assertQuiz($quiz);

@@ -24,6 +24,17 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(10)->by($request->ip().'|'.(string) $request->route('token'));
         });
 
+        // Retrouver une copie ne doit pas servir à sonder une liste d'étudiants :
+        // cinq vérifications par minute, par adresse et par évaluation.
+        RateLimiter::for('quiz-result-recovery', function (Request $request) {
+            $quiz = $request->route('quiz');
+            $quizKey = is_object($quiz) && method_exists($quiz, 'getRouteKey')
+                ? (string) $quiz->getRouteKey()
+                : (string) $quiz;
+
+            return Limit::perMinute(5)->by($request->ip().'|'.$quizKey);
+        });
+
         // Connexion d'un correcteur : même frein que pour l'administration, et
         // sur le même couple — l'email visé et l'adresse d'où l'on essaie. Une
         // référence de dix caractères ne se devine pas, mais rien n'oblige à

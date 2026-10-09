@@ -155,6 +155,131 @@ class ShortLinkTest extends TestCase
         $response->assertSee($short->url(), false);
     }
 
+    // ------------------------------------------------ Résultat perdu
+
+    public function test_la_page_de_recuperation_est_accessible_depuis_l_evaluation_nominative(): void
+    {
+        $quiz = $this->quiz();
+
+        $this->get(route('quiz.start', $quiz->token))
+            ->assertOk()
+            ->assertSee(route('quiz.result.recovery', $quiz->token), false)
+            ->assertSee('Vous avez perdu le lien de votre résultat ?');
+
+        $this->get(route('quiz.result.recovery', $quiz->token))
+            ->assertOk()
+            ->assertSee('Nom complet enregistré')
+            ->assertSee('Adresse email enregistrée')
+            ->assertHeader('Cache-Control', 'no-store, private')
+            ->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+    }
+
+    public function test_une_evaluation_anonyme_ne_propose_pas_la_recherche_par_identite(): void
+    {
+        $quiz = $this->quiz(['is_anonymous' => true]);
+
+        $this->get(route('quiz.result.recovery', $quiz->token))
+            ->assertOk()
+            ->assertSee('la référence est le seul moyen')
+            ->assertDontSee('Nom complet enregistré')
+            ->assertDontSee('Adresse email enregistrée');
+
+        $attempt = $this->finished($quiz);
+
+        $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+            'method' => 'identity',
+            'student_name' => 'Awa Diallo',
+            'student_email' => 'awa@example.test',
+        ])
+            ->assertRedirect(route('quiz.result.recovery', $quiz->token))
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, ShortLink::where('quiz_attempt_id', $attempt->id)->count());
+    }
+
+    public function test_la_reference_retrouve_une_copie_rendue_sans_modifier_la_session(): void
+    {
+        $quiz = $this->quiz();
+        $attempt = $this->finished($quiz);
+
+        $response = $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+            'method' => 'reference',
+            'reference' => strtolower($attempt->reference),
+        ]);
+
+        $response->assertRedirect(ShortLink::forAttempt($quiz, $attempt)->url());
+        $this->assertFalse(session()->has('quiz_attempt.'.$quiz->id));
+    }
+
+    public function test_le_nom_et_l_email_doivent_correspondre_ensemble(): void
+    {
+        $quiz = $this->quiz();
+        $attempt = $this->finished($quiz, [
+            'student_name' => 'Awa Diallo',
+            'student_email' => 'AWA@example.test',
+        ]);
+
+        $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+            'method' => 'identity',
+            'student_name' => '  awa   diallo ',
+            'student_email' => ' awa@EXAMPLE.test ',
+        ])->assertRedirect(ShortLink::forAttempt($quiz, $attempt)->url());
+
+        foreach ([
+            ['student_name' => 'Awa Diallo', 'student_email' => 'wrong@example.test'],
+            ['student_name' => 'Autre Nom', 'student_email' => 'awa@example.test'],
+        ] as $payload) {
+            $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+                'method' => 'identity',
+                ...$payload,
+            ])
+                ->assertRedirect(route('quiz.result.recovery', $quiz->token))
+                ->assertSessionHas('error');
+        }
+    }
+
+    public function test_la_recherche_ne_revele_pas_une_copie_non_rendue_ou_d_une_autre_evaluation(): void
+    {
+        $quiz = $this->quiz();
+        $other = $this->quiz(['title' => 'Autre examen']);
+        $inProgress = $this->attempt($quiz, [
+            // Référence valide pour prouver que c'est bien le statut en cours
+            // (et non le contrôle de format) qui bloque la récupération.
+            'reference' => 'ABCDEFGHJK',
+            'status' => QuizAttempt::STATUS_IN_PROGRESS,
+            'started_at' => Carbon::now(),
+        ]);
+        $foreign = $this->finished($other);
+
+        foreach ([$inProgress->reference, $foreign->reference] as $reference) {
+            $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+                'method' => 'reference',
+                'reference' => $reference,
+            ])
+                ->assertRedirect(route('quiz.result.recovery', $quiz->token))
+                ->assertSessionHas('error');
+        }
+
+        $this->assertSame(0, ShortLink::whereIn('quiz_attempt_id', [$inProgress->id, $foreign->id])->count());
+    }
+
+    public function test_la_recherche_de_resultat_est_limitee_par_ip_et_evaluation(): void
+    {
+        $quiz = $this->quiz();
+
+        for ($try = 1; $try <= 5; $try++) {
+            $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+                'method' => 'reference',
+                'reference' => 'ZZZZZZZZZZ',
+            ])->assertRedirect(route('quiz.result.recovery', $quiz->token));
+        }
+
+        $this->post(route('quiz.result.recovery.submit', $quiz->token), [
+            'method' => 'reference',
+            'reference' => 'ZZZZZZZZZZ',
+        ])->assertStatus(429);
+    }
+
     // -------------------------------------------------------- Lien de résultat
 
     public function test_le_lien_de_resultat_montre_la_copie_sans_session(): void
@@ -378,15 +503,15 @@ class ShortLinkTest extends TestCase
         ]);
     }
 
-    private function finished(Form $quiz): QuizAttempt
+    private function finished(Form $quiz, array $attributes = []): QuizAttempt
     {
-        return $this->attempt($quiz, [
+        return $this->attempt($quiz, array_merge([
             'status' => QuizAttempt::STATUS_SUBMITTED,
             'started_at' => Carbon::now()->subMinutes(10),
             'submitted_at' => Carbon::now(),
             'score' => 4,
             'max_score' => 5,
-        ]);
+        ], $attributes));
     }
 
     private function attempt(Form $quiz, array $attributes = []): QuizAttempt

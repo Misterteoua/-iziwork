@@ -292,6 +292,15 @@
             <p class="text-xs text-slate-500 text-center">Le chronomètre démarre dès que vous cliquez.</p>
         </form>
         @endif
+
+        @unless($preview ?? false)
+        <div class="mt-6 border-t border-slate-100 pt-5 text-center">
+            <a href="{{ route('quiz.result.recovery', $quiz->token) }}"
+               class="text-sm font-semibold text-brand-700 hover:text-brand-800 underline underline-offset-4">
+                Vous avez perdu le lien de votre résultat ? Le retrouver
+            </a>
+        </div>
+        @endunless
     </div>
 </div>
 @endsection
