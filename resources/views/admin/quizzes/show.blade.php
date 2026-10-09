@@ -75,6 +75,20 @@
         @unless($quiz->status === 'active')
         <p class="mt-2 text-xs text-amber-600">L'évaluation est fermée : les étudiants verront un message d'indisponibilité tant que vous ne l'ouvrez pas.</p>
         @endunless
+
+        {{-- L'aperçu montre la vraie page d'attente : c'est le seul moyen de
+             vérifier ce que le candidat lit pendant les dernières minutes, et de
+             voir le décompte que le serveur lui annoncera. --}}
+        <div class="mt-4 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+            <a href="{{ route('admin.quizzes.waiting-preview', $quiz) }}" target="_blank" rel="noopener"
+               class="inline-flex items-center justify-center px-4 py-2 border border-slate-300 text-xs font-semibold rounded-lg text-slate-700 hover:bg-slate-50 transition-colors duration-150 shrink-0">
+                Aperçu de la page d'attente
+            </a>
+            <p class="text-xs text-slate-500">
+                Ce que l'étudiant voit avant l'ouverture, décompte compris. Rien ne sonne, la page
+                ne se recharge pas, et aucun candidat n'est créé.
+            </p>
+        </div>
     </div>
 
     {{-- Réglages --}}
@@ -154,6 +168,24 @@
                     <input type="checkbox" name="show_score" value="1" @checked(old('show_score', $quiz->quizShowsScore()))
                            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
                     <span class="text-sm text-slate-700">Afficher la note à la fin</span>
+                </label>
+
+                {{-- Le signal sonore de la page d'attente : coché par défaut, parce
+                     que c'est lui qui prévient l'étudiant ayant laissé l'onglet de
+                     côté. Un enseignant le retire quand il ne convient pas. --}}
+                <label class="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" name="opening_sound" value="1" @checked(old('opening_sound', $quiz->quizPlaysOpeningSound()))
+                           class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600">
+                    <span class="text-sm text-slate-700">
+                        Signal sonore à l'ouverture de l'épreuve
+                        <span class="mt-0.5 block text-xs text-slate-500">
+                            La page d'attente fait retentir deux notes au moment où l'épreuve s'ouvre,
+                            pour prévenir l'étudiant qui a laissé l'onglet de côté. Le navigateur
+                            n'accorde le son qu'après un geste de l'étudiant : la page le lui explique,
+                            et le signal ne retentit donc que si l'étudiant a touché la page. Décochez
+                            cette case pour une salle surveillée, où le son dérangerait.
+                        </span>
+                    </span>
                 </label>
 
                 {{-- Retirer l'auto-correction : le réglage est décoché par défaut,

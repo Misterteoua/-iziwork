@@ -103,6 +103,65 @@
         @endif
     </div>
 
+    @if($closedNow > 0)
+    {{-- Des copies que personne n'a rendues viennent d'être closes, ici, au
+         moment où l'enseignant a ouvert la page : le dire, sinon un « temps
+         écoulé » apparaîtrait sans qu'on sache d'où il vient. --}}
+    <div class="mt-4 rounded-xl bg-slate-50 border border-slate-200 px-3 py-3">
+        <p class="text-xs text-slate-600">
+            {{ $closedNow }} copie(s) restée(s) ouverte(s) ont été closes à l'échéance à l'instant : elles
+            n'ont pas été rendues par leur auteur, et leur note porte ce qui avait été validé.
+        </p>
+    </div>
+    @endif
+
+    @if($blankAttempts->isNotEmpty())
+    {{-- Le rapport des copies closes sans une seule réponse validée. C'est le cas
+         qui ne se voit pas dans une colonne de notes : un zéro s'y lit comme un
+         candidat qui a tout faux, alors qu'ici rien n'a été rendu. Les références
+         sont écrites en clair — c'est ce qu'on vient chercher — et l'export CSV
+         les porte aussi, filtrables par la colonne « Réponses validées » à 0.
+         Le marqueur data-blank-attempt est là pour que ce rapport reste
+         vérifiable : rien n'y entre qui ne soit réellement sans réponse. --}}
+    <div class="mt-4 rounded-xl bg-red-50 border border-red-200/70 px-3 py-4">
+        <p class="inline-flex items-start gap-2 text-sm text-red-800">
+            <svg class="h-4 w-4 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.75L13.74 4a2 2 0 00-3.5 0L3.16 16.25A2 2 0 005 19z" />
+            </svg>
+            <span>
+                <span class="font-semibold">
+                    {{ $blankAttempts->count() }} copie(s) close(s) sans aucune réponse validée.
+                </span>
+                Ces étudiants ont ouvert l'épreuve sans valider la moindre réponse : rien n'est
+                corrigeable, et il n'y a pas de copie à relire — seulement une référence à traiter.
+            </span>
+        </p>
+
+        <ul class="mt-3 flex flex-wrap gap-2">
+            @foreach($blankAttempts->take(24) as $blank)
+            <li data-blank-attempt="{{ $blank->reference }}"
+                class="inline-flex items-center gap-2 rounded-lg bg-white border border-red-200/70 px-2.5 py-1.5 text-xs">
+                <span class="font-mono text-slate-900">{{ $blank->reference }}</span>
+                @unless($quiz->is_anonymous)
+                <span class="text-slate-600">{{ $blank->student_name ?? '—' }}</span>
+                @endunless
+                <span class="text-slate-400">
+                    {{ $blank->submitted_at?->format('d/m à H:i') }}
+                    · {{ $blank->status === \App\Models\QuizAttempt::STATUS_EXPIRED ? 'temps écoulé' : 'rendue' }}
+                </span>
+                <a href="{{ route('admin.quizzes.attempts.grade', [$quiz, $blank]) }}"
+                   class="font-semibold text-brand-600 hover:underline">Voir la copie</a>
+            </li>
+            @endforeach
+            @if($blankAttempts->count() > 24)
+            <li class="inline-flex items-center text-xs text-slate-500">
+                et {{ $blankAttempts->count() - 24 }} autre(s) — l'export CSV les contient toutes.
+            </li>
+            @endif
+        </ul>
+    </div>
+    @endif
+
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 overflow-hidden">
         @if($attempts->isEmpty())
         <div class="p-12 text-center">

@@ -28,6 +28,15 @@ class QuizAttempt extends Model
 
     public const STATUS_EXPIRED = 'expired';
 
+    /**
+     * Seuil du rappel de fin d'épreuve : cinq minutes.
+     *
+     * Une seule constante pour le seuil et pour la phrase qui l'annonce : le
+     * rappel se déclenche à l'écran comme il se lit, et les faire diverger
+     * demanderait deux modifications au lieu d'une.
+     */
+    public const REMINDER_SECONDS = 300;
+
     protected $fillable = [
         'form_id',
         'reference',
@@ -184,25 +193,116 @@ class QuizAttempt extends Model
     }
 
     /**
-     * Le temps imparti est-il écoulé ?
+     * Le moment où la copie doit s'arrêter : le chrono de l'épreuve ou la
+     * fermeture de l'évaluation, au plus tôt des deux.
+     *
+     * Le chrono seul ne suffit pas : une épreuve qui ferme à 10 h doit arrêter
+     * les copies encore ouvertes à 10 h, même si leur heure individuelle court
+     * jusqu'à 10 h 20. C'est l'heure annoncée aux étudiants qui fait foi, et
+     * c'est elle que le surveillant a en tête.
+     *
+     * La désactivation de l'évaluation n'entre pas dans ce calcul. Elle arrête
+     * les entrées (voir {@see Form::quizIsOpen()}), mais le quota de
+     * participants se compte sur les copies **engagées** : s'en servir ici
+     * fermerait une copie sur sa propre existence.
+     */
+    public function deadline(): ?Carbon
+    {
+        $closesAt = $this->form?->close_date;
+
+        if ($this->expires_at === null) {
+            return $closesAt;
+        }
+
+        if ($closesAt === null) {
+            return $this->expires_at;
+        }
+
+        return $closesAt->lessThan($this->expires_at) ? $closesAt : $this->expires_at;
+    }
+
+    /**
+     * L'échéance atteinte est-elle celle de la fermeture de l'évaluation ?
+     *
+     * Sert au message : « l'épreuve est fermée » n'est pas « votre temps est
+     * écoulé ». Le second accuse une montre, le premier constate une échéance
+     * commune — et l'étudiant ne lit pas les deux de la même façon.
+     */
+    public function closedByQuiz(): bool
+    {
+        $closesAt = $this->form?->close_date;
+
+        return $closesAt !== null
+            && ($this->expires_at === null || $closesAt->lessThanOrEqualTo($this->expires_at));
+    }
+
+    /**
+     * Le temps est-il arrivé à échéance ?
      *
      * Un compte à rebours affiché à zéro ne suffit pas : c'est cette méthode
      * qui décide, côté serveur, à chaque affichage de question comme à la
      * soumission.
+     *
+     * Une copie jamais commencée n'a pas d'échéance : c'est une référence
+     * réservée, pas une épreuve en cours, et la fermer la sortirait de la liste
+     * des étudiants qui peuvent encore se présenter.
+     *
+     * « À l'échéance » vaut « échue », et non « peut-être encore ouverte » : le
+     * navigateur rend la copie à l'instant précis où son décompte atteint zéro,
+     * et une comparaison stricte ferait alors lire cette remise comme volontaire —
+     * aucun message d'échéance, aucun statut de temps écoulé.
      */
     public function hasExpired(): bool
     {
-        return $this->expires_at !== null && Carbon::now()->greaterThan($this->expires_at);
+        if ($this->expires_at === null) {
+            return false;
+        }
+
+        return Carbon::now()->greaterThanOrEqualTo($this->deadline());
     }
 
-    /** Secondes restantes, jamais négatives. */
+    /**
+     * Secondes restantes avant l'échéance, jamais négatives.
+     *
+     * Arrondi **au-dessus** : une seconde entamée n'est pas une seconde
+     * écoulée. Cette valeur est celle que le navigateur décompte, et il rend la
+     * copie en atteignant zéro : tronquée, elle lui ferait atteindre zéro près
+     * d'une seconde avant l'heure, et la remise partirait trop tôt — le serveur
+     * la lirait alors comme volontaire, alors que l'échéance n'était pas passée.
+     */
     public function remainingSeconds(): int
     {
         if ($this->expires_at === null) {
             return 0;
         }
 
-        return max(0, (int) Carbon::now()->diffInSeconds($this->expires_at, false));
+        return max(0, (int) ceil(Carbon::now()->diffInSeconds($this->deadline(), false)));
+    }
+
+    /** Les cinq dernières minutes de l'épreuve ont-elles commencé ? */
+    public function endsSoon(): bool
+    {
+        return $this->isInProgress()
+            && $this->remainingSeconds() > 0
+            && $this->remainingSeconds() <= self::REMINDER_SECONDS;
+    }
+
+    /**
+     * Le rappel de fin, tel que la page d'épreuve l'annonce.
+     *
+     * La phrase est écrite ici, et non dans la vue, pour la même raison que le
+     * seuil : les deux vont ensemble. Une épreuve qui ferme à une heure fixe ne
+     * s'annonce pas comme un chrono qui s'achève — « votre temps est presque
+     * écoulé » accuse une montre, alors que la fermeture, elle, est commune à
+     * toute la salle et n'appartient à personne.
+     */
+    public function endsSoonMessage(): string
+    {
+        $minutes = max(1, (int) round(self::REMINDER_SECONDS / 60));
+
+        return $this->closedByQuiz()
+            ? "L'épreuve ferme dans moins de {$minutes} minutes."
+            : "Il vous reste moins de {$minutes} minutes.";
     }
 
     /**

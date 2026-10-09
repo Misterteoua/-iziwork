@@ -113,6 +113,21 @@ class QuizAttemptController extends Controller
             'questionsCount' => $questionsCount,
             'maxScore' => $quiz->quizMaxScore(),
             'finishedAttempt' => $attempt !== null && $attempt->isFinished() ? $attempt : null,
+            // Ouverture à venir : la page affiche le temps restant et se
+            // rafraîchit d'elle-même à l'heure dite, pour que le formulaire
+            // d'accès apparaisse sans que personne n'ait à y penser. Null dans
+            // tous les autres cas de fermeture — et le refus de démarrer avant
+            // l'heure, lui, reste côté serveur (voir begin()).
+            'opensInSeconds' => $quiz->quizOpensInSeconds(),
+            'opensAt' => $quiz->quizOpensAt(),
+            // Ce que la salle d'attente a retenu (voir prepare()) : le formulaire
+            // s'affiche donc déjà rempli, et le candidat n'a rien à retaper au
+            // moment précis où le chronomètre démarre.
+            'prepared' => $this->waitingValues($quiz),
+            // Réglage d'évaluation : une épreuve peut retirer le signal sonore
+            // de la page d'attente (voir Form::quizPlaysOpeningSound()).
+            'playsOpeningSound' => $quiz->quizPlaysOpeningSound(),
+            'preview' => false,
         ]);
     }
 
@@ -176,7 +191,103 @@ class QuizAttemptController extends Controller
         // d'avis à tout moment.
         session(['quiz_fullscreen.'.$quiz->id => $request->boolean('fullscreen')]);
 
+        // L'épreuve est engagée : ce que la salle d'attente avait retenu a servi.
+        // Le garder plus longtemps ferait apparaître le nom du candidat précédent
+        // dans le formulaire du suivant — et une salle informatique partage ses
+        // postes, c'est précisément le cas à ne pas manquer.
+        session()->forget($this->waitingKey($quiz));
+
         return $this->startTimer($quiz, $attempt, $device);
+    }
+
+    /**
+     * Salle d'attente : retient le nom et la référence, sans rien créer.
+     *
+     * Une épreuve qui n'a pas encore ouvert ne peut pas enregistrer de
+     * participation — ce serait une copie ouverte avant l'heure. La page
+     * d'attente recueille donc seulement ces valeurs en session, et la page
+     * d'accès les retrouve pré-remplies une fois l'heure venue.
+     *
+     * La référence est contrôlée **dans sa forme, jamais dans son existence**.
+     * Tant que l'épreuve est fermée, cette page ne doit pas permettre de savoir
+     * quelles références ont été distribuées : c'est beginWithReference() qui en
+     * décide, à l'ouverture, et lui seul. Une liste pas encore chargée ne bloque
+     * donc personne pendant l'attente.
+     */
+    public function prepare(Request $request, Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        $request->validate([
+            'reference' => ['nullable', 'string'],
+            'student_name' => ['nullable', 'string', 'max:255'],
+            'student_email' => ['nullable', 'email', 'max:255'],
+            'student_major' => ['nullable', 'string', 'max:255'],
+        ], [
+            'student_email.email' => 'L\'adresse email saisie n\'est pas valide.',
+        ]);
+
+        $reference = QuizReference::normalize($request->input('reference'));
+
+        if ($request->filled('reference') && $reference === null) {
+            throw ValidationException::withMessages([
+                'reference' => 'Une référence comporte 10 caractères (lettres et chiffres).',
+            ]);
+        }
+
+        session([$this->waitingKey($quiz) => $this->waitingPayload($request, $quiz, $reference)]);
+
+        return redirect()->route('quiz.start', $quiz->token)
+            ->with('success', 'Vos informations sont retenues : à l\'ouverture, le formulaire sera déjà rempli.');
+    }
+
+    /**
+     * Ce qui est retenu pour l'ouverture : jamais de clé vide, et aucun nom sur
+     * une évaluation anonyme.
+     *
+     * La règle de l'anonymat est celle de beginFree() : la salle d'attente ne
+     * doit pas conserver ce que l'épreuve refusera d'enregistrer — et la page
+     * d'accès ne propose d'ailleurs pas ces champs.
+     *
+     * @return array<string, string>
+     */
+    private function waitingPayload(Request $request, Form $quiz, ?string $reference): array
+    {
+        $values = ['reference' => $reference];
+
+        if (! $quiz->is_anonymous) {
+            $values += [
+                'student_name' => $request->filled('student_name')
+                    ? trim((string) $request->input('student_name'))
+                    : null,
+                'student_email' => $this->normalizedEmail($request),
+                'student_major' => $request->filled('student_major')
+                    ? trim((string) $request->input('student_major'))
+                    : null,
+            ];
+        }
+
+        return array_filter($values, fn ($value) => $value !== null && $value !== '');
+    }
+
+    /**
+     * Ce que la salle d'attente a retenu pour cette évaluation, ou rien.
+     *
+     * La clé est propre à l'évaluation : deux épreuves ouvertes dans le même
+     * navigateur ne se remplissent pas l'une l'autre.
+     *
+     * @return array<string, string>
+     */
+    private function waitingValues(Form $quiz): array
+    {
+        $values = session($this->waitingKey($quiz), []);
+
+        return is_array($values) ? $values : [];
+    }
+
+    private function waitingKey(Form $quiz): string
+    {
+        return 'quiz_waiting.'.$quiz->id;
     }
 
     /**
@@ -336,9 +447,40 @@ class QuizAttemptController extends Controller
             return redirect()->route('quiz.result', $quiz->token);
         }
 
-        $this->grader->finalize($attempt, $attempt->hasExpired());
+        // Le navigateur rend la copie de lui-même à l'échéance (voir le
+        // formulaire d'expiration) : le dire, plutôt que de laisser croire à une
+        // remise volontaire. C'est justement le moment où l'étudiant doit
+        // comprendre pourquoi il n'a pas pu finir.
+        if ($attempt->hasExpired()) {
+            return $this->closeAtDeadline($quiz, $attempt);
+        }
+
+        $this->grader->finalize($attempt);
 
         return redirect()->route('quiz.result', $quiz->token);
+    }
+
+    /**
+     * Rend la copie à l'échéance, et le dit.
+     *
+     * Chemin unique pour les deux façons d'y arriver : la requête suivante du
+     * candidat (rechargement, question suivante) et la soumission que le
+     * navigateur déclenche de lui-même. La correction emporte les réponses déjà
+     * validées ; une copie rendue blanche reste blanche, et c'est le rapport de
+     * l'enseignant qui la signalera.
+     */
+    private function closeAtDeadline(Form $quiz, QuizAttempt $attempt): RedirectResponse
+    {
+        // L'heure de fermeture de l'épreuve n'est pas le chrono du candidat, et
+        // il ne lit pas les deux de la même façon.
+        $closedByQuiz = $attempt->closedByQuiz();
+
+        $this->grader->finalize($attempt, expired: true);
+
+        return redirect()->route('quiz.result', $quiz->token)
+            ->with('error', $closedByQuiz
+                ? 'L\'épreuve est fermée : le temps est arrivé à échéance, et votre copie a été rendue automatiquement.'
+                : 'Le temps imparti est écoulé : l\'évaluation a été rendue automatiquement.');
     }
 
     public function result(Form $quiz)
@@ -925,12 +1067,11 @@ class QuizAttemptController extends Controller
             return redirect()->route('quiz.result', $quiz->token);
         }
 
-        // Chrono écoulé : on corrige ce qui a été répondu et on clôt.
+        // Échéance atteinte : on corrige ce qui a été répondu et on clôt. Le
+        // chrono du candidat et l'heure de fermeture de l'épreuve y mènent tous
+        // les deux, et closeAtDeadline() choisit la phrase qui convient.
         if ($attempt->hasExpired()) {
-            $this->grader->finalize($attempt, expired: true);
-
-            return redirect()->route('quiz.result', $quiz->token)
-                ->with('error', 'Le temps imparti est écoulé : l\'évaluation a été rendue automatiquement.');
+            return $this->closeAtDeadline($quiz, $attempt);
         }
 
         return $attempt;
@@ -987,7 +1128,9 @@ class QuizAttemptController extends Controller
                 ->with('error', 'Cette épreuve est en cours : terminez-la ou laissez le temps s\'écouler avant de laisser la place à un autre étudiant.');
         }
 
-        session()->forget('quiz_attempt.'.$quiz->id);
+        // Le poste change de mains : ni la copie rendue, ni ce que l'attente
+        // avait retenu ne doivent suivre le candidat suivant.
+        session()->forget(['quiz_attempt.'.$quiz->id, $this->waitingKey($quiz)]);
 
         return redirect()->route('quiz.start', $quiz->token);
     }

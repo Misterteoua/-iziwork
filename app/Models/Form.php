@@ -49,6 +49,13 @@ class Form extends Model
         // retire l'auto-correction : les QCM rejoignent la file de correction
         // manuelle, au même titre qu'une réponse rédigée.
         'manual_choice_grading' => false,
+        // Signal sonore de la page d'attente : actif par défaut, puisque c'est
+        // lui qui prévient l'étudiant ayant laissé l'onglet de côté. Le défaut
+        // n'est pas un choix anodin ici : une épreuve créée avant que ce réglage
+        // existe garde exactement le comportement qu'elle avait. L'enseignant le
+        // retire quand il ne convient pas — une salle surveillée, où le son
+        // dérangerait tout le monde.
+        'opening_sound' => true,
     ];
 
     protected $fillable = [
@@ -191,6 +198,23 @@ class Form extends Model
     }
 
     /**
+     * L'épreuve fait-elle retentir un signal à son ouverture ?
+     *
+     * Actif par défaut : c'est ce signal qui prévient l'étudiant qui a laissé la
+     * page d'attente de côté. Une évaluation créée sans y penser garde donc le
+     * comportement d'origine, et l'enseignant le retire depuis les réglages
+     * quand il ne convient pas.
+     *
+     * Le navigateur, lui, ne joue un son qu'après un geste de l'utilisateur : ce
+     * réglage décide seulement si la page le propose et l'attend, jamais si le
+     * son part malgré tout (voir le script de la page d'attente).
+     */
+    public function quizPlaysOpeningSound(): bool
+    {
+        return (bool) $this->quizSettings()['opening_sound'];
+    }
+
+    /**
      * Les questions à propositions sont-elles corrigées à la main ?
      *
      * Désactivé par défaut : sans ce réglage, un QCM est noté à la remise.
@@ -300,6 +324,52 @@ class Form extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Moment d'ouverture à venir, ou null.
+     *
+     * « Pas encore ouverte » n'est pas « fermée » : le candidat qui a le lien a
+     * une heure précise à attendre, et une raison d'attendre. Cette méthode
+     * isole ce seul cas — évaluation active, date d'ouverture encore à venir —
+     * pour que la page d'accès puisse l'annoncer et décompter les secondes.
+     *
+     * Toute autre fermeture (évaluation désactivée, date de fermeture
+     * dépassée, quota de copies atteint) retourne null : rien ne s'ouvrira en
+     * patientant, et faire patienter serait alors un mensonge.
+     */
+    public function quizOpensAt(): ?Carbon
+    {
+        if ($this->status !== 'active' || $this->open_date === null) {
+            return null;
+        }
+
+        return now()->lt($this->open_date) ? $this->open_date : null;
+    }
+
+    /**
+     * Secondes restantes avant l'ouverture, ou null s'il n'y a rien à attendre.
+     *
+     * Le compte est fait **par le serveur**, et c'est tout l'intérêt : l'horloge
+     * d'un poste de salle informatique peut être fausse de plusieurs minutes, et
+     * c'est pourtant elle qui déciderait sinon de l'heure d'ouverture. Le
+     * navigateur ne fait que décompter ce nombre, puis recharge la page.
+     *
+     * Le calcul passe par les millisecondes : une ouverture dans moins d'une
+     * seconde ne doit pas être arrondie à zéro, ce qui afficherait un compteur
+     * expiré avant l'heure.
+     */
+    public function quizOpensInSeconds(): ?int
+    {
+        $opensAt = $this->quizOpensAt();
+
+        if ($opensAt === null) {
+            return null;
+        }
+
+        $remaining = $opensAt->getTimestampMs() - now()->getTimestampMs();
+
+        return max(0, (int) ceil($remaining / 1000));
     }
 
     /**

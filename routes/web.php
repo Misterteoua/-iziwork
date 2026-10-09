@@ -30,6 +30,12 @@ Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Évaluation en ligne : parcours entièrement séparé du dépôt de travaux.
 Route::get('/q/{quiz:token}', [QuizAttemptController::class, 'start'])->name('quiz.start');
+
+// Salle d'attente : ce que l'étudiant saisit avant l'ouverture est retenu en
+// session, et le formulaire d'accès s'en trouvera pré-rempli. Rien n'est créé
+// ici — l'heure d'ouverture ne s'anticipe pas, c'est begin() qui en décide.
+Route::post('/q/{quiz:token}/attente', [QuizAttemptController::class, 'prepare'])->name('quiz.prepare');
+
 Route::post('/q/{quiz:token}/start', [QuizAttemptController::class, 'begin'])->name('quiz.begin');
 Route::get('/q/{quiz:token}/question', [QuizAttemptController::class, 'question'])->name('quiz.question');
 Route::post('/q/{quiz:token}/answer', [QuizAttemptController::class, 'answer'])->name('quiz.answer');
@@ -127,6 +133,11 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     // qui est en train d'être tapé, et les deux ne peuvent donc pas diverger.
     Route::post('quizzes/{quiz}/questions/preview', [QuizController::class, 'previewQuestion'])
         ->whereNumber('quiz')->name('admin.quizzes.questions.preview');
+
+    // La page d'attente telle que la voit l'étudiant : le vrai écran, décompte
+    // compris. Rien n'y est créé ni retenu — un aperçu ne prépare personne.
+    Route::get('quizzes/{quiz}/waiting-preview', [QuizController::class, 'previewWaiting'])
+        ->whereNumber('quiz')->name('admin.quizzes.waiting-preview');
 
     // Import par fichier : le modèle téléchargeable évite à l'enseignant de
     // deviner le format, et l'import se fait au moment où il choisit le type.

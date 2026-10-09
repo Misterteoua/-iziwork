@@ -692,6 +692,146 @@ class QuizAttemptFlowTest extends TestCase
         $this->assertSame(0, $attempt->answers()->where('form_field_id', $second->id)->count());
     }
 
+    public function test_le_temps_restant_arrondit_au_dessus_pour_ne_pas_rendre_avant_l_heure(): void
+    {
+        $this->question();
+        $attempt = $this->attempt();
+
+        $this->start(['reference' => $attempt->reference, 'student_name' => 'Jean']);
+
+        $attempt->refresh()->update(['expires_at' => Carbon::parse('2026-09-20 09:00:11')]);
+
+        // Dix secondes et demie : onze secondes restantes. Tronquer donnerait dix,
+        // et le décompte du navigateur atteindrait zéro avant l'échéance.
+        Carbon::setTestNow(Carbon::parse('2026-09-20 09:00:00.400'));
+        $this->assertSame(11, $attempt->refresh()->remainingSeconds());
+
+        // Le moment qui compte : quatre dixièmes de seconde avant l'échéance, il
+        // reste encore une seconde — et non zéro, ce qui ferait rendre la copie
+        // avant l'heure, et le serveur lirait cette remise comme volontaire.
+        Carbon::setTestNow(Carbon::parse('2026-09-20 09:00:10.400'));
+        $this->assertSame(1, $attempt->refresh()->remainingSeconds());
+        $this->assertFalse($attempt->refresh()->hasExpired());
+
+        Carbon::setTestNow(Carbon::parse('2026-09-20 09:00:11'));
+        $this->assertSame(0, $attempt->refresh()->remainingSeconds());
+        $this->assertTrue($attempt->refresh()->hasExpired());
+    }
+
+    public function test_le_rappel_de_fin_annonce_les_cinq_dernieres_minutes(): void
+    {
+        $this->question();
+        $attempt = $this->attempt();
+
+        $this->start(['reference' => $attempt->reference, 'student_name' => 'Jean']);
+
+        // Il reste dix minutes : rien à annoncer. Un rappel qui parle trop tôt
+        // est un rappel qu'on n'écoute plus. Le bloc est là — c'est le script qui
+        // le remplira au seuil — mais son titre est vide.
+        $attempt->refresh()->update(['expires_at' => Carbon::now()->addMinutes(10)]);
+
+        $this->assertFalse($attempt->refresh()->endsSoon());
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('data-reminder-title></p>', false);
+
+        // Entré dans les cinq dernières minutes, le rappel est là, et il dit
+        // aussi quoi faire : ce qui est validé est conservé, le reste sera rendu
+        // automatiquement.
+        $attempt->refresh()->update(['expires_at' => Carbon::now()->addMinutes(4)]);
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('Il vous reste moins de 5 minutes')
+            ->assertSee('Pensez à déposer votre copie');
+    }
+
+    public function test_le_rappel_de_fin_suit_l_heure_de_fermeture_de_l_evaluation(): void
+    {
+        // L'épreuve ferme dans vingt minutes ; le chrono du candidat, lui, court
+        // sur quarante-cinq minutes. Le rappel doit se lire sur la fermeture —
+        // c'est elle qui arrête la copie, pas la montre personnelle.
+        $this->quiz = $this->makeQuiz(
+            ['close_date' => Carbon::now()->addMinutes(20)],
+            ['duration_minutes' => 45]
+        );
+
+        $this->question();
+
+        $this->start(['student_name' => 'Jean']);
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('data-reminder-title></p>', false);
+
+        Carbon::setTestNow(Carbon::now()->addMinutes(16));
+
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('L\'épreuve ferme dans moins de 5 minutes');
+    }
+
+    public function test_l_heure_de_fermeture_arrete_la_copie_avant_son_propre_chrono(): void
+    {
+        $this->quiz = $this->makeQuiz(
+            ['close_date' => Carbon::now()->addMinutes(10)],
+            ['duration_minutes' => 120]
+        );
+
+        $question = $this->question(['Un', 'Deux'], [1], 'radio', 2);
+
+        $this->start(['student_name' => 'Jean']);
+
+        $attempt = $this->quiz->attempts()->firstOrFail();
+
+        // Le temps annoncé est le plus proche des deux : dix minutes, et non les
+        // deux heures du chrono personnel. C'est l'heure de la salle qui fait foi.
+        $this->assertSame(600, $attempt->remainingSeconds());
+
+        $this->post(route('quiz.answer', $this->quiz->token), [
+            'question_id' => $question->id,
+            'choice' => 1,
+        ]);
+
+        Carbon::setTestNow(Carbon::now()->addMinutes(11));
+
+        // La question suivante n'est plus servie : la copie est close, corrigée
+        // avec ce qui était validé, et l'étudiant lit que c'est l'épreuve qui a
+        // fermé — et non son temps personnel qui s'est épuisé.
+        $this->get(route('quiz.question', $this->quiz->token))
+            ->assertRedirect(route('quiz.result', $this->quiz->token))
+            ->assertSessionHas('error', fn ($message) => str_contains($message, 'temps est arrivé à échéance'));
+
+        $attempt->refresh();
+
+        $this->assertSame(QuizAttempt::STATUS_EXPIRED, $attempt->status);
+        $this->assertSame('2.00', $attempt->score);
+    }
+
+    public function test_une_copie_sans_aucune_reponse_validee_est_rendue_a_l_echeance(): void
+    {
+        $this->question();
+
+        $this->start(['student_name' => 'Jean']);
+
+        $attempt = $this->quiz->attempts()->firstOrFail();
+
+        // Le candidat n'a rien validé : la copie est rendue par l'échéance, et
+        // elle est rendue blanche — c'est l'enseignant qui la signalera, pas un
+        // score qui inventerait un travail.
+        $attempt->update(['expires_at' => Carbon::now()->subMinute()]);
+
+        $this->post(route('quiz.submit', $this->quiz->token))
+            ->assertRedirect(route('quiz.result', $this->quiz->token));
+
+        $attempt->refresh();
+
+        $this->assertSame(QuizAttempt::STATUS_EXPIRED, $attempt->status);
+        $this->assertSame(0, $attempt->answers()->count());
+        $this->assertSame('0.00', $attempt->score);
+    }
+
     // ------------------------------------------------- Navigation linéaire
 
     public function test_on_ne_peut_pas_repondre_a_une_question_sans_avoir_traite_la_precedente(): void

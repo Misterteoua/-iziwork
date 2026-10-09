@@ -348,6 +348,35 @@ class FormTest extends TestCase
         $this->assertTrue($form->quizGradesChoiceManually());
     }
 
+    // ------------------------------------ Signal sonore de la page d'attente
+
+    public function test_le_signal_sonore_de_l_attente_est_actif_par_defaut(): void
+    {
+        // Le défaut est le comportement d'origine : une évaluation créée avant que
+        // ce réglage existe continue de faire retentir son signal à l'ouverture.
+        $form = Form::create([
+            'title' => 'Examen par défaut',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertTrue($form->quizPlaysOpeningSound());
+    }
+
+    public function test_le_signal_sonore_de_l_attente_se_retire_par_reglage(): void
+    {
+        $form = Form::create([
+            'title' => 'Examen silencieux',
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'quiz_settings' => ['opening_sound' => false],
+            'created_by' => $this->admin->id,
+        ]);
+
+        $this->assertFalse($form->quizPlaysOpeningSound());
+    }
+
     private function quizWithPublication(\DateTimeInterface $publication, ?\DateTimeInterface $closeDate = null): Form
     {
         return Form::create([

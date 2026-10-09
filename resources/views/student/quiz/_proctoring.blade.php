@@ -19,6 +19,7 @@
      data-infraction-url="{{ route('quiz.infraction', $quiz->token) }}"
      data-submit-url="{{ route('quiz.submit', $quiz->token) }}"
      data-remaining="{{ $remaining }}"
+     data-reminder="{{ \App\Models\QuizAttempt::REMINDER_SECONDS }}"
      data-proctoring="{{ $quiz->quizUsesProctoring() ? '1' : '0' }}"
      data-fullscreen-preferred="{{ ($fullscreenPreferred ?? false) ? '1' : '0' }}"
      data-warnings="{{ $attempt->infraction_count }}">
@@ -59,6 +60,30 @@
             </p>
             @endif
         </div>
+    </div>
+
+    {{-- Rappel de fin d'épreuve : les cinq dernières minutes (voir
+         QuizAttempt::REMINDER_SECONDS). Déjà visible quand le candidat arrive
+         dans cette dernière tranche ; sinon le script la découvre au moment où
+         le compte à rebours y entre, et elle ne se referme plus.
+
+         Le texte est décidé par le serveur, et pour une raison précise — le
+         rappel change selon ce qui arrête la copie : le chrono personnel du
+         candidat, ou l'heure de fermeture de l'épreuve, qui vaut pour tout le
+         monde. Le script ne fait qu'afficher ce que le serveur a écrit. --}}
+    <div id="quiz-reminder" role="status" aria-live="polite"
+         data-message="{{ $attempt->endsSoonMessage() }}"
+         @unless($attempt->endsSoon()) hidden @endunless
+         class="mb-4 rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        {{-- Le titre est écrit ici quand la dernière tranche est déjà entamée, et
+             laissé vide sinon : c'est le script qui le posera en découvrant le
+             bloc, et un lecteur d'écran annonce un contenu qui apparaît, pas un
+             bloc qui devient visible. --}}
+        <p class="font-semibold" data-reminder-title>{{ $attempt->endsSoon() ? $attempt->endsSoonMessage() : '' }}</p>
+        <p class="mt-1 text-xs">
+            Pensez à déposer votre copie. Ce qui est déjà validé est conservé, et si vous ne la
+            rendez pas à temps, elle le sera automatiquement à l'échéance.
+        </p>
     </div>
 
     {{-- Ce que l'étudiant doit savoir sans qu'on le lui cache : ce qui est
@@ -124,19 +149,61 @@
     }
 
     // --- Chronomètre -------------------------------------------------------
+    // Échéance locale, et non un simple décrément seconde par seconde : un onglet
+    // en arrière-plan (ou un poste mis en veille) voit ses minuteries ralenties,
+    // et le compteur prendrait alors du retard sur l'heure réelle. En repartant de
+    // l'horloge du poste à chaque affichage, il se recale tout seul — la durée à
+    // attendre, elle, reste celle annoncée par le serveur.
+    let deadline = Date.now() + remaining * 1000;
+
     let left = remaining;
 
+    // Arrondi au-dessus, comme le serveur : la dernière seconde entamée n'est
+    // pas écoulée. Arrondir au plus proche ferait tomber le décompte à zéro
+    // avant l'échéance, et la copie serait rendue une fraction de seconde trop
+    // tôt — une remise « volontaire » là où l'épreuve était encore ouverte.
     function paint() {
+        left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+
         const minutes = String(Math.floor(left / 60)).padStart(2, '0');
         const seconds = String(left % 60).padStart(2, '0');
         if (timer) { timer.textContent = minutes + ':' + seconds; }
+
+        return left;
+    }
+
+    // --- Rappel de fin d'épreuve -------------------------------------------
+    // Le seuil vient du serveur, jamais d'un nombre recopié ici : c'est la même
+    // constante qui décide, côté PHP, quand le rappel s'affiche d'emblée.
+    const reminder = document.getElementById('quiz-reminder');
+    const reminderSeconds = parseInt(guard.dataset.reminder, 10) || 0;
+
+    function paintReminder() {
+        if (reminder === null || reminderSeconds <= 0 || left > reminderSeconds || left <= 0) {
+            return;
+        }
+
+        // Le titre est posé au moment où le bloc se découvre : c'est ce qui le
+        // fait annoncer par un lecteur d'écran, et c'est aussi ce qui laisse le
+        // texte hors de la page tant qu'il n'a rien à dire.
+        const title = reminder.querySelector('[data-reminder-title]');
+
+        if (title !== null && title.textContent === '') {
+            title.textContent = reminder.dataset.message;
+        }
+
+        // Une fois lu, le rappel reste : le faire disparaître ferait douter de ce
+        // qu'on vient d'annoncer, et la dernière minute est justement celle où il
+        // faut agir.
+        reminder.hidden = false;
     }
 
     paint();
+    paintReminder();
 
     const tick = setInterval(function () {
-        left -= 1;
         paint();
+        paintReminder();
 
         if (left <= 0) {
             clearInterval(tick);
@@ -152,8 +219,16 @@
     // celui du serveur et remplace la carte sans recharger la page.
     window.QuizGuard = {
         refresh: function (seconds) {
-            if (typeof seconds === 'number' && seconds >= 0) { left = seconds; }
+            // Le serveur recale : c'est lui qui décide du temps restant, et une
+            // suite de questions ne doit pas faire dériver l'affichage. L'échéance
+            // locale est déplacée — l'horloge du poste, elle, n'entre toujours pas
+            // dans le calcul.
+            if (typeof seconds === 'number' && seconds >= 0) {
+                deadline = Date.now() + seconds * 1000;
+            }
+
             paint();
+            paintReminder();
         },
         notify: showNotice
     };

@@ -19,6 +19,7 @@ use App\Support\Import\StudentRoster;
 use App\Support\Import\TabularFile;
 use App\Support\QuestionText;
 use App\Support\QuizFilters;
+use App\Support\QuizGrader;
 use App\Support\QuizQuestionData;
 use App\Support\QuizReference;
 use Illuminate\Database\QueryException;
@@ -56,6 +57,14 @@ class QuizController extends Controller
     private const IMPORT_WRITE_FAILED = "L'import n'a pas pu être enregistré : rien n'a été ajouté à l'évaluation. "
         .'Réessayez dans un instant ; si le problème persiste, signalez-le à l\'administrateur (le détail est journalisé).';
 
+    /**
+     * Durée du décompte simulé de l'aperçu de la page d'attente.
+     *
+     * Cinq minutes : assez pour voir le compteur tourner et mesurer ce que lit
+     * l'étudiant, sans transformer l'aperçu en salle d'attente.
+     */
+    private const PREVIEW_COUNTDOWN_SECONDS = 300;
+
     private const CSV_COLUMNS = [
         'Référence',
         'Nom',
@@ -72,6 +81,10 @@ class QuizController extends Controller
         // Ajoutée en fin de ligne : les colonnes existantes ne bougent pas, un
         // tableur qui suit l'ordre ancien continue de lire ce qu'il lisait.
         'Adresse IP',
+        // Réponses validées, en fin de ligne pour la même raison. Un zéro sur une
+        // copie close est exactement ce que le rapport des copies sans réponse
+        // signale à l'écran : il doit pouvoir se filtrer dans un tableur.
+        'Réponses validées',
     ];
 
     /**
@@ -81,9 +94,47 @@ class QuizController extends Controller
      * la page des résultats et l'enchaînement des corrections doivent compter
      * exactement la même chose.
      */
+    /**
+     * Les copies que leur auteur a abandonnées sont closes par ce même correcteur.
+     */
+    public function __construct(private readonly QuizGrader $grader) {}
+
     private static function pendingManualFilter($query): void
     {
         $query->pendingManual();
+    }
+
+    /**
+     * Clôt les copies dont l'échéance est passée.
+     *
+     * Une copie que son auteur a abandonnée — navigateur fermé, poste éteint,
+     * épreuve finie sans rendre — n'a personne pour la rendre. Sans cette
+     * fermeture, elle resterait « en cours » dans les résultats, et n'entrerait
+     * jamais dans le rapport des copies rendues sans réponse : le candidat qui a
+     * tout laissé en plan serait le seul à ne pas y figurer.
+     *
+     * L'opération ne fait que constater une échéance déjà passée, et deux appels
+     * n'en changent pas le résultat (voir QuizGrader::finalize()). Elle est donc
+     * exécutée au moment où l'enseignant regarde — c'est-à-dire quand cela lui
+     * sert — plutôt que par une tâche planifiée qu'il faudrait exploiter.
+     *
+     * Le calcul se fait sur les copies réellement en cours : une épreuve peut
+     * compter des milliers de références, et presque toutes ne sont jamais
+     * commencées.
+     */
+    private function closeAttemptsAtDeadline(Form $quiz): int
+    {
+        $expired = $quiz->attempts()
+            ->where('status', QuizAttempt::STATUS_IN_PROGRESS)
+            ->with('form')
+            ->get()
+            ->filter(fn (QuizAttempt $attempt): bool => $attempt->hasExpired());
+
+        foreach ($expired as $attempt) {
+            $this->grader->finalize($attempt, expired: true);
+        }
+
+        return $expired->count();
     }
 
     public function index(Request $request)
@@ -145,6 +196,11 @@ class QuizController extends Controller
         $this->assertQuiz($quiz);
 
         $quiz->load('fields');
+
+        // Avant de lire la liste : une copie abandonnée doit s'y montrer close,
+        // et non « en cours » pour toujours (voir closeAttemptsAtDeadline()).
+        $this->closeAttemptsAtDeadline($quiz);
+
         $questions = $quiz->quizQuestions()->get();
         $attempts = $quiz->attempts()->orderByDesc('created_at')->get();
 
@@ -267,6 +323,59 @@ class QuizController extends Controller
         $label = mb_substr((string) $request->input('field_label', ''), 0, QuizQuestionData::MAX_LABEL_LENGTH);
 
         return response()->json(['html' => (string) QuestionText::html($label)]);
+    }
+
+    /**
+     * Aperçu enseignant de la page d'attente.
+     *
+     * C'est la **vraie** page étudiante qui est rendue, et non une reproduction :
+     * une copie divergerait au premier changement du parcours étudiant, et c'est
+     * justement ce que l'enseignant vient vérifier — ce que le candidat lit,
+     * décompte compris.
+     *
+     * Trois choses seulement diffèrent, chacune pour une raison :
+     *   - aucune participation n'est créée et rien n'est retenu en session : un
+     *     aperçu ne prépare personne ;
+     *   - le décompte tourne mais ne sonne pas et ne recharge pas la page — sans
+     *     cela, l'enseignant verrait la page se relancer sous ses yeux, et un son
+     *     sortirait de son poste à une heure qu'il n'a pas choisie ;
+     *   - les champs sont inertes : ils montrent ce que l'étudiant pourra déjà
+     *     saisir pendant l'attente, sans rien enregistrer.
+     *
+     * S'il n'y a aucune ouverture à venir — épreuve déjà ouverte, désactivée,
+     * fermée — le décompte est celui d'une ouverture simulée, annoncée comme
+     * telle : sans lui, la carte que l'enseignant veut relire n'aurait rien à
+     * montrer.
+     */
+    public function previewWaiting(Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        $opensInSeconds = $quiz->quizOpensInSeconds();
+        $opensAt = $quiz->quizOpensAt();
+        $simulated = false;
+
+        if ($opensInSeconds === null || $opensAt === null) {
+            $simulated = true;
+            $opensInSeconds = self::PREVIEW_COUNTDOWN_SECONDS;
+            $opensAt = now()->addSeconds($opensInSeconds);
+        }
+
+        return view('student.quiz.start', [
+            'quiz' => $quiz,
+            'usesReferences' => $quiz->quizHasPreparedReferences(),
+            'questionsCount' => $quiz->quizQuestions()->count(),
+            'maxScore' => $quiz->quizMaxScore(),
+            // Un aperçu ne montre jamais la copie d'un candidat, et ne retient
+            // rien : ces deux valeurs sont celles d'une visite ordinaire.
+            'finishedAttempt' => null,
+            'prepared' => [],
+            'playsOpeningSound' => $quiz->quizPlaysOpeningSound(),
+            'opensInSeconds' => $opensInSeconds,
+            'opensAt' => $opensAt,
+            'preview' => true,
+            'previewSimulated' => $simulated,
+        ]);
     }
 
     // ------------------------------------------------------------ Références
@@ -751,6 +860,11 @@ class QuizController extends Controller
     {
         $this->assertQuiz($quiz);
 
+        // Ce que cette visite vient de clore : l'enseignant lit un état à jour,
+        // et sait que la ligne « en cours » qu'il voyait tout à l'heure a été
+        // arrêtée par l'échéance, personne ne l'ayant rendue.
+        $closedNow = $this->closeAttemptsAtDeadline($quiz);
+
         $attempts = $quiz->attempts()
             ->withCount([
                 'answers',
@@ -770,6 +884,14 @@ class QuizController extends Controller
             ->orderBy('reference')
             ->get();
 
+        // Les copies closes sans une seule réponse : le rapport que l'enseignant
+        // demande pour les épreuves à références. Une copie rendue blanche et une
+        // copie abandonnée se ressemblent dans une colonne de notes, alors que la
+        // seconde demande une décision — noter l'absence, convoquer, relancer.
+        $blankAttempts = $attempts
+            ->filter(fn (QuizAttempt $attempt): bool => $attempt->isFinished() && $attempt->answers_count === 0)
+            ->values();
+
         // Copies partagées depuis une même adresse IP : un indice, jamais une
         // preuve — une salle informatique entière sort derrière une seule
         // adresse. Le calcul se fait sur la collection déjà chargée, donc sans
@@ -780,7 +902,7 @@ class QuizController extends Controller
             ->filter(fn ($group) => $group->count() > 1)
             ->map(fn ($group) => $group->count());
 
-        return view('admin.quizzes.results', compact('quiz', 'attempts', 'sharedIps'));
+        return view('admin.quizzes.results', compact('quiz', 'attempts', 'sharedIps', 'blankAttempts', 'closedNow'));
     }
 
     /**
@@ -791,8 +913,16 @@ class QuizController extends Controller
     {
         $this->assertQuiz($quiz);
 
+        // L'export regarde la même chose que la page : on clôt d'abord, sinon le
+        // fichier annoncerait « en cours » des copies que l'écran vient de
+        // fermer, et les deux documents se contrediraient.
+        $this->closeAttemptsAtDeadline($quiz);
+
         $attempts = $quiz->attempts()
-            ->withCount(['answers as pending_manual_count' => fn ($query) => self::pendingManualFilter($query)])
+            ->withCount([
+                'answers',
+                'answers as pending_manual_count' => fn ($query) => self::pendingManualFilter($query),
+            ])
             ->orderByDesc('submitted_at')
             ->orderBy('reference');
 
@@ -824,6 +954,7 @@ class QuizController extends Controller
                         $attempt->started_at?->format('d/m/Y H:i'),
                         $attempt->submitted_at?->format('d/m/Y H:i'),
                         $attempt->ip_address,
+                        $attempt->answers_count,
                     ]);
                 }
             });
@@ -1074,6 +1205,9 @@ class QuizController extends Controller
             // historique). Coché = les questions à propositions attendent une
             // note, comme les questions rédigées.
             'manual_choice_grading' => $request->boolean('manual_choice_grading'),
+            // Signal sonore de la page d'attente : coché par défaut, et le
+            // décochage est donc un choix explicite de l'enseignant.
+            'opening_sound' => $request->boolean('opening_sound'),
         ];
     }
 

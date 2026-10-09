@@ -354,6 +354,35 @@ class QuizAdminControllerTest extends TestCase
         $this->assertFalse($this->quiz->refresh()->quizBlocksSameDevice());
     }
 
+    public function test_le_signal_sonore_se_regle_depuis_l_ecran_d_administration(): void
+    {
+        // Actif par défaut : l'enseignant n'a rien à cocher pour l'avoir, et la
+        // case de l'écran de réglages le dit.
+        $this->assertTrue($this->quiz->quizPlaysOpeningSound());
+
+        $this->get(route('admin.quizzes.show', $this->quiz))
+            ->assertOk()
+            ->assertSee('name="opening_sound" value="1" checked', false);
+
+        // Décochée, elle n'est pas envoyée du tout : c'est ce que le navigateur
+        // fait d'une case décochée, et le réglage retombe à false.
+        $this->put(route('admin.quizzes.update', $this->quiz), $this->settingsPayload())
+            ->assertRedirect();
+
+        $this->assertFalse($this->quiz->refresh()->quizPlaysOpeningSound());
+
+        $this->get(route('admin.quizzes.show', $this->quiz))
+            ->assertOk()
+            ->assertDontSee('name="opening_sound" value="1" checked', false);
+
+        // Et il se remet : le réglage est réversible dans les deux sens.
+        $this->put(route('admin.quizzes.update', $this->quiz), $this->settingsPayload([
+            'opening_sound' => '1',
+        ]))->assertRedirect();
+
+        $this->assertTrue($this->quiz->refresh()->quizPlaysOpeningSound());
+    }
+
     public function test_une_evaluation_s_ouvre_et_se_ferme(): void
     {
         $this->patch(route('admin.quizzes.toggle', $this->quiz));
@@ -991,6 +1020,123 @@ class QuizAdminControllerTest extends TestCase
     }
 
     // ------------------------------------------------------------ Robustesse
+
+    // ------------------------------------- Copies closes sans réponse validée
+
+    public function test_les_copies_abandonnees_sont_closes_et_signalees_sans_reponse(): void
+    {
+        $question = $this->question();
+
+        // Deux copies que personne n'a rendues : l'une est restée blanche,
+        // l'autre a validé une réponse avant que le poste ne soit abandonné.
+        $blank = $this->attempt([
+            'status' => QuizAttempt::STATUS_IN_PROGRESS,
+            'started_at' => Carbon::now()->subHour(),
+            'expires_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $answered = $this->attempt([
+            'status' => QuizAttempt::STATUS_IN_PROGRESS,
+            'started_at' => Carbon::now()->subHour(),
+            'expires_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $answered->answers()->create([
+            'form_field_id' => $question->id,
+            'choice' => [1],
+            'answered_at' => Carbon::now(),
+        ]);
+
+        $html = $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            // Le rapport annonce une seule copie sans réponse : celle qui a
+            // validé quelque chose n'a rien à y faire, sa note est calculable.
+            ->assertSee('1 copie(s) close(s) sans aucune réponse validée')
+            ->getContent();
+
+        $this->assertSame([$blank->reference], $this->blankReportReferences($html));
+
+        // Les deux sont closes par cette visite : sans cela, elles resteraient
+        // « en cours » pour toujours, faute de quelqu'un pour les rendre.
+        $this->assertSame(QuizAttempt::STATUS_EXPIRED, $blank->refresh()->status);
+        $this->assertSame(QuizAttempt::STATUS_EXPIRED, $answered->refresh()->status);
+
+        // L'export porte la même information, en colonne séparée : le rapport
+        // se filtre donc dans un tableur comme il se lit à l'écran.
+        $csv = $this->get(route('admin.quizzes.results.export', $this->quiz))->streamedContent();
+        $lines = preg_split('/\r\n|\n/', trim($csv));
+
+        $this->assertStringContainsString('Réponses validées', $lines[0]);
+        $this->assertStringEndsWith(';0', $this->csvLineFor($lines, $blank->reference));
+        $this->assertStringEndsWith(';1', $this->csvLineFor($lines, $answered->reference));
+    }
+
+    public function test_le_rapport_des_copies_sans_reponse_couvre_le_rendu_blanc_et_l_abandon(): void
+    {
+        $this->question();
+
+        // Deux façons de ne rien valider, et elles ne se ressemblent pas : la
+        // copie rendue blanche est un geste de l'étudiant, la copie abandonnée
+        // n'en a aucun. Le rapport les réunit — la même décision les attend — et
+        // chacune garde son statut, pour la lettre qu'il faudra écrire.
+        $rendered = $this->attempt([
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(5),
+            'submitted_at' => Carbon::now(),
+            'score' => 0,
+            'max_score' => 3,
+        ]);
+
+        $abandoned = $this->attempt([
+            'status' => QuizAttempt::STATUS_IN_PROGRESS,
+            'started_at' => Carbon::now()->subHour(),
+            'expires_at' => Carbon::now()->subMinute(),
+        ]);
+
+        $html = $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertSee('2 copie(s) close(s) sans aucune réponse validée')
+            // L'abandon est nommé pour ce qu'il est : un temps écoulé, et non un
+            // rendu que personne n'a fait.
+            ->assertSee('temps écoulé')
+            ->getContent();
+
+        $references = $this->blankReportReferences($html);
+        $expected = [$rendered->reference, $abandoned->reference];
+
+        sort($references);
+        sort($expected);
+
+        $this->assertSame($expected, $references);
+    }
+
+    /**
+     * Les références que le rapport des copies sans réponse met en avant.
+     *
+     * @return array<int, string>
+     */
+    private function blankReportReferences(string $html): array
+    {
+        preg_match_all('/data-blank-attempt="([^"]+)"/', $html, $matches);
+
+        return $matches[1];
+    }
+
+    /**
+     * La ligne CSV qui porte une référence.
+     *
+     * @param  array<int, string>  $lines
+     */
+    private function csvLineFor(array $lines, string $reference): string
+    {
+        foreach ($lines as $line) {
+            if (str_contains($line, $reference)) {
+                return $line;
+            }
+        }
+
+        $this->fail('Aucune ligne CSV pour la référence '.$reference);
+    }
 
     public function test_aucune_route_d_evaluation_n_est_ouverte_sans_session_admin(): void
     {
