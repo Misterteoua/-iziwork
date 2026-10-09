@@ -180,7 +180,11 @@
     @if(session('admin_user') || session('grader'))
     <footer class="border-t border-slate-100 py-4">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <p class="text-xs text-slate-400 text-center">
+            {{-- « slate-400 » sur le fond gris clair de la page ne donnait qu'un
+                 rapport de contraste de 2,45:1 : illisible pour qui voit mal, et
+                 sous le minimum de 4,5:1 demandé à un texte de cette taille.
+                 « slate-500 » tient 4,55:1 sur ce même fond. --}}
+            <p class="text-xs text-slate-500 text-center">
                 Iziwork v{{ config('app.version', 'dev') }} · Laravel {{ app()->version() }} · PHP {{ PHP_VERSION }}
             </p>
         </div>

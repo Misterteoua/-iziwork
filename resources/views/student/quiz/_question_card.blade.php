@@ -9,6 +9,14 @@
     Variables attendues : $quiz, $question, $options, $position, $total.
 --}}
 <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8">
+    {{-- Le titre de la page, qui n'est pas affiché : la carte est tout l'écran,
+         et son repère visible est le compteur ci-dessous. Sans lui, la page
+         n'avait aucun titre de niveau 1 — un lecteur d'écran n'avait donc rien
+         pour annoncer où mène le lien, et la hiérarchie commençait au néant.
+         Il suit la carte : c'est la carte qui est remplacée d'une question à
+         l'autre, et le titre change donc avec elle. --}}
+    <h1 class="sr-only">{{ $quiz->title }} — question {{ $position }} sur {{ $total }}</h1>
+
     <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider" style="font-variant-numeric: tabular-nums">
         Question {{ $position }} sur {{ $total }}
     </p>
@@ -69,7 +77,7 @@
              copie n'a rien à retaper. --}}
         <div>
             <label for="attachments" class="block text-sm font-medium text-slate-700 mb-1.5">
-                Pièce(s) jointe(s) <span class="text-slate-400 font-normal">— facultatif</span>
+                Pièce(s) jointe(s) <span class="text-slate-500 font-normal">— facultatif</span>
             </label>
             <input type="file" name="attachments[]" id="attachments" multiple
                    accept=".pdf,.jpg,.jpeg,.png,.webp,.gif,application/pdf,image/*"

@@ -60,8 +60,11 @@
     .qt-bullets { list-style-type: disc; }
     .qt-numbered { list-style-type: decimal; }
     .qt-alpha { list-style-type: lower-alpha; }
-    /* Le numéro de la question est un repère de lecture, pas l'énoncé. */
-    .qt-index { color: #94a3b8; font-weight: inherit; }
+    /* Le numéro de la question est un repère de lecture, pas l'énoncé. Sa
+       couleur reste assez sombre pour être lue : #64748b tient un rapport de
+       contraste de 4,76:1 sur fond blanc, le minimum demandé étant de 4,5:1
+       pour un texte de cette taille. */
+    .qt-index { color: #64748b; font-weight: inherit; }
 
     /* Logo gradient (deep → primary blue). */
     .gradient-bg {

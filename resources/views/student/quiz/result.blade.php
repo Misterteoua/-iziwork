@@ -6,6 +6,12 @@
 <div class="px-4 sm:px-0 max-w-2xl mx-auto">
     @php($answered = $answers->keyBy('form_field_id'))
 
+    {{-- Le titre de la page, qui n'est pas affiché : la carte de la note est tout
+         l'écran, et ses deux sections sont déjà des titres de niveau 2. Sans ce
+         titre-ci, la page commençait à « Détail de la correction », comme si la
+         note et le détail étaient deux documents sans rapport. --}}
+    <h1 class="sr-only">Votre résultat — {{ $quiz->title }}</h1>
+
     <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6 sm:p-8">
         <div class="text-center">
             <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -15,7 +21,10 @@
             @if($showScore && $attempt->score !== null)
             <p class="mt-3 text-5xl font-bold tracking-tight text-slate-900" style="font-variant-numeric: tabular-nums">
                 {{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }}
-                <span class="text-2xl text-slate-400">/ {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
+                {{-- Le barème, pas la note : il est secondaire, mais il se lit.
+                     « slate-400 » ne tenait que 2,56:1 sur blanc — même échappé,
+                     un chiffre qu'on ne lit pas ne vaut pas mieux qu'un absent. --}}
+                <span class="text-2xl text-slate-500">/ {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
             </p>
             <p class="mt-1 text-sm text-slate-500">
                 {{ $pending > 0 ? 'Note provisoire' : 'Votre note' }}
@@ -139,7 +148,7 @@
                                class="font-medium text-brand-700 hover:text-brand-900 underline underline-offset-2">
                                 {{ $attachment->original_name }}
                             </a>
-                            <span class="text-slate-400">· {{ $attachment->formatted_size }}</span>
+                            <span class="text-slate-500">· {{ $attachment->formatted_size }}</span>
                         </li>
                         @endforeach
                     </ul>
@@ -167,7 +176,7 @@
                         <span aria-hidden="true">{{ $isChosen ? '•' : '·' }}</span>
                         <span>
                             {{ chr(65 + $position) }}. {{ $option['label'] }}
-                            @if($isChosen) <span class="text-slate-400">(votre réponse)</span> @endif
+                            @if($isChosen) <span class="text-slate-500">(votre réponse)</span> @endif
                         </span>
                     </li>
                     @endforeach
@@ -190,7 +199,7 @@
                         <span aria-hidden="true">{{ $isCorrect ? '✓' : ($isChosen ? '✗' : '·') }}</span>
                         <span>
                             {{ chr(65 + $position) }}. {{ $option['label'] }}
-                            @if($isChosen) <span class="text-slate-400">(votre réponse)</span> @endif
+                            @if($isChosen) <span class="text-slate-500">(votre réponse)</span> @endif
                         </span>
                     </li>
                     @endforeach
