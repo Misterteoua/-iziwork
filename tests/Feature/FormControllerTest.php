@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AdminUser;
 use App\Models\Form;
+use App\Models\FormField;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -180,12 +181,12 @@ class FormControllerTest extends TestCase
         $response = $this->post('/admin/forms', [
             'title' => 'Dépôt avec question ouverte',
             'field_labels' => ['Expliquez'],
-            'field_types' => [\App\Models\FormField::OPEN_TYPE],
+            'field_types' => [FormField::OPEN_TYPE],
         ]);
 
         $response->assertSessionHasErrors('field_types.0');
         $this->assertDatabaseMissing('forms', ['title' => 'Dépôt avec question ouverte']);
-        $this->assertSame(0, \App\Models\FormField::where('field_type', \App\Models\FormField::OPEN_TYPE)->count());
+        $this->assertSame(0, FormField::where('field_type', FormField::OPEN_TYPE)->count());
     }
 
     public function test_created_form_gets_automatic_required_email_field_when_missing(): void

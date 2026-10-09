@@ -529,7 +529,7 @@ final class QrEncoder
      * masque) prolongés en BCH(15,5) et masqués par 0x5412, écrits en deux
      * copies de part et d'autre.
      *
-     * @param array<int, array<int, bool>> $modules
+     * @param  array<int, array<int, bool>>  $modules
      */
     private static function drawFormatBits(array &$modules, int $mask, int $size): void
     {

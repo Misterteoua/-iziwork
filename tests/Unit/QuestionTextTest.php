@@ -59,7 +59,7 @@ class QuestionTextTest extends TestCase
     {
         $this->assertSame(
             '<ol type="a" class="qt-list qt-alpha">'
-            ."<li>L&#039;utilisation de documents anciens</li>"
+            .'<li>L&#039;utilisation de documents anciens</li>'
             .'<li>La codification incohérente</li>'
             .'<li>La politique intégrée</li>'
             .'</ol>',
@@ -122,7 +122,7 @@ class QuestionTextTest extends TestCase
     {
         // Un seul « a) » au milieu d'une phrase ne fait pas une énumération.
         $this->assertSame(
-            "<p class=\"qt-p\">Le candidat répond en cochant a) la première case.</p>",
+            '<p class="qt-p">Le candidat répond en cochant a) la première case.</p>',
             $this->html('Le candidat répond en cochant a) la première case.')
         );
     }

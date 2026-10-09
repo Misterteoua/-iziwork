@@ -202,5 +202,4 @@ final class XlsxReader
 
         return max(0, $index - 1);
     }
-
 }

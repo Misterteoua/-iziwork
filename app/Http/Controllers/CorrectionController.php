@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Controllers\QuizAttemptController;
 use App\Models\FormField;
 use App\Models\Grader;
 use App\Models\QuizAnswer;
@@ -11,6 +10,7 @@ use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
 use App\Support\QuizCopyGrading;
 use App\Support\QuizReference;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -451,7 +451,7 @@ class CorrectionController extends Controller
      * Une copie dont la note a été reprise par l'administration reste dans la
      * liste : sans cela, son travail semblerait s'être volatilisé.
      *
-     * @return \Illuminate\Database\Eloquent\Builder<QuizAttempt>
+     * @return Builder<QuizAttempt>
      */
     private function gradedAttempts(Grader $grader)
     {

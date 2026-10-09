@@ -18,7 +18,7 @@ class SubmissionFileTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $admin = AdminUser::create([
             'username' => 'testadmin',
             'email' => 'test@test.com',

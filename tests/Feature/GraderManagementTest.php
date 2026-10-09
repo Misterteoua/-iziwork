@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\Grader;
+use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -206,7 +207,7 @@ class GraderManagementTest extends TestCase
             'quiz' => $this->quiz,
             'grader' => $grader,
             'link' => $grader->link(),
-            'qr' => \App\Support\Qr\QrPng::dataUri($grader->link(), 10),
+            'qr' => QrPng::dataUri($grader->link(), 10),
             'withReference' => false,
         ])->render();
 
@@ -227,7 +228,7 @@ class GraderManagementTest extends TestCase
             'quiz' => $this->quiz,
             'grader' => $grader,
             'link' => $grader->link(),
-            'qr' => \App\Support\Qr\QrPng::dataUri($grader->link(), 10),
+            'qr' => QrPng::dataUri($grader->link(), 10),
             'withReference' => false,
         ])->render();
 
@@ -235,7 +236,7 @@ class GraderManagementTest extends TestCase
             'quiz' => $this->quiz,
             'grader' => $grader,
             'link' => $grader->link(),
-            'qr' => \App\Support\Qr\QrPng::dataUri($grader->link(), 10),
+            'qr' => QrPng::dataUri($grader->link(), 10),
             'withReference' => true,
         ])->render();
 

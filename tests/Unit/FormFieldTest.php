@@ -17,7 +17,7 @@ class FormFieldTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $admin = AdminUser::create([
             'username' => 'testadmin',
             'email' => 'test@test.com',
@@ -204,7 +204,7 @@ class FormFieldTest extends TestCase
         ]);
 
         $fields = $this->form->fields()->get();
-        
+
         $this->assertEquals('Premier', $fields->first()->field_label);
         $this->assertEquals('Deuxième', $fields->last()->field_label);
     }

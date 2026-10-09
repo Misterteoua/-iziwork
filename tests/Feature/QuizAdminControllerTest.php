@@ -9,6 +9,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
 use App\Models\ShortLink;
+use App\Support\QuizQuestionData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -499,7 +500,7 @@ class QuizAdminControllerTest extends TestCase
         $this->post(route('admin.quizzes.questions.store', $this->quiz), [
             'field_label' => 'Expliquez la saponification.',
             'field_type' => 'textarea',
-            'expected_answer' => str_repeat('a', \App\Support\QuizQuestionData::MAX_EXPECTED_ANSWER + 1),
+            'expected_answer' => str_repeat('a', QuizQuestionData::MAX_EXPECTED_ANSWER + 1),
             'points' => 2,
         ])->assertSessionHasErrors('expected_answer');
 

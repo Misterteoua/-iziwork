@@ -24,7 +24,7 @@ return new class extends Migration
             $table->enum('status', ['pending', 'validated'])->default('pending');
             $table->string('ip_address')->nullable();
             $table->timestamps();
-            
+
             // No unique index on (form_id, student_email): see the column
             // comment above. Duplicates are rejected at the controller level,
             // which also lets an admin fix a wrong email after the fact.

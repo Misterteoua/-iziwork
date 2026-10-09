@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\Form;
 use App\Models\FormField;
+use Illuminate\Support\Collection;
 
 /**
  * Tirage aléatoire : quelles questions, dans quel ordre, et dans quel ordre les
@@ -43,10 +44,10 @@ final class QuizDraw
      * l'a demandé. Un sous-ensemble pris dans l'ordre du questionnaire serait
      * prévisible, ce qui est justement ce que le tirage doit empêcher.
      *
-     * @param  \Illuminate\Support\Collection<int, FormField>  $questions
-     * @return \Illuminate\Support\Collection<int, FormField>
+     * @param  Collection<int, FormField>  $questions
+     * @return Collection<int, FormField>
      */
-    private static function select(Form $quiz, \Illuminate\Support\Collection $questions): \Illuminate\Support\Collection
+    private static function select(Form $quiz, Collection $questions): Collection
     {
         $draw = $quiz->quizDrawCount();
         $shuffled = $questions->shuffle();
@@ -59,10 +60,10 @@ final class QuizDraw
     }
 
     /**
-     * @param  \Illuminate\Support\Collection<int, FormField>  $questions
+     * @param  Collection<int, FormField>  $questions
      * @return array<int, array<int, int>>
      */
-    private static function shuffleOptions(Form $quiz, \Illuminate\Support\Collection $questions): array
+    private static function shuffleOptions(Form $quiz, Collection $questions): array
     {
         if (! $quiz->quizShufflesOptions()) {
             return [];

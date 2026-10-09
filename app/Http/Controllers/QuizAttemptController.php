@@ -18,6 +18,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\Storage;
@@ -1211,7 +1212,7 @@ class QuizAttemptController extends Controller
      * à la main, et c'est le serveur qui doit refuser un fichier trop gros ou d'un
      * format inattendu.
      *
-     * @return array<int, \Illuminate\Http\UploadedFile>
+     * @return array<int, UploadedFile>
      */
     private function validatedAttachments(Request $request): array
     {
@@ -1248,7 +1249,7 @@ class QuizAttemptController extends Controller
      * recouvrent pas. Le nom d'origine, lui, est conservé pour l'affichage et le
      * téléchargement.
      *
-     * @param  array<int, \Illuminate\Http\UploadedFile>  $files
+     * @param  array<int, UploadedFile>  $files
      */
     private function storeAttachments(QuizAttempt $attempt, FormField $question, array $files): void
     {

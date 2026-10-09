@@ -18,7 +18,7 @@ class FormTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->admin = AdminUser::create([
             'username' => 'testadmin',
             'email' => 'test@test.com',

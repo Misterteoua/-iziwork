@@ -8,6 +8,7 @@ use App\Models\QuizAttempt;
 use App\Support\QuizCopyGrading;
 use App\Support\QuizGrader;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 /**
  * Correction manuelle d'une copie : les réponses rédigées.
@@ -180,9 +181,9 @@ class QuizGradingController extends Controller
     /**
      * File des copies à corriger, dans l'ordre de correction.
      *
-     * @return \Illuminate\Support\Collection<int, int>
+     * @return Collection<int, int>
      */
-    private function queue(Form $quiz): \Illuminate\Support\Collection
+    private function queue(Form $quiz): Collection
     {
         return $quiz->attempts()->awaitsManualGrading()->pluck('id');
     }

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\Submission;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Testing\TestResponse;
@@ -93,7 +94,7 @@ class SubmissionIndexFilterTest extends TestCase
         return $submission;
     }
 
-    /** @return \Illuminate\Database\Eloquent\Collection<int, Submission> */
+    /** @return Collection<int, Submission> */
     private function listed(TestResponse $response)
     {
         return $response->viewData('submissions');

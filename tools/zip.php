@@ -29,7 +29,7 @@ if ($argc < 3) {
     exit(1);
 }
 
-$source = rtrim($argv[1], "/\\");
+$source = rtrim($argv[1], '/\\');
 $target = $argv[2];
 
 if (! is_dir($source)) {
@@ -43,7 +43,7 @@ if (! class_exists(ZipArchive::class)) {
 }
 
 $prefix = basename($source);
-$zip = new ZipArchive();
+$zip = new ZipArchive;
 
 if ($zip->open($target, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
     fwrite(STDERR, "Impossible d'ouvrir l'archive en écriture : {$target}\n");
@@ -104,6 +104,7 @@ foreach ($iterator as $item) {
 
     if ($isExcluded($relative)) {
         $skipped[] = $relative;
+
         continue;
     }
 
@@ -112,6 +113,7 @@ foreach ($iterator as $item) {
     if ($item->isDir()) {
         $zip->addEmptyDir($inside);
         $applyMode($zip, $inside, 0040000 | 0755, true);
+
         continue;
     }
 

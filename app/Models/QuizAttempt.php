@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -141,7 +142,7 @@ class QuizAttempt extends Model
      * seconde — un début de séance, ou une horloge figée — doivent garder l'ordre
      * de leur remise, et non un ordre tiré d'une référence aléatoire.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<QuizAttempt>  $query
+     * @param  Builder<QuizAttempt>  $query
      */
     public function scopeAwaitsManualGrading($query)
     {

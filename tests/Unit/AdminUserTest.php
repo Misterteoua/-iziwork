@@ -3,7 +3,9 @@
 namespace Tests\Unit;
 
 use App\Models\AdminUser;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 class AdminUserTest extends TestCase
@@ -48,7 +50,7 @@ class AdminUserTest extends TestCase
         ]);
 
         $this->assertNotEquals('plain-password', $user->password_hash);
-        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('plain-password', $user->password_hash));
+        $this->assertTrue(Hash::check('plain-password', $user->password_hash));
     }
 
     public function test_admin_user_username_is_unique(): void
@@ -60,7 +62,7 @@ class AdminUserTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         AdminUser::create([
             'username' => 'testadmin',
@@ -79,7 +81,7 @@ class AdminUserTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         AdminUser::create([
             'username' => 'testadmin2',

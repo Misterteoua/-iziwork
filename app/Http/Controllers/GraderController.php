@@ -12,6 +12,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * Les correcteurs externes, vus par l'administrateur.
@@ -249,7 +250,7 @@ class GraderController extends Controller
      * n'a qu'une poignée de correcteurs, mais peut avoir des centaines de
      * copies.
      *
-     * @param  \Illuminate\Support\Collection<int, Grader>  $graders
+     * @param  Collection<int, Grader>  $graders
      * @return array<int, array{graded: int, reviewed: int}>
      */
     private function progress(Form $quiz, $graders): array

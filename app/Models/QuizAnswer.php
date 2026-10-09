@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -52,7 +53,7 @@ class QuizAnswer extends Model
      * correction manuelle l'est. Les questions rédigées suivent la même règle,
      * exactement comme avant.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<QuizAnswer>  $query
+     * @param  Builder<QuizAnswer>  $query
      */
     public function scopePendingManual($query)
     {
@@ -68,7 +69,7 @@ class QuizAnswer extends Model
      * lire au clavier. La liste des copies à corriger s'en sert pour signaler ce
      * cas, afin qu'un correcteur ne le prenne pas pour une absence de réponse.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<QuizAnswer>  $query
+     * @param  Builder<QuizAnswer>  $query
      */
     public function scopePendingDocumentOnly($query)
     {

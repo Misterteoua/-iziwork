@@ -2,6 +2,8 @@
 
 namespace App\Support\Import;
 
+use App\Support\QuestionText;
+
 /**
  * Découpage d'un énoncé qui contient plusieurs « Question N ».
  *
@@ -13,7 +15,7 @@ namespace App\Support\Import;
  * nécessaire pour répondre à chacune.
  *
  * Les repères sont volontairement stricts, comme ceux de la mise en forme
- * ({@see \App\Support\QuestionText}) : un faux positif scinderait un énoncé que
+ * ({@see QuestionText}) : un faux positif scinderait un énoncé que
  * personne n'a demandé à découper. Un repère ne compte donc que s'il commence
  * une phrase — au début du texte, après un retour à la ligne, ou après un « ; »,
  * un « . » ou un « : ». Une phrase qui cite « la Question 1 du sujet précédent »
@@ -44,7 +46,7 @@ final class QuestionSplitter
 
     /**
      * @param  int  $maxLength  longueur maximale d'une question produite
-     * @return array{chapeau: string, questions: array<int, string>}|null  null si l'énoncé n'est pas découpable
+     * @return array{chapeau: string, questions: array<int, string>}|null null si l'énoncé n'est pas découpable
      */
     public static function split(string $label, int $maxLength = 2000): ?array
     {
@@ -105,7 +107,7 @@ final class QuestionSplitter
      * soulignés, seule sur sa ligne : elle est retirée du texte, elle ne se lit
      * pas dans l'énoncé final.
      *
-     * @return array<int, string>  les morceaux, ou une liste vide s'il n'y a pas de coupure
+     * @return array<int, string> les morceaux, ou une liste vide s'il n'y a pas de coupure
      */
     public static function cut(string $label): array
     {

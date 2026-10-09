@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -30,12 +31,12 @@ return new class extends Migration
         // Le retour en arrière ne peut s'appliquer que si aucune question ouverte
         // n'existe : sinon MySQL refuserait la valeur et la migration échouerait
         // avec un message obscur. On le dit explicitement avant d'essayer.
-        $openQuestions = \Illuminate\Support\Facades\DB::table('form_fields')
+        $openQuestions = DB::table('form_fields')
             ->where('field_type', 'textarea')
             ->exists();
 
         if ($openQuestions) {
-            throw new \RuntimeException(
+            throw new RuntimeException(
                 'Des questions à réponse rédigée existent : supprimez-les avant de revenir en arrière.'
             );
         }

@@ -6,8 +6,10 @@ use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\FormField;
 use App\Models\QuizAttempt;
+use App\Models\ShortLink;
 use App\Models\Submission;
 use App\Support\PdfWatermark;
+use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -129,6 +131,7 @@ class PdfWatermarkTest extends TestCase
             } else {
                 // « stream » au milieu d'un autre mot (en-tête, métadonnée).
                 $offset = $dataStart;
+
                 continue;
             }
 
@@ -337,8 +340,8 @@ class PdfWatermarkTest extends TestCase
             'revealsCorrection' => true,
             'revealMoment' => null,
             'pending' => 0,
-            'followLink' => \App\Models\ShortLink::forAttempt($attempt->form, $attempt),
-            'followQr' => \App\Support\Qr\QrPng::dataUri('https://exemple.test/l/Ab12Cd34'),
+            'followLink' => ShortLink::forAttempt($attempt->form, $attempt),
+            'followQr' => QrPng::dataUri('https://exemple.test/l/Ab12Cd34'),
             'documentId' => $expectedId,
         ])->render();
 

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -117,7 +118,7 @@ class Form extends Model
     public function isOpen(): bool
     {
         $now = now();
-        
+
         if ($this->status !== 'active') {
             return false;
         }
@@ -272,7 +273,7 @@ class Form extends Model
     /**
      * Questions de l'évaluation, dans l'ordre prévu.
      *
-     * @return \Illuminate\Database\Eloquent\Builder<FormField>
+     * @return Builder<FormField>
      */
     public function quizQuestions()
     {
@@ -467,6 +468,7 @@ class Form extends Model
     {
         return $this->quizQuestions()->where('field_type', FormField::OPEN_TYPE)->exists();
     }
+
     /**
      * L'administration a-t-elle préparé des références ?
      *

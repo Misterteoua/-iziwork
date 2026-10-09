@@ -5,7 +5,6 @@ namespace Tests\Feature;
 use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\Grader;
-use App\Models\ShortLink;
 use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;

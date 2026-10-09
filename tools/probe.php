@@ -16,7 +16,6 @@ declare(strict_types=1);
  * Ce qu'elle répond : quel dossier est réellement servi, ce qu'il contient,
  * où se trouve l'application par rapport à lui, et si `.env` est exposé au web.
  */
-
 header('Content-Type: text/plain; charset=utf-8');
 
 const MAX_ENTRIES = 60;
@@ -95,10 +94,10 @@ line('Dossier servi = dossier de la sonde ?', $docRoot !== '' && realpath($docRo
 echo "\n=== Contenu du dossier servi (DOCUMENT_ROOT) ===\n";
 listing($docRoot !== '' ? $docRoot : __DIR__);
 
-echo "=== Contenu de ".dirname(__DIR__)." (un niveau au-dessus) ===\n";
+echo '=== Contenu de '.dirname(__DIR__)." (un niveau au-dessus) ===\n";
 listing(dirname(__DIR__));
 
-echo "=== Contenu de ".dirname(__DIR__, 2)." (deux niveaux au-dessus) ===\n";
+echo '=== Contenu de '.dirname(__DIR__, 2)." (deux niveaux au-dessus) ===\n";
 listing(dirname(__DIR__, 2));
 
 echo "=== Où est l'application ? ===\n";

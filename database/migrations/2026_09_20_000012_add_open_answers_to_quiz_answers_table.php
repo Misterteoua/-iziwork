@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -41,7 +42,7 @@ return new class extends Migration
         // Les réponses rédigées n'ont pas de colonne où revenir : on les efface
         // plutôt que de laisser des lignes muettes que le modèle ne saurait plus
         // lire (une réponse sans choix ni texte n'est ni juste ni fausse).
-        \Illuminate\Support\Facades\DB::table('quiz_answers')->whereNotNull('answer_text')->delete();
+        DB::table('quiz_answers')->whereNotNull('answer_text')->delete();
 
         Schema::table('quiz_answers', function (Blueprint $table) {
             $table->boolean('is_correct')->default(false)->nullable(false)->change();

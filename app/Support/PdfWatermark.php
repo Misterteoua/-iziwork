@@ -56,7 +56,7 @@ final class PdfWatermark
     /**
      * Numéro de document, stable et infalsifiable.
      *
-     * @param  string  $scope       nature du document (« quiz-attempt », « submission »…)
+     * @param  string  $scope  nature du document (« quiz-attempt », « submission »…)
      * @param  string|int  $identifier  identifiant stable de l'objet
      */
     public static function documentId(string $scope, string|int $identifier): string

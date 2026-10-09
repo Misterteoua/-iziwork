@@ -19,7 +19,6 @@ declare(strict_types=1);
  *
  * Code de sortie : 0 si tout est bon, 1 sinon.
  */
-
 const PREFIX = 'iziwork';
 
 $expectedArchive = $argv[1] ?? 'build/iziwork-release.zip';
@@ -186,6 +185,7 @@ foreach ($position as $name => $index) {
 
     if (! is_file($local)) {
         $missingLocally[] = $relative;
+
         continue;
     }
 
@@ -222,7 +222,7 @@ printf("  %d fichiers comparés au dépôt\n", $checked);
 if ($stale === []) {
     echo "  OK : contenu identique, l'archive n'est pas périmée\n\n";
 } else {
-    echo "  PERIMEE : ".count($stale)." fichier(s) diffèrent du dépôt :\n";
+    echo '  PERIMEE : '.count($stale)." fichier(s) diffèrent du dépôt :\n";
     foreach (array_slice($stale, 0, 10) as $file) {
         echo "    - {$file}\n";
     }

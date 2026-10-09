@@ -613,7 +613,7 @@ final class QuestionText
      */
     private static function itemText(string $text): string
     {
-        return rtrim(trim($text), " ;,");
+        return rtrim(trim($text), ' ;,');
     }
 
     /**

@@ -141,7 +141,7 @@ class FormField extends Model
     {
         // File fields use their own input name
         if ($this->field_type === 'file') {
-            return 'file_' . $this->id;
+            return 'file_'.$this->id;
         }
 
         return match (strtolower($this->field_label)) {
@@ -149,7 +149,7 @@ class FormField extends Model
             'email', 'adresse email', 'mail', 'adresse mail', 'e-mail', 'adresse e-mail', 'courriel' => 'student_email',
             'téléphone', 'telephone', 'tel', 'phone' => 'student_phone',
             'filière', 'filiere', 'major', 'spécialité' => 'student_major',
-            default => 'student_' . strtolower(str_replace(' ', '_', $this->field_label)),
+            default => 'student_'.strtolower(str_replace(' ', '_', $this->field_label)),
         };
     }
 
@@ -174,7 +174,7 @@ class FormField extends Model
      */
     public function getOptionsList(): array
     {
-        if (!$this->options || !is_array($this->options)) {
+        if (! $this->options || ! is_array($this->options)) {
             return [];
         }
 

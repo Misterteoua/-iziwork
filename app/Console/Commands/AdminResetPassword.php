@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\AdminUser;
 use Illuminate\Console\Command;
+use Symfony\Component\Console\Exception\ExceptionInterface;
 use Symfony\Component\Console\Helper\QuestionHelper;
-use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Question\Question;
 
 class AdminResetPassword extends Command
@@ -100,7 +100,7 @@ class AdminResetPassword extends Command
 
         try {
             return (string) $helper->ask($this->input, $this->output, $question);
-        } catch (\RuntimeException | \Symfony\Component\Console\Exception\ExceptionInterface) {
+        } catch (\RuntimeException|ExceptionInterface) {
             // MissingInputException on exhausted input, or the validator's own
             // RuntimeException re-thrown after 3 failed attempts — refuse any
             // fallback, change nothing.

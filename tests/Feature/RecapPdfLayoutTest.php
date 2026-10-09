@@ -11,7 +11,6 @@ use App\Support\PdfAssets;
 use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 /**

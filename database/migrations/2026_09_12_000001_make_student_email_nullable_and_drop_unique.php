@@ -9,23 +9,23 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (DB::connection()->getDriverName() !== "mysql") {
+        if (DB::connection()->getDriverName() !== 'mysql') {
             return;
         }
 
-        Schema::table("submissions", function (Blueprint $table) {
-            $table->string("student_email")->nullable()->change();
+        Schema::table('submissions', function (Blueprint $table) {
+            $table->string('student_email')->nullable()->change();
         });
     }
 
     public function down(): void
     {
-        if (DB::connection()->getDriverName() !== "mysql") {
+        if (DB::connection()->getDriverName() !== 'mysql') {
             return;
         }
 
-        Schema::table("submissions", function (Blueprint $table) {
-            $table->string("student_email")->nullable(false)->change();
+        Schema::table('submissions', function (Blueprint $table) {
+            $table->string('student_email')->nullable(false)->change();
         });
     }
 };

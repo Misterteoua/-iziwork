@@ -8,11 +8,12 @@ use App\Models\FormField;
 use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
 use App\Models\ShortLink;
+use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
-use App\Support\Qr\QrPng;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 /**
@@ -103,8 +104,8 @@ class QuizAttachmentTest extends TestCase
         return $this->quiz->attempts()->orderByDesc('id')->firstOrFail();
     }
 
-    /** @param array<int, \Illuminate\Http\UploadedFile> $files */
-    private function answerWith(?string $text, array $files = []): \Illuminate\Testing\TestResponse
+    /** @param array<int, UploadedFile> $files */
+    private function answerWith(?string $text, array $files = []): TestResponse
     {
         $question = $this->quiz->quizQuestions()->firstOrFail();
 

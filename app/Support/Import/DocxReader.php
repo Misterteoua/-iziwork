@@ -96,5 +96,4 @@ final class DocxReader
 
         return trim(str_replace(["\u{00A0}", "\u{202F}"], ' ', $text));
     }
-
 }

@@ -9,6 +9,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Tests\TestCase;
 
 /**
@@ -144,9 +145,9 @@ class QuizManualGradingTest extends TestCase
     /**
      * Réponses rédigées d'une copie, dans l'ordre des questions.
      *
-     * @return \Illuminate\Support\Collection<int, QuizAnswer>
+     * @return Collection<int, QuizAnswer>
      */
-    private function openAnswers(QuizAttempt $attempt): \Illuminate\Support\Collection
+    private function openAnswers(QuizAttempt $attempt): Collection
     {
         $attempt->load('answers.field');
 

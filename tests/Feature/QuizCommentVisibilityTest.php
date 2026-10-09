@@ -12,6 +12,7 @@ use App\Models\ShortLink;
 use App\Support\Qr\QrPng;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Tests\TestCase;
 
 /**
@@ -118,7 +119,7 @@ class QuizCommentVisibilityTest extends TestCase
     }
 
     /**
-     * @return \Illuminate\Support\Collection<int, QuizAnswer>
+     * @return Collection<int, QuizAnswer>
      */
     private function openAnswers(QuizAttempt $attempt)
     {
@@ -215,7 +216,7 @@ class QuizCommentVisibilityTest extends TestCase
     {
         $attempt = $this->playCopy();
         $answers = $this->openAnswers($attempt);
-        $link = \App\Models\ShortLink::forAttempt($this->quiz, $attempt);
+        $link = ShortLink::forAttempt($this->quiz, $attempt);
 
         $provisoire = view('student.quiz.recap-pdf', [
             'quiz' => $this->quiz,

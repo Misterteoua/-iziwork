@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\QuizQuestionData;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -9,7 +10,7 @@ use Illuminate\Support\Facades\Schema;
  * Énoncé d'une question : de VARCHAR(255) à TEXT.
  *
  * L'application accepte un énoncé de 2000 caractères
- * ({@see \App\Support\QuizQuestionData::MAX_LABEL_LENGTH}), à la saisie manuelle
+ * ({@see QuizQuestionData::MAX_LABEL_LENGTH}), à la saisie manuelle
  * comme à l'import par fichier. La colonne, elle, n'en acceptait que 255.
  *
  * SQLite — le poste de développement — ne contrôle pas la longueur déclarée :

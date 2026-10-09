@@ -6,6 +6,7 @@ use App\Models\AdminUser;
 use App\Models\Form;
 use App\Models\Submission;
 use App\Models\SubmissionFile;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -14,12 +15,13 @@ class SubmissionTest extends TestCase
     use RefreshDatabase;
 
     private AdminUser $admin;
+
     private Form $form;
 
     protected function setUp(): void
     {
         parent::setUp();
-        
+
         $this->admin = AdminUser::create([
             'username' => 'testadmin',
             'email' => 'test@test.com',
@@ -138,7 +140,7 @@ class SubmissionTest extends TestCase
             'status' => 'validated',
         ]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(QueryException::class);
 
         Submission::create([
             'form_id' => $this->form->id,

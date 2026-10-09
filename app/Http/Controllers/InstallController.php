@@ -66,7 +66,7 @@ class InstallController extends Controller
         if (! is_file($tokenPath)) {
             return $this->renderForm($this->defaults($request), [
                 "Fichier de sécurité introuvable : {$tokenPath}",
-                "Créez ce fichier depuis le Gestionnaire de fichiers de cPanel, "
+                'Créez ce fichier depuis le Gestionnaire de fichiers de cPanel, '
                 .'placez-y une longue chaîne aléatoire, puis rechargez cette page.',
             ]);
         }
@@ -142,7 +142,7 @@ class InstallController extends Controller
             $seeding = trim(Artisan::output());
         } catch (Throwable $e) {
             return $this->renderForm($values, [
-                "Échec pendant les migrations ou la création du compte admin.",
+                'Échec pendant les migrations ou la création du compte admin.',
                 $e->getMessage(),
                 'Le fichier .env a bien été écrit : corrigez la cause puis revalidez ce formulaire.',
             ]);

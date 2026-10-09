@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Support\Qr\QrEncoder;
-use App\Support\Qr\QrMatrix;
 use App\Support\Qr\QrPng;
 use Tests\TestCase;
 
