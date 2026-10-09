@@ -48,9 +48,14 @@ pour les mises à jour :
 php tools/release.php
 ```
 
-Elle enchaîne quatre étapes et se termine par un encadré où le **jeton `/update`
+Elle enchaîne cinq étapes et se termine par un encadré où le **jeton `/update`
 à utiliser** est affiché en clair :
 
+0. **contrôle qualité** : la suite de tests (`php artisan test`) puis Pint
+   (`pint --test`) sur tout le dépôt. Si l'un des deux échoue, le script
+   s'arrête sur `NE PAS DÉPLOYER` **avant** de construire quoi que ce soit :
+   l'archive précédente et l'espace de travail ne sont pas touchés. Le contrôle
+   se relance seul, sans rien reconstruire, avec `php tools/check-quality.php` ;
 1. **construction** de `build/iziwork-release.zip` (~12 Mo) : code, `vendor/`
    (paquets de production uniquement), gabarit `.env.production.example`, et
    deux jetons aléatoires (`.install-token`, `.update-token`) ;
@@ -984,7 +989,9 @@ bash deploy.sh
 | `/install` affiche *Jeton de sécurité manquant* | `.install-token` est absent → recréez-le dans le Gestionnaire de fichiers avec une longue chaîne aléatoire |
 | Assistant : *Le fichier .env ne relit pas DB_PASSWORD correctement* | mot de passe MySQL trop exotique → utilisez lettres, chiffres et tirets (ex. `Iziwork2026-Db9x`), puis relancez |
 | Assistant : *Connexion à la base impossible* | base ou utilisateur mal nommés (il faut le **nom complet** préfixé), ou utilisateur non rattaché à la base avec tous les privilèges |
-| `php tools/release.php` : *Aucun interpréteur shell trouvé* | définissez `RELEASE_SHELL=/chemin/vers/bash`, ou lancez `bash tools/build-release.sh` suivi de `php tools/verify-release.php` |
+| `php tools/release.php` : *Aucun interpréteur shell trouvé* | définissez `RELEASE_SHELL=/chemin/vers/bash`, ou lancez `bash tools/build-release.sh` suivi de `php tools/verify-release.php` — le script de construction passe lui aussi le contrôle qualité |
+| `php tools/release.php` s'arrête sur **NE PAS DÉPLOYER**, après la ligne *Contrôle qualité* | les tests ou Pint ne passent pas : c'est voulu, rien n'a été construit. Corrigez la cause, puis `php tools/check-quality.php` pour ne relancer que le contrôle |
+| `php tools/release.php` s'arrête sur **NE PAS DÉPLOYER**, après la ligne *Contrôle de l'archive* | l'archive est construite mais non conforme : corrigez ce que le rapport ci-dessus signale, puis relancez |
 | `build-release.sh` : *L'extension PHP `zip` est absente* | activez `ext-zip` dans le `php.ini` de votre installation locale |
 | **403 « Access to this resource on the server is denied! »** sur `/up`, `/install`, `/index.php`, alors que `/favicon.ico` répond 200 | Le vhost n'a **pas de handler PHP** : LiteSpeed refuse de servir un `.php` comme fichier statique. Le journal du domaine (cPanel → **Metrics → Errors**) affiche `MIME type [application/x-httpd-php] for suffix '.php' does not allow serving as static file`. → cPanel → **MultiPHP Manager** → cocher le sous-domaine → **PHP 8.2** → Apply (pour forcer la reconstruction du vhost : passer en 8.1, Apply, puis revenir en 8.2, Apply). Si le 403 persiste, ouvrir un ticket en citant cette ligne de journal : la configuration du vhost doit être reconstruite |
 | Le site affiche un **« Index of / » vide** | Le Document Root pointe sur un dossier vide — voir B.4 (préfixe `/home/<compte>` doublé par cPanel) |

@@ -9,6 +9,10 @@
 # + un jeton d'installation aléatoire. Il ne reste plus qu'à uploader ce ZIP
 # dans le Gestionnaire de fichiers, l'extraire, puis ouvrir /install.
 #
+# La construction commence par un contrôle qualité (suite de tests et Pint, voir
+# tools/check-quality.php) : sur une base rouge, rien n'est construit et
+# l'archive précédente reste intacte.
+#
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,6 +34,14 @@ else
 fi
 
 cd "$ROOT"
+
+# Le contrôle qualité passe avant tout le reste : une base rouge ne doit pas
+# produire d'archive. RELEASE_QUALITY_DONE=1 vient de tools/release.php, qui le
+# fait lui-même : inutile de payer deux fois la suite de tests.
+if [ -z "${RELEASE_QUALITY_DONE:-}" ]; then
+    log "Contrôle qualité (tests et Pint)"
+    php tools/check-quality.php || die "Contrôle qualité en échec : NE PAS DÉPLOYER. Rien n'a été construit, l'archive précédente est intacte."
+fi
 
 # On ne supprime que l'espace de travail et l'archive stable : le dossier
 # build/releases/ (archives horodatées par tools/release.php) est conservé.

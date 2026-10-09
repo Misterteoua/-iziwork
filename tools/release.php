@@ -19,7 +19,9 @@ declare(strict_types=1);
  *   --no-verify                Saute le contrôle d'intégrité (déconseillé).
  *   -h, --help                 Affiche cette aide.
  *
- * Le script enchaîne quatre étapes :
+ * Le script enchaîne cinq étapes :
+ *   0. contrôle      → tools/check-quality.php (suite de tests et Pint ; un échec
+ *                      arrête tout, avant même de toucher à l'archive)
  *   1. construction  → tools/build-release.sh (code + vendor + jetons aléatoires)
  *   2. contrôle      → tools/verify-release.php (fuites, fichiers manquants,
  *                      archive périmée par rapport au dépôt)
@@ -30,7 +32,6 @@ declare(strict_types=1);
  *
  * Aucune donnée n'est modifiée en ligne : le script ne déploie pas, il prépare.
  */
-
 const PREFIX = 'iziwork';
 const DEFAULT_URL = 'https://iziwork.efspc.inphb.ci';
 
@@ -165,6 +166,11 @@ Options :
   --no-verify   Saute le contrôle d'intégrité (déconseillé).
   -h, --help    Affiche cette aide.
 
+La construction est refusée tant que la suite de tests ou Pint ne passe pas :
+rien n'est construit, et l'archive précédente reste intacte. Le contrôle peut
+alors être relancé seul, sans rien reconstruire :
+  php tools/check-quality.php
+
 Exemples :
   php tools/release.php                 # construit et affiche le jeton à utiliser
   php tools/release.php --check         # en plus, compare avec la prod en ligne
@@ -202,6 +208,29 @@ chdir($root);
 
 if (! class_exists(ZipArchive::class)) {
     fail("L'extension PHP `zip` est absente : impossible de construire ou de lire l'archive.");
+}
+
+// --------------------------------------------------------- 0. Contrôle qualité
+
+// Aucune archive n'est construite sur une base rouge : la suite de tests et
+// Pint passent d'abord (voir tools/check-quality.php). Le contrôle a lieu ici,
+// avant tout le reste, pour qu'un échec ne touche ni l'archive précédente ni
+// l'espace de travail.
+if ($options['build']) {
+    step('Contrôle qualité (tests et Pint)');
+
+    $status = run([PHP_BINARY, 'tools/check-quality.php']);
+
+    if ($status !== 0) {
+        step('VERDICT : NE PAS DÉPLOYER');
+        note('La suite de tests ou Pint a relevé un problème (voir ci-dessus).');
+        note('Corrigez la cause, puis relancez : php tools/release.php');
+        exit(1);
+    }
+
+    // Le script de construction appelé juste après ne rejoue pas ce contrôle :
+    // il ne doit le faire que lorsqu'on l'appelle directement.
+    putenv('RELEASE_QUALITY_DONE=1');
 }
 
 // ------------------------------------------------------- 1. Construction
@@ -340,7 +369,7 @@ if ($options['check']) {
         $prodVersion = is_array($payload) ? ($payload['version'] ?? null) : null;
 
         if ($prodVersion === null) {
-            note("réponse inattendue de /version : ".trim(substr($body, 0, 120)));
+            note('réponse inattendue de /version : '.trim(substr($body, 0, 120)));
         } elseif ($prodVersion === $version) {
             note("prod déjà en {$prodVersion} : cette archive n'apporte rien de nouveau");
         } else {
@@ -385,7 +414,7 @@ if ($prodVersion !== null && $prodVersion !== $version) {
 
 echo "\n  ┌─ JETON DE MISE À JOUR À UTILISER ".str_repeat('─', 31)."\n";
 printf("  │  %s\n", $updateToken);
-echo "  └".str_repeat('─', 65)."\n";
+echo '  └'.str_repeat('─', 65)."\n";
 
 echo "\n  Étapes de déploiement :\n";
 echo "    1. cPanel → Gestionnaire de fichiers → racine du compte → téléverser\n";
