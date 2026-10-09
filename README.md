@@ -769,6 +769,29 @@ non validé**. Auparavant, ce garde-fou s'armait à chaque validation et le
 navigateur abandonnait la navigation tant que le candidat n'avait pas confirmé un
 dialogue que le plein écran rendait presque invisible.
 
+## 🧪 Contrôles automatiques
+
+`php artisan test` fait tourner la suite complète. Elle contient notamment un
+contrôle des **scripts écrits en ligne dans les vues Blade**, qui n'étaient
+vérifiés par rien : PHP ne les lit pas, et un navigateur refuse en silence un
+script fautif — la page perd alors d'un coup tout ce qui était piloté par
+JavaScript.
+
+Deux fautes sont attrapées, en nommant le fichier, la ligne et le motif :
+
+- une **faute de syntaxe**, qui empêche tout le script de s'exécuter ;
+- une **collision de noms** entre deux scripts d'une même page. Les balises
+  `<script>` d'une page partagent le même espace global : un `const` déclaré
+  deux fois fait échouer le script fautif dès sa déclaration.
+
+Le contrôle lit le code réellement analysable — les directives Blade, les
+commentaires et les valeurs rendues par le serveur sont retirés d'abord — et
+laisse Node interpréter chaque script comme une balise `<script>`. Node est déjà
+là pour construire les feuilles de style ; s'il manque, le contrôle est
+**ignoré**, et l'ignorance est visible dans la sortie des tests.
+
+Pour ne lancer que lui : `php artisan test --filter=BladeInlineScriptsTest`.
+
 ## 🔒 Sécurité
 
 - Authentification par session PHP
