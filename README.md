@@ -792,6 +792,20 @@ là pour construire les feuilles de style ; s'il manque, le contrôle est
 
 Pour ne lancer que lui : `php artisan test --filter=BladeInlineScriptsTest`.
 
+La même vérification tourne **à chaque poussée et à chaque proposition de
+modification** : [`.github/workflows/qualite.yml`](.github/workflows/qualite.yml)
+installe PHP 8.2 — la version de la production — avec les extensions dont la
+suite a besoin, installe Node (sans lui, le contrôle des scripts en ligne serait
+ignoré), puis exécute le contrôle qui verrouille la release :
+
+```bash
+php tools/check-quality.php   # suite de tests, puis Pint sur tout le dépôt
+```
+
+C'est ce même contrôle que `php tools/release.php` refuse de franchir : aucune
+archive n'est construite tant qu'il n'est pas vert. Le lancer à la main donne le
+même verdict que l'intégration continue, sans attendre une poussée.
+
 ## 🔒 Sécurité
 
 - Authentification par session PHP

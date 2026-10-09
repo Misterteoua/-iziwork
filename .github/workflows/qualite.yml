@@ -1,0 +1,67 @@
+# Contrôle qualité à chaque poussée et à chaque proposition de modification.
+#
+# C'est exactement le contrôle qui verrouille la release (tools/check-quality.php) :
+# la suite de tests, puis Pint sur tout le dépôt. Il tourne ici sur **PHP 8.2**,
+# la version de la production, et Node est installé pour que le contrôle des
+# scripts en ligne des vues Blade s'exécute vraiment — sans lui, ce test est
+# ignoré, et l'ignorance ne doit pas se confondre avec un succès.
+#
+# Les dépendances de développement sont installées (pas de `--no-dev`) : Pint en
+# fait partie.
+name: Contrôle qualité
+
+on:
+  push:
+  pull_request:
+
+# Une poussée qui en remplace une autre annule la vérification devenue inutile.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  controle:
+    name: Tests et mise en forme
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer PHP 8.2
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, zip, pdo_sqlite, dom, xml, simplexml, fileinfo, gd, curl
+          ini-values: memory_limit=-1
+          coverage: none
+          tools: composer:v2
+
+      - name: Installer Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Vérifier que les extensions nécessaires sont là
+        run: |
+          php -r 'foreach (["mbstring", "zip", "pdo_sqlite", "dom", "simplexml", "fileinfo", "gd"] as $extension) { printf("  %-12s %s\n", $extension, extension_loaded($extension) ? "ok" : "MANQUANTE"); }'
+          php -r 'exit((int) (count(array_filter(["mbstring", "zip", "pdo_sqlite", "dom", "simplexml", "fileinfo", "gd"], fn ($extension) => ! extension_loaded($extension))) > 0));'
+
+      - name: Mettre en cache les téléchargements Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Installer les dépendances
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Préparer l'environnement
+        run: |
+          cp .env.example .env
+          php artisan key:generate --ansi
+
+      - name: Contrôle qualité (tests et Pint)
+        run: php tools/check-quality.php
