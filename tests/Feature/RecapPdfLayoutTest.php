@@ -214,4 +214,67 @@ class RecapPdfLayoutTest extends TestCase
         $response->assertHeader('content-type', 'application/pdf');
         $this->assertStringStartsWith('%PDF', (string) $response->getContent());
     }
+
+    public function test_une_note_absente_ne_s_imprime_pas_zero(): void
+    {
+        // Une évaluation dont l'auto-correction est retirée : la réponse à
+        // propositions attend une note, et rien ne l'a posée.
+        $quiz = Form::create([
+            'title' => 'Examen de Métrologie',
+            'token' => 'JETON-PDF-NOTE-'.uniqid(),
+            'status' => 'active',
+            'type' => Form::TYPE_QUIZ,
+            'is_anonymous' => false,
+            'quiz_settings' => [
+                'duration_minutes' => 30,
+                'show_score' => true,
+                'proctoring' => false,
+                'manual_choice_grading' => true,
+            ],
+            'created_by' => $this->admin->id,
+        ]);
+
+        $question = $quiz->fields()->create([
+            'field_label' => 'Quelle est la bonne réponse ?',
+            'field_type' => 'radio',
+            'required' => true,
+            'order' => 1,
+            'options' => ['Un', 'Deux'],
+            'correct_answer' => [1],
+            'points' => 2,
+        ]);
+
+        $this->post(route('quiz.begin', $quiz->token), ['student_name' => 'Curie Marie']);
+        $this->post(route('quiz.answer', $quiz->token), [
+            'question_id' => $question->id,
+            'choice' => 1,
+        ]);
+        $this->post(route('quiz.submit', $quiz->token));
+
+        $attempt = $quiz->attempts()->firstOrFail()->load(['answers', 'attachments']);
+
+        // Le réglage est retiré après la remise : la copie rendue garde sa note
+        // en attente, et le document doit le dire.
+        $quiz->update([
+            'quiz_settings' => array_merge($quiz->quizSettings(), ['manual_choice_grading' => false]),
+        ]);
+
+        $followLink = ShortLink::forAttempt($quiz, $attempt);
+
+        $html = view('student.quiz.recap-pdf', [
+            'quiz' => $quiz,
+            'attempt' => $attempt,
+            'showScore' => true,
+            'revealsCorrection' => true,
+            'revealMoment' => null,
+            'pending' => $attempt->pendingManualCount(),
+            'followLink' => $followLink,
+            'followQr' => QrPng::dataUri($followLink->url()),
+        ])->render();
+
+        // Le document que l'étudiant garde ne doit pas trancher à la place de
+        // l'enseignant : la question attend, elle n'est pas fausse.
+        $this->assertStringContainsString('En attente de correction', $html);
+        $this->assertStringNotContainsString('Faux — 0 point', $html);
+    }
 }

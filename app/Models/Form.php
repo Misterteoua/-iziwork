@@ -164,6 +164,19 @@ class Form extends Model
     }
 
     /**
+     * Le journal des recalculs de l'évaluation.
+     *
+     * Du plus récent au plus ancien, comme il se lit : c'est la dernière passe
+     * qui explique la note que l'étudiant vient de contester.
+     */
+    public function regradeRuns()
+    {
+        return $this->hasMany(QuizRegradeRun::class, 'form_id')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+    }
+
+    /**
      * S'agit-il d'une évaluation en ligne ?
      *
      * Le module de dépôt de travaux s'appuie sur cette question pour ignorer

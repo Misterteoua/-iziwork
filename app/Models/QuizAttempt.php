@@ -455,9 +455,25 @@ class QuizAttempt extends Model
      */
     public function questions(): Collection
     {
-        $questions = $this->form->quizQuestions()->get();
-        $order = $this->question_order;
+        return self::questionsFrom($this->form->quizQuestions()->get(), $this->question_order);
+    }
 
+    /**
+     * Les mêmes questions, à partir d'une liste déjà chargée.
+     *
+     * La règle vit ici, et non chez l'appelant : renoter une question après
+     * modification ({@see QuizGrader::regradeQuestion()}) a besoin du barème
+     * réellement posé à chaque copie pour remettre son total d'aplomb, et deux
+     * implémentations divergeraient dès le premier changement. Charger les
+     * questions une fois puis les filtrer copie par copie évite en plus une
+     * requête par copie — une évaluation peut en compter des milliers.
+     *
+     * @param  Collection<int, FormField>  $questions  les questions de l'évaluation
+     * @param  array<int, mixed>|null  $order  l'ordre figé de la copie, ou null
+     * @return Collection<int, FormField>
+     */
+    public static function questionsFrom(Collection $questions, ?array $order): Collection
+    {
         if (! is_array($order) || $order === []) {
             return $questions;
         }

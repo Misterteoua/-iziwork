@@ -286,6 +286,9 @@
     </section>
 
     {{-- Questions --}}
+    @php($renotable = $attempts
+        ->whereIn('status', [\App\Models\QuizAttempt::STATUS_SUBMITTED, \App\Models\QuizAttempt::STATUS_EXPIRED])
+        ->isNotEmpty())
     <section class="bg-white rounded-2xl shadow-card border border-slate-200/70 overflow-hidden mb-8">
         <div class="px-6 py-5 border-b border-slate-100 flex flex-wrap items-baseline justify-between gap-2">
             <h2 class="text-base font-semibold text-slate-900">Questions</h2>
@@ -343,6 +346,15 @@
 
                 <details class="mt-4">
                     <summary class="cursor-pointer text-xs font-semibold text-brand-700 hover:text-brand-800">Modifier cette question</summary>
+                    {{-- La renotation n'est pas une surprise à découvrir : un
+                         enseignant qui corrige une bonne réponse doit savoir,
+                         avant d'enregistrer, ce que cela fait aux copies déjà
+                         rendues — et ce que cela ne fait pas. --}}
+                    <p class="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200/70 rounded-xl px-3 py-2">
+                        Enregistrer une nouvelle bonne réponse, un nouveau barème ou un changement de
+                        type <strong>renote les copies déjà rendues</strong> : leur note suit la correction.
+                        Une note posée à la main — correcteur ou administration — n'est jamais touchée.
+                    </p>
                     <div class="mt-4 rounded-xl bg-slate-50 p-4">
                         @include('admin.quizzes._question-form', [
                             'action' => route('admin.quizzes.questions.update', [$quiz, $question]),
@@ -350,6 +362,10 @@
                             'question' => $question,
                             'slots' => max(4, count($question->getOptionsList())),
                             'quiz' => $quiz,
+                            // Des copies déjà rendues : l'aperçu de la renotation a
+                            // quelque chose à montrer. Sans elles, le panneau
+                            // n'existe pas — il n'annoncerait rien.
+                            'renotable' => $renotable,
                         ])
                     </div>
                 </details>

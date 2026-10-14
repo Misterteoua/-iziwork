@@ -56,8 +56,16 @@
             <div class="rounded-xl bg-slate-50 px-4 py-3">
                 <dt class="text-xs text-slate-500">Note actuelle</dt>
                 <dd class="text-sm font-semibold text-slate-900" style="font-variant-numeric: tabular-nums">
-                    {{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }}
-                    / {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}
+                    {{-- Une note absente ne vaut pas zéro : sans cette garde,
+                         `(float) null` affichait « 0 », et une copie dont la note
+                         n'a pas encore été calculée se lisait comme un candidat à
+                         zéro point. La page des résultats fait la même garde. --}}
+                    @if($attempt->score === null)
+                        —
+                    @else
+                        {{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }}
+                    @endif
+                    / {{ $attempt->max_score === null ? '—' : rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}
                     @if($pending > 0)
                     <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">provisoire</span>
                     @endif

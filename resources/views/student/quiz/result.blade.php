@@ -24,7 +24,7 @@
                 {{-- Le barème, pas la note : il est secondaire, mais il se lit.
                      « slate-400 » ne tenait que 2,56:1 sur blanc — même échappé,
                      un chiffre qu'on ne lit pas ne vaut pas mieux qu'un absent. --}}
-                <span class="text-2xl text-slate-500">/ {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
+                <span class="text-2xl text-slate-500">/ {{ $attempt->max_score === null ? '—' : rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
             </p>
             <p class="mt-1 text-sm text-slate-500">
                 {{ $pending > 0 ? 'Note provisoire' : 'Votre note' }}
@@ -105,18 +105,24 @@
                             'class' => 'text-sm font-medium text-slate-900',
                         ])
                     </div>
+                    {{-- « Pas de note » n'est pas « zéro » : le premier cas se lit
+                         sur la note elle-même, quel que soit le type de
+                         question. Une configuration changée depuis la remise —
+                         auto-correction retirée puis remise — laisse des réponses
+                         sans note, et les annoncer « 0 pt » ferait lire une
+                         décision que personne n'a prise. --}}
                     <span class="shrink-0 inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium
                         @if($answer === null) bg-slate-100 text-slate-600
-                        @elseif($manual && $awarded === null) bg-amber-50 text-amber-700
-                        @elseif($awarded !== null && $awarded > 0) bg-emerald-50 text-emerald-700
+                        @elseif($awarded === null) bg-amber-50 text-amber-700
+                        @elseif($awarded > 0) bg-emerald-50 text-emerald-700
                         @else bg-red-50 text-red-700
                         @endif">
                         @if($answer === null)
                             Sans réponse
+                        @elseif($awarded === null)
+                            En attente de correction
                         @elseif($manual)
-                            {{ $awarded === null
-                                ? 'En attente de correction'
-                                : rtrim(rtrim(number_format($awarded, 2, ',', ' '), '0'), ',').' / '.$question->points.' pt' }}
+                            {{ rtrim(rtrim(number_format($awarded, 2, ',', ' '), '0'), ',').' / '.$question->points.' pt' }}
                         @else
                             {{ $answer->is_correct ? '+'.$question->points.' pt' : '0 pt' }}
                         @endif

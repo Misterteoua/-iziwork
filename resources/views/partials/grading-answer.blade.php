@@ -25,7 +25,12 @@
     ? (trim((string) $answer->answer_text) !== '' || $attachments->isNotEmpty())
     : $chosen !== []))
 
-@php($points = static fn ($value): string => rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ','))
+{{-- Une note absente s'affiche « — », jamais « 0 » : le zéro est une note, et
+     un écran de correction ne doit pas faire passer une réponse non notée pour
+     une réponse à zéro. --}}
+@php($points = static fn ($value): string => $value === null
+    ? '—'
+    : rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ','))
 
 <div class="bg-white rounded-2xl shadow-card border border-slate-200/70 p-6">
     <div class="flex items-start justify-between gap-4">
@@ -286,9 +291,18 @@
             <span class="font-semibold text-slate-500 uppercase tracking-wider">Bonne réponse :</span>
             {{ implode(' ; ', $correctLabels) }}
         </p>
-        <p class="mt-2 text-xs font-medium {{ $answer?->is_correct ? 'text-emerald-700' : 'text-slate-500' }}">
-            {{ $answer?->is_correct ? 'Juste — '.$answer->points_awarded.' point(s)' : 'Faux — 0 point' }}
+        <p class="mt-2 text-xs font-medium {{ $answer?->is_correct ? 'text-emerald-700' : ($answer !== null && ! $answer->isGraded() ? 'text-amber-700' : 'text-slate-500') }}">
+            @if($answer !== null && ! $answer->isGraded())
+            {{-- La machine n'a pas tranché : la question porte une note nulle
+                 parce que l'auto-correction a été déplacée depuis la remise.
+                 Annoncer « Faux — 0 point » ferait lire une décision qui n'a
+                 jamais été prise. --}}
+            Aucune note automatique
+            <span class="text-slate-400">· auto-correction à rejouer</span>
+            @else
+            {{ $answer?->is_correct ? 'Juste — '.$points($answer->points_awarded).' point(s)' : 'Faux — 0 point' }}
             <span class="text-slate-400">· corrigée automatiquement</span>
+            @endif
         </p>
     @endif
 </div>

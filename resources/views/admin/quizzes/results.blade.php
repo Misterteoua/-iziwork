@@ -52,6 +52,33 @@
                 </a>
 
                 @if($attempts->isNotEmpty())
+                {{-- Rattraper les notes antérieures : une question peut avoir été
+                     corrigée avant que l'enregistrement ne renote, ou une copie
+                     peut avoir été notée sur une configuration qui a changé
+                     depuis. Le geste écrit, donc il ne part pas d'un clic : il
+                     passe par un aperçu, qui annonce les notes concernées avant
+                     de demander confirmation. --}}
+                <a href="{{ route('admin.quizzes.regrade.preview', $quiz) }}"
+                   title="Aperçu des notes qui changeraient — les notes posées à la main ne sont pas touchées"
+                   class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h5M20 20v-5h-5M4.6 15a8 8 0 0014 1M19.4 9a8 8 0 00-14-1" />
+                    </svg>
+                    Recalculer les notes
+                </a>
+
+                {{-- Le journal se lit là où l'enseignant recalculé, et là où il
+                     constate qu'une note a bougé : c'est la seule page qui peut
+                     dire qui l'a fait bouger, et quand. --}}
+                <a href="{{ route('admin.quizzes.regrades', $quiz) }}"
+                   title="Qui a recalculé, quand, et combien de copies ont changé de note"
+                   class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
+                    <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5h16M4 12h16M4 19h10" />
+                    </svg>
+                    Journal des recalculs
+                </a>
+
                 <a href="{{ route('admin.quizzes.results.export', $quiz) }}"
                    class="inline-flex items-center justify-center px-4 py-2.5 border border-slate-300 text-sm font-semibold rounded-xl text-slate-700 hover:bg-slate-50 transition-colors duration-150">
                     <svg class="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
@@ -209,7 +236,10 @@
                                 —
                             @else
                                 <span class="font-semibold">{{ rtrim(rtrim(number_format((float) $attempt->score, 2, ',', ' '), '0'), ',') }}</span>
-                                <span class="text-slate-500">/ {{ rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
+                                {{-- Le barème suit la même garde que la note : `0`
+                                     dirait « vaut zéro », alors qu'il est
+                                     simplement inconnu. --}}
+                                <span class="text-slate-500">/ {{ $attempt->max_score === null ? '—' : rtrim(rtrim(number_format((float) $attempt->max_score, 2, ',', ' '), '0'), ',') }}</span>
                                 @if($attempt->pending_manual_count > 0)
                                 <span class="ml-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700">provisoire</span>
                                 @endif

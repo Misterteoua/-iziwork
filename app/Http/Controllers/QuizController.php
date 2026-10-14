@@ -9,6 +9,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizAttachment;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
+use App\Models\QuizRegradeRun;
 use App\Models\ShortLink;
 use App\Support\Import\ImportException;
 use App\Support\Import\ImportOutcome;
@@ -282,7 +283,88 @@ class QuizController extends Controller
 
         $question = $this->validatedQuestion($request);
 
-        $field->update([
+        // La question et les notes qu'elle a produites changent ensemble : une
+        // écriture à moitié passée laisserait des copies notées selon une
+        // définition qui n'existe plus. Renoter n'est pas une action à part —
+        // c'est la conséquence directe de l'enregistrement.
+        $renoted = DB::transaction(function () use ($quiz, $field, $question): int {
+            $attributes = $this->questionAttributes($question);
+
+            // Ce que la renotation va changer, lu **avant** de l'écrire : après,
+            // l'état d'avant n'existe plus. C'est le calcul de l'aperçu du
+            // formulaire, et il sert ici deux fois — chiffrer le geste, puis s'en
+            // souvenir au journal.
+            $detail = $this->grader->previewQuestionRegrade($field, $attributes)['rows'];
+
+            $field->update($attributes);
+
+            $renoted = $this->grader->regradeQuestion($field);
+
+            // La trace s'écrit dans la même transaction que la renotation : un
+            // journal qui annoncerait une passe qui n'a pas eu lieu serait pire
+            // que pas de journal du tout.
+            $this->recordRegrade($quiz, QuizRegradeRun::ORIGIN_QUESTION, $detail, $field);
+
+            return $renoted;
+        });
+
+        return back()->with('success', $this->questionUpdatedMessage($quiz, $renoted));
+    }
+
+    /**
+     * Écrit une passe de renotation au journal de l'évaluation.
+     *
+     * Le compte d'administration vient de la session : c'est lui qui a cliqué.
+     * Les colonnes ne portent aucune clé étrangère — la ligne doit survivre à la
+     * suppression d'un compte comme à celle d'une question, sans quoi le journal
+     * perdrait justement ce qu'on vient y chercher.
+     *
+     * Le **détail** est celui de l'aperçu, lu avant l'écriture : les copies
+     * concernées, avec leur note d'avant et celle d'après. Le compte et la liste
+     * viennent de la même lecture, ils ne peuvent donc pas se contredire.
+     *
+     * Deux régimes, et un seul endroit qui les sépare :
+     *   - un recalcul **demandé** est un geste, il se trace même quand il ne
+     *     change rien ;
+     *   - une question **enregistrée** n'a recalé quelque chose que si des copies
+     *     ont bougé — corriger une faute de frappe n'est pas un recalcul, et le
+     *     journal ne doit pas s'en remplir.
+     *
+     * @param  array<int, array{attempt: QuizAttempt, from: float|null, to: float, max_from: float|null, max_to: float, answers: int, released: int, reclaimed: int}>  $detail
+     */
+    private function recordRegrade(Form $quiz, string $origin, array $detail, ?FormField $question = null, ?string $label = null): void
+    {
+        if ($detail === [] && $origin !== QuizRegradeRun::ORIGIN_QUIZ) {
+            return;
+        }
+
+        QuizRegradeRun::create([
+            'form_id' => $quiz->id,
+            'admin_user_id' => session('admin_user.id'),
+            'origin' => $origin,
+            'form_field_id' => $question?->id,
+            // Recopié au moment du geste : c'est la seule chose qui reste d'une
+            // question supprimée, et l'énoncé d'alors est celui qui a été renoté.
+            'question_label' => $label ?? $question?->field_label,
+            'copies' => count($detail),
+            'copies_detail' => QuizRegradeRun::detailFrom($detail),
+        ]);
+    }
+
+    /**
+     * Les attributs qu'une question enregistrée porte.
+     *
+     * Une seule liste, parce que deux chemins en dépendent : l'enregistrement, et
+     * l'aperçu de la renotation qui chiffre son effet avant le clic. Deux listes
+     * finiraient par diverger, et l'aperçu annoncerait alors l'effet d'une
+     * question qui n'est pas celle qui serait posée.
+     *
+     * @param  array<string, mixed>  $question  une question normalisée
+     * @return array<string, mixed>
+     */
+    private function questionAttributes(array $question): array
+    {
+        return [
             'field_label' => $question['field_label'],
             'field_type' => $question['field_type'],
             'options' => $question['options'] ?? [],
@@ -291,9 +373,90 @@ class QuizController extends Controller
             // laisser en base donnerait une colonne qui ne veut plus rien dire.
             'expected_answer' => $question['expected_answer'] ?? null,
             'points' => $question['points'],
-        ]);
+        ];
+    }
 
-        return back()->with('success', 'Question mise à jour.');
+    /**
+     * Ce qu'enregistrer cette question changerait aux copies déjà rendues.
+     *
+     * Le pendant de {@see updateQuestion()}, en lecture seule : même validation,
+     * mêmes attributs, même renotation — mais comptée au lieu d'être écrite.
+     * L'écran de configuration peut donc annoncer « ces copies seraient
+     * renotées » avant que l'enseignant ne clique, au lieu de le lui apprendre
+     * après coup, une fois la note des étudiants déjà changée.
+     *
+     * La validation est celle de l'enregistrement, et son refus est rendu tel
+     * quel : un formulaire incomplet n'a rien à annoncer, et un aperçu qui
+     * inventerait la question qu'il n'a pas pu lire serait pire que pas d'aperçu.
+     */
+    public function previewQuestionRegrade(Request $request, Form $quiz, FormField $field): JsonResponse
+    {
+        $this->assertQuiz($quiz);
+        $this->assertQuestion($quiz, $field);
+
+        $question = $this->validatedQuestion($request);
+
+        $preview = $this->grader->previewQuestionRegrade($field, $this->questionAttributes($question));
+
+        return response()->json([
+            'html' => view('admin.quizzes._renotation-preview', [
+                'quiz' => $quiz,
+                'question' => $field,
+                'preview' => $preview,
+            ])->render(),
+        ]);
+    }
+
+    /**
+     * Ce qu'il y a à dire après l'enregistrement d'une question modifiée.
+     *
+     * Une renotation silencieuse serait le pire des messages : l'enseignant doit
+     * savoir que des copies ont changé de note, et que des étudiants voyaient
+     * peut-être déjà l'ancienne. Rien n'est ajouté quand rien n'a bougé — un
+     * énoncé corrigé ne déclenche aucune renotation.
+     */
+    private function questionUpdatedMessage(Form $quiz, int $renoted): string
+    {
+        if ($renoted === 0) {
+            return 'Question mise à jour.';
+        }
+
+        // « Note et barème » plutôt que « note » : un barème corrigé remet aussi
+        // à jour le total « sur combien » des copies, y compris celles qui
+        // n'avaient pas répondu à la question.
+        return 'Question mise à jour. '.$renoted.' copie(s) rendue(s) renotée(s) : '
+            .'leur note et leur barème suivent la nouvelle correction.'
+            .$this->revealedNotice($quiz);
+    }
+
+    /**
+     * Ce qu'il y a à dire après un recalcul demandé depuis les résultats.
+     */
+    private function regradeMessage(Form $quiz, int $renoted): string
+    {
+        if ($renoted === 0) {
+            // Rien n'a bougé : le dire vaut mieux que de laisser croire à un
+            // travail qui n'a pas eu lieu.
+            return 'Toutes les copies rendues sont déjà à jour : rien n\'a changé.';
+        }
+
+        return $renoted.' copie(s) rendue(s) renotée(s) : leur note et leur barème '
+            .'suivent la configuration actuelle des questions.'
+            .$this->revealedNotice($quiz);
+    }
+
+    /**
+     * Le rappel qui accompagne une renotation : ces étudiants voyaient déjà leur
+     * note.
+     *
+     * Vide quand les corrections ne sont pas encore publiées — il n'y a alors
+     * rien à signaler, et une phrase de trop apprendrait à ne plus les lire.
+     */
+    private function revealedNotice(Form $quiz): string
+    {
+        return $quiz->quizRevealsCorrection()
+            ? ' Ces étudiants voyaient déjà leur note ; elle est maintenant à jour.'
+            : '';
     }
 
     public function destroyQuestion(Form $quiz, FormField $field)
@@ -301,7 +464,26 @@ class QuizController extends Controller
         $this->assertQuiz($quiz);
         $this->assertQuestion($quiz, $field);
 
-        $field->delete();
+        // L'énoncé est lu avant la suppression : c'est la seule trace qui restera
+        // de la question dans le journal des recalculs.
+        $label = (string) $field->field_label;
+
+        // Les réponses de cette question tombent avec elle (la clé étrangère est
+        // en cascade) : le total des copies rendues doit suivre, sans quoi il
+        // continuerait de compter une question qui n'existe plus. Ces copies
+        // changent de barème sans qu'aucune décision humaine ne soit prise : le
+        // journal des recalculs doit pouvoir le dire.
+        DB::transaction(function () use ($quiz, $field, $label): void {
+            // L'effet est lu avant la suppression : la question et ses réponses
+            // auront disparu quand il faudra le raconter.
+            $detail = $this->grader->previewQuestionRemoval($field)['rows'];
+
+            $field->delete();
+
+            $this->grader->refreshTotals($quiz);
+
+            $this->recordRegrade($quiz, QuizRegradeRun::ORIGIN_DELETED, $detail, label: $label);
+        });
 
         return back()->with('success', 'Question supprimée.');
     }
@@ -903,6 +1085,102 @@ class QuizController extends Controller
             ->map(fn ($group) => $group->count());
 
         return view('admin.quizzes.results', compact('quiz', 'attempts', 'sharedIps', 'blankAttempts', 'closedNow'));
+    }
+
+    /**
+     * L'aperçu du recalcul : ce qui changerait, sans rien changer.
+     *
+     * Le geste écrit, et il porte sur des notes que des étudiants lisent déjà :
+     * il se demande donc deux fois. Cet écran annonce les copies concernées —
+     * leur note aujourd'hui, celle qu'elles auraient ensuite — et c'est lui qui
+     * porte le bouton de confirmation. Un recalcul qui renote une promotion
+     * entière ne se découvre pas après coup.
+     */
+    public function regradePreview(Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        $preview = $this->grader->previewRegrade($quiz);
+
+        return view('admin.quizzes.regrade-preview', compact('quiz', 'preview'));
+    }
+
+    /**
+     * Recalcule les notes de toutes les copies rendues.
+     *
+     * La renotation accompagne déjà l'enregistrement d'une question ; ce geste
+     * existe pour ce qu'elle ne peut pas atteindre : des copies notées avant
+     * qu'elle n'existe, ou une configuration corrigée autrement qu'à l'écran.
+     * Il ne touche pas davantage aux notes humaines — c'est le même calcul, au
+     * même endroit, avec le même filtre d'auteur.
+     */
+    /**
+     * Le journal des recalculs : qui, quand, et combien de copies.
+     *
+     * Il répond à la seule question qu'on se pose devant une note qui a bougé
+     * toute seule : « qui a fait ça, et quand ». Les décisions humaines ne s'y
+     * trouvent pas — leur journal est celui de la copie, et un recalcul n'est pas
+     * une décision : c'est précisément pourquoi il fallait le sien.
+     */
+    public function regrades(Form $quiz)
+    {
+        $this->assertQuiz($quiz);
+
+        // L'auteur est chargé d'avance : chaque ligne porte un nom, et un journal
+        // de deux cents passes ne doit pas faire deux cents requêtes.
+        $runs = $quiz->regradeRuns()->with('admin')->get();
+
+        return view('admin.quizzes.regrades', compact('quiz', 'runs'));
+    }
+
+    /**
+     * Les copies d'un recalcul : lesquelles, et leur note avant et après.
+     *
+     * C'est ce que l'aperçu montrait avant le clic, conservé tel quel après. Une
+     * copie supprimée depuis garde sa ligne — sa référence était juste au moment
+     * du geste —, simplement elle ne se visite plus.
+     */
+    public function regradeRun(Form $quiz, QuizRegradeRun $run)
+    {
+        $this->assertQuiz($quiz);
+        abort_unless((int) $run->form_id === (int) $quiz->id, 404);
+
+        // Les participations encore présentes sont chargées d'une fois : un
+        // recalcul de promotion ne doit pas faire une requête par copie pour
+        // écrire un nom en regard d'une référence.
+        $attempts = QuizAttempt::query()
+            ->whereIn('id', collect($run->changedCopies())->pluck('attempt_id')->all())
+            ->get()
+            ->keyBy('id');
+
+        return view('admin.quizzes.regrade-run', compact('quiz', 'run', 'attempts'));
+    }
+
+    public function regrade(Form $quiz): RedirectResponse
+    {
+        $this->assertQuiz($quiz);
+
+        // Une seule passe, récapitulée d'un coup : si une écriture échouait,
+        // aucune copie ne resterait à moitié renotée, et le journal ne garderait
+        // pas la trace d'un geste annulé.
+        $renoted = DB::transaction(function () use ($quiz): int {
+            // Le même calcul que l'aperçu qui vient d'être confirmé, refait au
+            // moment d'écrire — une copie a pu être rendue entre les deux — puis
+            // conservé avec le geste.
+            $detail = $this->grader->previewRegrade($quiz)['rows'];
+
+            $renoted = $this->grader->regradeQuiz($quiz);
+
+            $this->recordRegrade($quiz, QuizRegradeRun::ORIGIN_QUIZ, $detail);
+
+            return $renoted;
+        });
+
+        // Retour aux résultats, et non `back()` : le geste part de l'aperçu, et
+        // un aperçu qui vient d'être exécuté ne dit plus rien. L'enseignant doit
+        // atterrir là où il lit ses notes.
+        return redirect()->route('admin.quizzes.results', $quiz)
+            ->with('success', $this->regradeMessage($quiz, $renoted));
     }
 
     /**

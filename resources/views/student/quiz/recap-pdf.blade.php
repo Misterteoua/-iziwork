@@ -20,7 +20,12 @@
 @php
     $schoolLogo = \App\Support\PdfAssets::dataUri('images/efsc-recap-pdf.png');
     $brandLogo = \App\Support\PdfAssets::dataUri('images/iziwork-logo.png');
-    $points = static fn ($value): string => rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ',');
+    // Une note absente ne s'imprime pas « 0 » : elle s'imprime « — ». Le zéro
+    // est une note, et le document que l'étudiant garde ne doit pas confondre
+    // les deux.
+    $points = static fn ($value): string => $value === null
+        ? '—'
+        : rtrim(rtrim(number_format((float) $value, 2, ',', ' '), '0'), ',');
     // Numéro de document affiché dans le pied de page. La variable est fournie
     // par le contrôleur ; le `?? null` évite une erreur si la vue est rendue
     // seule (tests, aperçus).
@@ -499,11 +504,17 @@
              sans auto-correction. Le document doit refléter la même règle que
              la page de résultat. --}}
         @php($manual = $question->isOpen() || ($question->isChoice() && $quiz->quizGradesChoiceManually()))
+        {{-- « Pas encore notée » se lit avant le type de question : une réponse
+             sans note attend une décision, qu'elle soit rédigée, à propositions,
+             ou laissée en plan par un changement de réglage. --}}
+        @php($graded = $answer?->isGraded() === true)
         @php($verdict = $answer === null
             ? 'is-skipped'
-            : ($manual
-                ? ($answer->isGraded() ? ($answer->points_awarded > 0 ? 'is-good' : 'is-bad') : 'is-pending')
-                : ($answer->is_correct ? 'is-good' : 'is-bad')))
+            : (! $graded
+                ? 'is-pending'
+                : ($manual
+                    ? ($answer->points_awarded > 0 ? 'is-good' : 'is-bad')
+                    : ($answer->is_correct ? 'is-good' : 'is-bad'))))
         <div class="question {{ $verdict }}">
             <div class="prompt">
                 @include('partials.question-text', ['text' => $question->field_label, 'prefix' => ($index + 1).'.'])
@@ -512,16 +523,15 @@
             <div>
                 @if($answer === null)
                     <span class="verdict skipped">Sans réponse — 0 point</span>
+                @elseif(! $graded)
+                    {{-- Ni juste ni faux : la note n'existe pas encore. --}}
+                    <span class="verdict pending">En attente de correction</span>
                 @elseif($manual)
-                    {{-- Pas de verdict automatique : soit la note est attribuée,
-                         soit la question attend encore une correction. --}}
-                    @if($answer->isGraded())
-                        <span class="verdict {{ $answer->points_awarded > 0 ? 'good' : 'bad' }}">
-                            {{ $points($answer->points_awarded) }} / {{ $points($question->points) }} point(s)
-                        </span>
-                    @else
-                        <span class="verdict pending">En attente de correction</span>
-                    @endif
+                    {{-- Pas de verdict automatique : c'est la note de
+                         l'enseignant qui parle. --}}
+                    <span class="verdict {{ $answer->points_awarded > 0 ? 'good' : 'bad' }}">
+                        {{ $points($answer->points_awarded) }} / {{ $points($question->points) }} point(s)
+                    </span>
                 @elseif($answer->is_correct)
                     <span class="verdict good">Juste — {{ $points($question->points) }} point(s)</span>
                 @else

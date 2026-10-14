@@ -326,6 +326,16 @@ class CorrectionController extends Controller
 
                 $form = $answer->attempt?->form;
 
+                // « Mes points » : sa note, et rien d'autre. Le journal d'une
+                // relecture ne garde que des notes réellement posées — une
+                // réponse jamais notée n'y laisse pas de ligne — mais la colonne
+                // se lit quand même comme un cas explicite : sans relecture, la
+                // note courante est la sienne ; avec, c'est celle qu'il avait
+                // posée. Un `??` sur `previous_points` dirait le contraire : il
+                // remplacerait une note absente par celle de l'administration,
+                // et lui attribuerait une décision qu'il n'a pas prise.
+                $mine = $review === null ? $answer->points_awarded : $review->previous_points;
+
                 $this->writeCsvRow($handle, [
                     $form?->title,
                     $answer->attempt?->reference,
@@ -333,7 +343,7 @@ class CorrectionController extends Controller
                     $answer->attempt?->submitted_at?->format('d/m/Y H:i'),
                     $answer->field?->field_label,
                     $answer->answer_text,
-                    $review?->previous_points ?? $answer->points_awarded,
+                    $mine,
                     $review ? $review->previous_comment : $answer->grader_comment,
                     $answer->points_awarded,
                     $answer->field?->points,

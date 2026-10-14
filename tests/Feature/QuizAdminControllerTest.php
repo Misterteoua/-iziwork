@@ -8,6 +8,7 @@ use App\Models\FormField;
 use App\Models\QuizAnswer;
 use App\Models\QuizAttempt;
 use App\Models\QuizGradeReview;
+use App\Models\QuizRegradeRun;
 use App\Models\ShortLink;
 use App\Support\QuizQuestionData;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -1148,6 +1149,25 @@ class QuizAdminControllerTest extends TestCase
         $this->get(route('admin.quizzes.show', $this->quiz))->assertRedirect(route('login'));
         $this->get(route('admin.quizzes.results', $this->quiz))->assertRedirect(route('login'));
         $this->get(route('admin.quizzes.results.export', $this->quiz))->assertRedirect(route('login'));
+        // Le recalcul écrit : c'est une route qui doit refuser un visiteur, au
+        // même titre que les pages qu'elle sert — son aperçu comme le geste.
+        $this->get(route('admin.quizzes.regrade.preview', $this->quiz))->assertRedirect(route('login'));
+        $this->post(route('admin.quizzes.regrade', $this->quiz))->assertRedirect(route('login'));
+        // L'aperçu d'une question modifiée lit les notes de toute une
+        // promotion : il se refuse au visiteur comme le reste.
+        $this->post(route('admin.quizzes.questions.renotation', [$this->quiz, $this->question()]))
+            ->assertRedirect(route('login'));
+        // Le journal des recalculs nomme ses auteurs : il ne se lit pas non plus
+        // sans être entré, ni lui, ni le détail des copies qu'il ouvre.
+        $this->get(route('admin.quizzes.regrades', $this->quiz))->assertRedirect(route('login'));
+
+        $run = QuizRegradeRun::create([
+            'form_id' => $this->quiz->id,
+            'origin' => QuizRegradeRun::ORIGIN_QUIZ,
+            'copies' => 0,
+        ]);
+
+        $this->get(route('admin.quizzes.regrades.show', [$this->quiz, $run]))->assertRedirect(route('login'));
     }
 
     /**
@@ -1163,6 +1183,7 @@ class QuizAdminControllerTest extends TestCase
         $this->delete(route('admin.quizzes.destroy', $deposit))->assertNotFound();
         $this->post(route('admin.quizzes.questions.store', $deposit), $this->questionPayload())->assertNotFound();
         $this->post(route('admin.quizzes.references.store', $deposit), ['count' => 5])->assertNotFound();
+        $this->get(route('admin.quizzes.regrades', $deposit))->assertNotFound();
 
         // Et le dépôt n'a pas bougé : ni question, ni participation.
         $this->assertSame(0, $deposit->fields()->count());

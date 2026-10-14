@@ -183,6 +183,58 @@ class QuizGradeReviewTest extends TestCase
         $this->assertSame(0, QuizGradeReview::count());
     }
 
+    public function test_reprendre_une_reponse_que_le_correcteur_a_commentee_sans_la_noter_exige_un_motif(): void
+    {
+        $attempt = $this->playCopy();
+        $answer = $this->openAnswer($attempt);
+
+        // Le correcteur laisse une remarque sans trancher la note : la réponse
+        // est à lui, mais elle reste en attente — c'est un état prévu, pas un
+        // oubli. Un champ de note vide est la façon de le dire.
+        $this->loginAsGrader();
+
+        $this->post(route('correction.store', $attempt), [
+            'points' => [$answer->id => ''],
+            'comments' => [$answer->id => 'Piste intéressante, à confirmer.'],
+        ])->assertSessionHasNoErrors();
+
+        $answer->refresh();
+
+        $this->assertNull($answer->points_awarded);
+        $this->assertSame($this->grader->id, $answer->graded_by_grader_id);
+
+        $this->backToAdmin();
+
+        // L'administration tranche à sa place, et lui donne **zéro** : c'est une
+        // décision, pas une absence de note. Elle doit donc dire pourquoi, au
+        // même titre qu'une note remplacée — sinon la reprise passe pour une
+        // simple confirmation du travail du correcteur.
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $attempt]), [
+            'points' => [$answer->id => '0'],
+            'comments' => [$answer->id => 'Piste intéressante, à confirmer.'],
+        ])->assertSessionHasErrors('review_reason.'.$answer->id);
+
+        // Rien n'a bougé : la réponse reste celle du correcteur, toujours en
+        // attente.
+        $answer->refresh();
+
+        $this->assertNull($answer->points_awarded);
+        $this->assertSame($this->grader->id, $answer->graded_by_grader_id);
+
+        // Avec le motif, la reprise passe, et le zéro est bien une note.
+        $this->post(route('admin.quizzes.attempts.grade.store', [$this->quiz, $attempt]), [
+            'points' => [$answer->id => '0'],
+            'comments' => [$answer->id => 'Piste intéressante, à confirmer.'],
+            'review_reason' => [$answer->id => 'Réponse hors sujet.'],
+        ])->assertSessionHasNoErrors();
+
+        $answer->refresh();
+
+        $this->assertSame('0.00', $answer->points_awarded);
+        $this->assertSame($this->admin->id, $answer->graded_by_admin_id);
+        $this->assertTrue($answer->isGraded());
+    }
+
     public function test_un_motif_trop_long_est_refuse(): void
     {
         $attempt = $this->playCopy();

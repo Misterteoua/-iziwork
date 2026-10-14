@@ -242,6 +242,56 @@ class QuizManualGradingTest extends TestCase
         $this->assertSame(0, $attempt->pendingManualCount());
     }
 
+    public function test_zero_est_une_note_comme_une_autre(): void
+    {
+        $attempt = $this->playCopy();
+        $answer = $this->openAnswer($attempt);
+
+        // Réponse fausse, zéro point : c'est une décision, pas une absence de
+        // décision. Elle était pourtant confondue avec « pas encore corrigée »,
+        // et la copie restait indéfiniment dans la file de correction.
+        $this->post($this->gradeRoute($attempt), [
+            'points' => [$answer->id => '0'],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $answer->refresh();
+        $attempt->refresh();
+
+        $this->assertSame('0.00', $answer->points_awarded);
+        $this->assertTrue($answer->isGraded());
+        $this->assertFalse($answer->is_correct);
+        // La note du QCM reste acquise, et la copie n'attend plus rien.
+        $this->assertSame('2.00', $attempt->score);
+        $this->assertSame(0, $attempt->pendingManualCount());
+        $this->assertFalse($attempt->awaitsManualGrading());
+
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertDontSee('copie(s) attendent une correction');
+    }
+
+    public function test_un_champ_de_note_laisse_vide_laisse_la_reponse_en_attente(): void
+    {
+        $attempt = $this->playCopy();
+        $answer = $this->openAnswer($attempt);
+
+        // L'autre moitié de la même règle : c'est le champ vide qui laisse la
+        // réponse en attente, jamais la valeur zéro. Sans cela, corriger une
+        // copie en plusieurs fois deviendrait impossible dès qu'on passe sur une
+        // réponse qu'on ne veut pas encore noter.
+        $this->post($this->gradeRoute($attempt), [
+            'points' => [$answer->id => ''],
+        ])->assertRedirect();
+
+        $answer->refresh();
+        $attempt->refresh();
+
+        $this->assertNull($answer->points_awarded);
+        $this->assertFalse($answer->isGraded());
+        $this->assertSame(1, $attempt->pendingManualCount());
+        $this->assertTrue($attempt->awaitsManualGrading());
+    }
+
     public function test_une_note_superieure_au_bareme_est_refusee(): void
     {
         $attempt = $this->playCopy();
@@ -541,5 +591,60 @@ class QuizManualGradingTest extends TestCase
         }
 
         $this->fail('La ligne de la participation est absente de l\'export.');
+    }
+
+    public function test_le_bareme_inconnu_ne_se_lit_pas_zero(): void
+    {
+        $this->openQuestion(3);
+
+        // Une note présente mais un barème jamais calculé : la colonne est
+        // nullable elle aussi, et « / 0 » se lirait comme une épreuve qui ne
+        // vaut rien, au lieu d'un total inconnu.
+        $this->quiz->attempts()->create([
+            'reference' => 'SANSSBARE1',
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(5),
+            'submitted_at' => Carbon::now(),
+            'score' => 2,
+            'max_score' => null,
+        ]);
+
+        // La liste des résultats tient la même règle que la page de l'étudiant :
+        // un tiret, jamais un zéro. La cellule est cherchée telle qu'elle est
+        // rendue — « / 0 » traîne ailleurs dans la page, dans des ombres portées
+        // écrites `rgb(0 0 0 / 0.03)`.
+        $this->get(route('admin.quizzes.results', $this->quiz))
+            ->assertOk()
+            ->assertSee('<span class="text-slate-500">/ —</span>', false)
+            ->assertDontSee('<span class="text-slate-500">/ 0', false);
+    }
+
+    public function test_l_ecran_de_correction_n_affiche_pas_zero_pour_une_note_non_calculee(): void
+    {
+        $this->openQuestion(3);
+
+        // Une copie rendue dont la note n'a pas encore été calculée : la colonne
+        // est nullable, l'état est donc permis par la base — une reprise de
+        // données, un import —, et l'écran ne doit pas le transformer en zéro.
+        $attempt = $this->quiz->attempts()->create([
+            'reference' => 'SANSNOTE01',
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(10),
+            'submitted_at' => Carbon::now(),
+            'score' => null,
+            'max_score' => 3,
+        ]);
+
+        $html = $this->get(route('admin.quizzes.attempts.grade', [$this->quiz, $attempt]))
+            ->assertOk()
+            ->getContent();
+
+        // « 0 / 3 » se lirait comme un candidat à zéro point ; la note n'existe
+        // pas encore.
+        $this->assertMatchesRegularExpression(
+            '/Note actuelle<\/dt>\s*<dd[^>]*>\s*—\s*\/ 3/s',
+            $html,
+            'Une note non calculée doit s\'afficher « — », jamais « 0 ».'
+        );
     }
 }

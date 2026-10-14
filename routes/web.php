@@ -139,6 +139,13 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::post('quizzes/{quiz}/questions/preview', [QuizController::class, 'previewQuestion'])
         ->whereNumber('quiz')->name('admin.quizzes.questions.preview');
 
+    // Aperçu de la renotation avant l'enregistrement d'une question : le même
+    // calcul que la modification déclenche, mais compté au lieu d'être écrit.
+    // L'enseignant voit quelles copies sa correction atteindrait avant de la
+    // poser, et non après avoir changé la note d'étudiants.
+    Route::post('quizzes/{quiz}/questions/{field}/renotation', [QuizController::class, 'previewQuestionRegrade'])
+        ->whereNumber('quiz')->whereNumber('field')->name('admin.quizzes.questions.renotation');
+
     // La page d'attente telle que la voit l'étudiant : le vrai écran, décompte
     // compris. Rien n'y est créé ni retenu — un aperçu ne prépare personne.
     Route::get('quizzes/{quiz}/waiting-preview', [QuizController::class, 'previewWaiting'])
@@ -190,6 +197,26 @@ Route::prefix('admin')->middleware(AdminAuth::class)->group(function () {
     Route::get('quizzes/{quiz}/results/export', [QuizController::class, 'exportResults'])->whereNumber('quiz')->name('admin.quizzes.results.export');
     Route::get('quizzes/{quiz}/results/open-answers', [QuizController::class, 'exportOpenAnswers'])
         ->whereNumber('quiz')->name('admin.quizzes.results.open-answers');
+
+    // Rattrapage : recalculer les notes de toutes les copies rendues d'après la
+    // configuration actuelle des questions. Le GET est l'aperçu — ce qui
+    // changerait, sans rien écrire — et le POST le geste lui-même, demandé depuis
+    // cet aperçu.
+    Route::get('quizzes/{quiz}/results/regrade', [QuizController::class, 'regradePreview'])
+        ->whereNumber('quiz')->name('admin.quizzes.regrade.preview');
+    Route::post('quizzes/{quiz}/results/regrade', [QuizController::class, 'regrade'])
+        ->whereNumber('quiz')->name('admin.quizzes.regrade');
+
+    // Le journal des recalculs : qui les a lancés, quand, et sur combien de
+    // copies. Il se lit depuis les résultats, là où l'enseignant constate qu'une
+    // note a bougé — et c'est la seule page qui peut dire pourquoi.
+    Route::get('quizzes/{quiz}/regrades', [QuizController::class, 'regrades'])
+        ->whereNumber('quiz')->name('admin.quizzes.regrades');
+
+    // Le détail d'une passe : les copies qu'elle a touchées, et leur note avant
+    // et après. C'est l'aperçu qui les a montrées avant le clic, conservé tel quel.
+    Route::get('quizzes/{quiz}/regrades/{run}', [QuizController::class, 'regradeRun'])
+        ->whereNumber('quiz')->whereNumber('run')->name('admin.quizzes.regrades.show');
     Route::post('quizzes/{quiz}/attempts/{attempt}/reset', [QuizController::class, 'resetAttempt'])
         ->whereNumber('quiz')->whereNumber('attempt')->name('admin.quizzes.attempts.reset');
     // Supprimer une copie n'est pas la réinitialiser : la seconde laisse

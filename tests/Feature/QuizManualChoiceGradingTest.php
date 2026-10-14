@@ -328,4 +328,33 @@ class QuizManualChoiceGradingTest extends TestCase
         $this->assertStringContainsString('Voici mon raisonnement.', $response->streamedContent());
         $this->assertStringNotContainsString('Quelle est la bonne réponse ?', $response->streamedContent());
     }
+
+    // -------------------------------------------------- Pas de note n'est pas zéro
+
+    public function test_une_reponse_sans_note_ne_se_lit_pas_zero_quand_l_auto_correction_revient(): void
+    {
+        $this->choiceQuestion(['Un', 'Deux'], [1], 2);
+        $attempt = $this->playCopy(choice: 1);
+        $answer = $this->choiceAnswer($attempt);
+
+        // Le réglage était actif à la remise : la réponse attend une note.
+        $this->assertNull($answer->points_awarded);
+
+        // L'enseignant le retire ensuite. L'auto-correction revient, mais la
+        // copie déjà rendue garde sa note en attente : renoter est un geste
+        // explicite, pas un effet de bord d'un enregistrement de réglages.
+        $this->quiz->update([
+            'quiz_settings' => array_merge($this->quiz->quizSettings(), ['manual_choice_grading' => false]),
+        ]);
+
+        $this->quiz->update(['close_date' => Carbon::now()->subMinute()]);
+
+        // L'étudiant doit donc lire que la question attend encore. « 0 pt »
+        // serait une décision que personne n'a prise — ni la machine, qui n'a
+        // pas encore rejoué, ni l'enseignant, qui n'a rien tranché.
+        $this->get(route('quiz.result', $this->quiz->token))
+            ->assertOk()
+            ->assertSee('En attente de correction')
+            ->assertDontSee('0 pt');
+    }
 }

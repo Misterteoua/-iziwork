@@ -137,10 +137,18 @@ final class QuizCopyGrading
      * On compare la valeur réellement retenue (commentaire normalisé, note
      * arrondie au centième) : sinon un espace ajouté à la fin d'un commentaire
      * suffirait à réclamer un motif.
+     *
+     * La note passe par {@see QuizAnswer::awardedPoints()} : une réponse jamais
+     * notée rend `null`, une réponse notée zéro rend 0,0. Comparer sur la seule
+     * conversion en nombre confondait les deux — l'administration pouvait
+     * attribuer **zéro** à une réponse qu'un correcteur avait commentée sans la
+     * noter, et reprendre ainsi son travail sans avoir à dire pourquoi. C'est le
+     * même piège que celui documenté dans {@see QuizGrader::record()}, et la même
+     * réponse.
      */
     private function changes(QuizAnswer $answer, ?float $points, ?string $comment): bool
     {
-        return ($points !== null && (float) $answer->points_awarded !== $points)
+        return ($points !== null && $answer->awardedPoints() !== $points)
             || $answer->grader_comment !== QuizGrader::normalizeComment($comment);
     }
 }

@@ -118,6 +118,21 @@
     </div>
     @endif
 
+    @if($question && ($renotable ?? false))
+    {{-- Ce que l'enregistrement ferait aux copies déjà rendues. La question se
+         juge avant d'être posée : le contenu vient du serveur, qui fait tourner
+         la renotation elle-même — la refaire ici finirait par annoncer autre
+         chose que ce que l'enregistrement ferait. Le panneau reste donc vide
+         jusqu'à la première modification, puisque la définition enregistrée,
+         elle, n'a par définition rien à renoter. --}}
+    <div data-renotation-preview hidden
+         data-renotation-url="{{ route('admin.quizzes.questions.renotation', [$quiz, $question]) }}"
+         class="rounded-xl border border-amber-200/70 bg-amber-50/60 px-4 py-3">
+        <p class="text-xs font-semibold text-amber-800 uppercase tracking-wider">Aperçu de la renotation</p>
+        <div class="mt-2 text-sm text-amber-900" data-renotation-target></div>
+    </div>
+    @endif
+
     <button type="submit"
             class="inline-flex items-center justify-center px-4 py-2.5 border border-transparent text-sm font-semibold rounded-xl text-white bg-brand-600 hover:bg-brand-700 transition-colors duration-150">
         {{ $question ? 'Enregistrer la question' : 'Ajouter la question' }}
@@ -223,6 +238,116 @@
             if (timer) { window.clearTimeout(timer); }
 
             timer = window.setTimeout(ask, DELAY);
+        });
+    });
+})();
+
+(function () {
+    // Aperçu de la renotation : ce que l'enregistrement ferait aux copies déjà
+    // rendues. Le calcul vit au serveur, qui exécute la renotation elle-même en
+    // comptant au lieu d'écrire. Seuls les champs qui décident d'une note sont
+    // surveillés : un énoncé corrigé ne renote personne.
+    const DELAY = 600;
+
+    document.querySelectorAll('[data-renotation-preview]').forEach(function (block) {
+        const form = block.closest('form');
+        const target = block.querySelector('[data-renotation-target]');
+        const url = block.getAttribute('data-renotation-url');
+
+        if (!form || !target || !url) { return; }
+
+        // Seuls ces champs décident d'une note : ce sont eux qui déclenchent la
+        // demande, l'énoncé corrigé ne renote personne.
+        const fields = form.querySelectorAll('[name="field_type"], [name="points"], [name="options[]"], [name="correct[]"]');
+
+        let timer = null;
+        let pending = null;
+        let sent = null;
+
+        // L'état des champs qui comptent, en une chaîne : « input » puis
+        // « change » se suivent pour un même geste, et deux calculs identiques
+        // n'ont pas à être demandés deux fois.
+        function state() {
+            const parts = [];
+
+            fields.forEach(function (field) {
+                const value = field.type === 'checkbox' && !field.checked ? '' : field.value;
+
+                parts.push(field.name + '=' + value);
+            });
+
+            return parts.join('&');
+        }
+
+        function show(html) {
+            target.innerHTML = html;
+            block.removeAttribute('hidden');
+        }
+
+        function ask() {
+            // Le formulaire entier part, tel quel : c'est ce que l'enregistrement
+            // recevra, et la validation de l'aperçu est donc la sienne. Le champ
+            // « _method » seul est retiré — c'est le contournement du navigateur
+            // pour un envoi en PUT, et le laisser ferait répondre la route en 405.
+            const body = new FormData(form);
+            body.delete('_method');
+
+            // Une demande chasse l'autre : une réponse lente ne doit pas
+            // écraser l'aperçu d'un état plus récent.
+            if (pending) { pending.abort(); }
+            pending = new AbortController();
+
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json'
+                },
+                body: body,
+                signal: pending.signal
+            }).then(function (response) {
+                if (!response.ok) {
+                    throw Object.assign(new Error('renotation'), { refused: response.status === 422 });
+                }
+
+                return response.json();
+            }).then(function (payload) {
+                show(typeof payload.html === 'string' ? payload.html : '');
+            }).catch(function (error) {
+                if (error && error.name === 'AbortError') { return; }
+
+                // Refus de validation : c'est celui de l'enregistrement, et il
+                // se dit ici plutôt que de laisser un aperçu périmé sous les
+                // yeux de l'enseignant — l'écran doit montrer l'effet de la
+                // question telle qu'elle serait enregistrée, pas d'une autre.
+                if (error && error.refused) {
+                    block.removeAttribute('hidden');
+                    target.textContent = 'Complétez le formulaire : l\'aperçu suit la question telle qu\'elle serait enregistrée.';
+
+                    return;
+                }
+
+                // Panne du serveur : l'aperçu disparaît plutôt que d'inventer.
+                target.textContent = '';
+                block.setAttribute('hidden', 'hidden');
+            });
+        }
+
+        function schedule() {
+            const current = state();
+
+            if (current === sent) { return; }
+
+            sent = current;
+
+            if (timer) { window.clearTimeout(timer); }
+
+            timer = window.setTimeout(ask, DELAY);
+        }
+
+        fields.forEach(function (field) {
+            field.addEventListener('input', schedule);
+            field.addEventListener('change', schedule);
         });
     });
 })();

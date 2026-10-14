@@ -22,6 +22,7 @@ corrigés automatiquement).
 - **Chrono tenu par le serveur** : la durée est fixée au démarrage de l'épreuve, un rechargement de page ne la remet pas à zéro
 - **Navigation linéaire** : une seule question affichée, réponse définitive, aucun retour en arrière possible — et, quand le navigateur le permet, la question suivante **remplace la précédente sans recharger la page**
 - **Correction automatique** : note calculée côté serveur, jamais envoyée avant la fin de l'épreuve — ou **correction manuelle des QCM** au choix de l'enseignant
+- **Renotation après coup** : corriger une bonne réponse, un barème ou le type d'une question rejoue l'auto-correction sur les copies déjà rendues, et annonce combien ont été renotées ; l'effet de la question **modifiée** s'affiche dans son formulaire avant l'enregistrement, le recalcul demandé à la main passe par un **aperçu des notes concernées** avant confirmation, et chaque passe laisse une trace au **journal des recalculs** — qui, quand, et quelles copies, avec leur note avant et après ; une note posée à la main n'est jamais recalculée
 - **Questions à réponse rédigée** : l'étudiant tape un texte (et peut joindre jusqu'à **2 documents image ou PDF, 1 Mo chacun**), l'enseignant attribue les points depuis une page de correction qui **enchaîne les copies** les unes après les autres ; la note reste **provisoire** tant qu'une réponse attend, puis devient définitive
 - **Récapitulatif PDF** : document mis en page (logo de l'établissement en tête, logo Iziwork en pied de page), avec la note, la référence et le temps utilisé, téléchargeable avec la seule référence — la note définitive y apparaît après correction
 - **Filigrane et numéro de document** : les trois PDF générés (évaluation, dépôt, fiche de mission) portent un **filigrane diagonal** répété sur chaque page et un **numéro de document unique** en pied de page — tracés dans le flux du PDF, ils ne se retirent pas en éditant le gabarit
@@ -489,6 +490,27 @@ Ce qui se passe ensuite, dans l'ordre :
    champ laissé vide ne produit aucun cadre vide, et un commentaire écrit sans
    note est conservé (la réponse, elle, reste en attente).
 
+**« En attente » ne s'affiche jamais comme un zéro — nulle part.** La
+distinction `null` / `0` n'est pas qu'une affaire de base : tout ce qui montre
+une note ou une copie la tient, et chacun de ces endroits a son test.
+
+- **Écrans de correction** (administration et correcteur) : une copie dont la note
+  n'a pas encore été calculée affiche « — / barème », jamais « 0 / barème » ; un
+  champ de note laissé vide garde la réponse en attente, et un champ rempli de
+  `0` est une note comme une autre.
+- **Page de résultat et récapitulatif PDF** : une réponse sans note est annoncée
+  « En attente de correction », même quand l'auto-correction a été remise après la
+  remise de la copie — le document ne dit jamais « 0 pt » ni « Faux — 0 point »
+  pour une décision que personne n'a prise.
+- **Export du correcteur** : « Mes points » reste vide quand il n'avait pas
+  tranché, au lieu de reprendre la note posée à sa place.
+- **Export des réponses à corriger** : une réponse non notée porte un état
+  (« À corriger » / « Corrigée ») en plus de sa colonne de points.
+
+Reprendre une réponse qu'un correcteur a **commentée sans la noter** compte comme
+une reprise : lui attribuer zéro demande un motif, exactement comme remplacer une
+note déjà posée.
+
 ### Corriger les QCM à la main
 
 Par défaut, une question à propositions est **notée automatiquement** à la
@@ -640,6 +662,113 @@ action, à la première consultation qui suit la publication. La page « Résult
 signale en tête quand les corrections ne sont pas encore publiées, avec la date
 prévue ; les réglages rappellent la règle et préviennent lorsqu'**aucune date**
 n'est fixée — dans ce cas, seule la désactivation de l'évaluation les publie.
+
+### Corriger une question après coup : ce que deviennent les copies
+
+Une bonne réponse mal désignée se rattrape, et **la note suit**. Enregistrer une
+question modifiée depuis « Modifier cette question » rejoue l'auto-correction sur
+**toutes les copies déjà rendues** de l'évaluation, quelle que soit la
+modification : bonne réponse, barème, propositions, type de question. Le message
+de confirmation annonce combien de copies ont été renotées, et rappelle le cas
+échéant que ces étudiants voyaient déjà leur note.
+
+**L'effet se lit avant le clic, pas après.** Le formulaire « Modifier cette
+question » porte un **aperçu de la renotation** : dès qu'un champ qui décide
+d'une note change — type, barème, propositions, bonne réponse —, il demande au
+serveur ce que l'enregistrement ferait, et montre les copies concernées avec leur
+note d'aujourd'hui et celle qu'elles auraient. Rien n'est écrit : l'enseignant
+juge sa correction avant de la poser, au lieu de la découvrir sur les copies de
+ses étudiants. Trois détails disent ce que l'aperçu est, et ce qu'il n'est pas :
+
+- **l'énoncé ne le déclenche pas** : corriger une faute de frappe ne renote
+  personne, il n'y a donc rien à demander au serveur ;
+- **il n'existe qu'avec des copies rendues** : sans elles, aucun panneau n'est
+  affiché plutôt qu'un effet sur zéro copie ;
+- **il suit la validation de l'enregistrement** : un formulaire incomplet est
+  refusé de la même façon, et l'aperçu le dit au lieu d'afficher l'effet d'une
+  question qui ne serait pas enregistrée.
+
+Le calcul est celui de la renotation elle-même — le même ensemble de réponses,
+la même règle, le même récapitulatif des totaux — compté au lieu d'être écrit :
+ce que le panneau annonce est exactement ce que l'enregistrement fera.
+
+- **Une note posée par un humain n'est jamais recalculée.** Le tri se fait sur
+  l'**auteur** de la note, pas sur sa date : un correcteur, un administrateur, ou
+  une note reprise après relecture garde exactement les points qu'il a
+  attribués. Seules les notes produites par la machine sont recalculées.
+- **Une copie en cours d'épreuve n'est pas touchée** : elle sera corrigée à sa
+  remise, avec la définition en vigueur à ce moment-là.
+- **La réponse de l'étudiant se lit toujours à la position qu'elle avait.**
+  Partout — page de résultat, récapitulatif PDF, écran de correction — les choix
+  sont des index dans la liste des propositions. La renotation suit la même
+  lecture : l'affichage et la note ne peuvent pas raconter deux choses
+  différentes.
+- **Une question que la machine ne peut plus trancher retombe « en attente ».**
+  Une question à propositions devenue « réponse rédigée », ou une évaluation
+  passée en correction manuelle des QCM, efface la note automatique : la copie
+  réapparaît dans la file de correction, exactement comme une réponse rédigée
+  jamais notée. C'est la règle déjà appliquée à la remise d'une copie.
+- **Le barème des copies suit aussi.** Modifier le barème d'une question met à
+  jour le total « sur combien » de chaque copie rendue, y compris celles qui
+  n'ont pas répondu à cette question ; supprimer une question remet le total
+  d'aplomb de la même façon, ses réponses disparaissant avec elle.
+
+Rien n'est journalisé comme une relecture : le journal d'une copie raconte des
+décisions humaines, avec un auteur et un motif, et un recalcul n'en est pas une.
+Les réponses recalculées restent celles qu'**aucun auteur ne signe**, ce qui est
+précisément ce qui permet de les distinguer d'une note assumée.
+
+**Le recalcul a son propre journal.** Une note qui bouge sans qu'une personne ne
+signe le changement est la seule vraiment difficile à expliquer après coup, et le
+journal des relectures ne la couvre pas : il raconte les décisions.
+**Résultats → Journal des recalculs** liste donc les passes de renotation — le
+recalcul demandé, la renotation d'une question modifiée, la remise d'aplomb qui
+suit une question supprimée — et, pour chacune, son auteur, son horodatage, la
+question en cause et le nombre de copies dont la note ou le barème a bougé. Deux
+règles le tiennent : un recalcul **demandé** y figure même quand il ne change rien
+— c'est une action —, alors qu'une question **enregistrée** sans effet sur les
+copies n'y figure pas : corriger un énoncé n'est pas un recalcul.
+
+Le nombre de copies mène à leur **liste** : lesquelles, leur note et leur barème
+**avant et après**. Ce sont exactement les valeurs que l'aperçu montrait — elles
+sont écrites telles quelles, lues juste avant que les réponses ne changent —, si
+bien qu'une note contestée deux mois plus tard se vérifie sans rien recalculer.
+La trace survit à ce qu'elle nomme : supprimer un compte d'administration ou une
+question laisse la ligne lisible, avec l'énoncé recopié au moment du geste ; une
+participation supprimée garde sa ligne et sa référence, et le nom des étudiants
+n'y entre jamais pour une évaluation anonyme.
+
+**Le rattrapage, quand il faut le déclencher soi-même.** La renotation ne vaut
+que pour les modifications enregistrées depuis l'écran. Deux situations y
+échappent : les copies notées avant que le mécanisme n'existe, et une
+configuration corrigée autrement — un import, une reprise directe en base. Le
+bouton **« Recalculer les notes »**, en tête de la page **Résultats**, rejoue
+l'auto-correction de **toutes** les questions de l'évaluation sur toutes les
+copies rendues, et annonce combien ont changé.
+
+**L'aperçu, avant que rien ne soit écrit.** Ce bouton n'écrit pas : il ouvre un
+écran qui annonce ce que le recalcul ferait — combien de copies, sur combien,
+verraient leur note ou leur barème changer, et pour chacune la note d'aujourd'hui
+et celle d'après. Rien n'est modifié tant que l'enseignant n'a pas confirmé, et
+l'écran le dit. Trois cas y sont distingués, parce qu'ils n'ont pas les mêmes
+conséquences :
+
+- **les copies dont la note change** — la seule liste à lire, avec l'ancienne et
+  la nouvelle valeur, et le barème quand il bouge ;
+- **les copies qui repartent en correction** : une question que la machine ne
+  peut plus trancher redevient « en attente », et ces copies rejoignent la file
+  de correction — leur note redevient provisoire pour leurs auteurs ;
+- **les renotations sans effet visible**, quand deux réponses d'une même copie se
+  compensent : la machine change d'avis, aucune note affichée ne bouge. Elles
+  sont comptées à part, plutôt qu'annoncées comme des renotations qu'elles ne
+  sont pas.
+
+Quand tout est déjà à jour, l'écran le dit et **ne propose aucun bouton** : il
+n'y a rien à confirmer, et un geste sans effet serait un geste de trop. La
+confirmation ramène aux résultats, où le message annonce combien de copies ont
+été renotées. L'aperçu ne touche à rien — ni note, ni total — et il repose sur le
+même calcul que l'écriture : ce qu'il annonce est exactement ce qui serait fait,
+y compris sur les notes humaines, qu'il tient hors de sa liste.
 
 ### Confier la correction à des correcteurs externes
 

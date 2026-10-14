@@ -537,4 +537,33 @@ class GraderCorrectionTest extends TestCase
         $response->assertOk()->assertHeader('Content-Type', 'image/png');
         $this->assertStringStartsWith('inline', (string) $response->headers->get('Content-Disposition'));
     }
+
+    public function test_l_ecran_du_correcteur_n_affiche_pas_zero_pour_une_note_non_calculee(): void
+    {
+        $this->openQuestion($this->quiz, 3);
+
+        // Copie rendue dont la note n'a pas encore été calculée : le correcteur
+        // doit lire une absence de note, jamais « 0 / 3 », qui se lirait comme
+        // un candidat à zéro point.
+        $attempt = $this->quiz->attempts()->create([
+            'reference' => 'SANSNOTE02',
+            'status' => QuizAttempt::STATUS_SUBMITTED,
+            'started_at' => Carbon::now()->subMinutes(10),
+            'submitted_at' => Carbon::now(),
+            'score' => null,
+            'max_score' => 3,
+        ]);
+
+        $this->login();
+
+        $html = $this->get(route('correction.show', $attempt))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/Note actuelle<\/dt>\s*<dd[^>]*>\s*—\s*\/ 3/s',
+            $html,
+            'Une note non calculée doit s\'afficher « — », jamais « 0 ».'
+        );
+    }
 }
