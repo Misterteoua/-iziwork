@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\DeploymentVersion;
 use App\Support\MigrationReconciliation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
@@ -112,7 +113,21 @@ class UpdateController extends Controller
             $errors['seed'] = $e->getMessage();
         }
 
-        // 3. Nettoyage des caches
+        // 3. Version déployée : l'extraction a remplacé le code, pas le .env.
+        //    `APP_VERSION` y est donc resté celui d'avant, et `/version` — le
+        //    contrôle qui suit une mise à jour — annoncerait encore l'ancienne
+        //    version. Le gabarit de l'archive fait foi.
+        try {
+            $version = DeploymentVersion::stamp(base_path('.env'));
+
+            if ($version !== null) {
+                $results['version'] = 'Version déployée : '.$version.'.';
+            }
+        } catch (Throwable $e) {
+            $errors['version'] = $e->getMessage();
+        }
+
+        // 4. Nettoyage des caches
         try {
             Artisan::call('config:clear');
             Artisan::call('route:clear');
@@ -124,7 +139,7 @@ class UpdateController extends Controller
             $errors['caches'] = $e->getMessage();
         }
 
-        // 4. Caches d'optimisation : le gain de rapidité le plus net en
+        // 5. Caches d'optimisation : le gain de rapidité le plus net en
         //    production. Aucune route du projet n'est définie par closure,
         //    donc `route:cache` peut sérialiser la table de routage.
         try {
@@ -143,7 +158,7 @@ class UpdateController extends Controller
             $errors['routes'] = 'Routes laissées non cachées : '.$e->getMessage();
         }
 
-        // 5. Tourner le jeton (le prochain update nécessitera le nouveau jeton)
+        // 6. Tourner le jeton (le prochain update nécessitera le nouveau jeton)
         $this->rotateToken();
 
         return view('update', [

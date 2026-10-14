@@ -164,6 +164,16 @@ caches. **Plus besoin de supprimer `install.lock` ni de ressaisir les
 identifiants MySQL.** Le jeton tourne après chaque mise à jour : conservez le
 nouveau jeton affiché à la fin.
 
+Il rafraîchit aussi `APP_VERSION` dans `.env`, en reprenant l'horodatage du
+gabarit `.env.production.example` livré dans l'archive. C'est cette valeur que
+renvoie `/version` : sans cette reprise, la page continuerait d'annoncer la
+version de l'installation d'origine, et le contrôle qui suit une extraction ne
+dirait rien de l'archive réellement en place. **Aucune autre ligne du `.env`
+n'est touchée** — clé d'application, identifiants et secrets sont recopiés tels
+quels. L'étape apparaît dans le compte rendu de la mise à jour sous
+« version » ; si le fichier `.env` est en lecture seule, elle échoue seule, le
+reste de la mise à jour se poursuit.
+
 > **Important :** le jeton de mise à jour (`.update-token`) est **différent**
 > du jeton d'installation (`.install-token`). Le premier sert aux mises à jour,
 > le second à la première installation.
